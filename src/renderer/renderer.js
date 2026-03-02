@@ -18,6 +18,16 @@ const currentTimeEl = document.getElementById('currentTime')
 const totalTimeEl = document.getElementById('totalTime')
 const bottomTrackTitleEl = document.getElementById('bottomTrackTitle')
 const bottomTrackArtistEl = document.getElementById('bottomTrackArtist')
+const homePageEl = document.getElementById('homePage')
+const songPageEl = document.getElementById('songPage')
+const songBackBtn = document.getElementById('songBackBtn')
+const homeGoSongBtn = document.getElementById('homeGoSongBtn')
+const homeNowTitleEl = document.getElementById('homeNowTitle')
+const homeNowArtistEl = document.getElementById('homeNowArtist')
+const homeNowCoverImgEl = document.getElementById('homeNowCoverImg')
+const homeNowCoverPlaceholderEl = document.getElementById('homeNowCoverPlaceholder')
+const homeFeaturedCoverEl = document.getElementById('homeFeaturedCover')
+const homeFeaturedTitleEl = document.getElementById('homeFeaturedTitle')
 const savedPlaylistSelect = document.getElementById('savedPlaylistSelect')
 const savedCreateBtn = document.getElementById('savedCreateBtn')
 const savedRenameBtn = document.getElementById('savedRenameBtn')
@@ -35,6 +45,37 @@ let currentIndex = -1
 let isLooping = false
 let savedState = { playlists: [], trackLibrary: {} }
 let selectedSavedPlaylistId = null
+
+function showSongPage() {
+  if (homePageEl) homePageEl.classList.add('page-hidden')
+  if (songPageEl) songPageEl.classList.remove('page-hidden')
+}
+
+function showHomePage() {
+  if (songPageEl) songPageEl.classList.add('page-hidden')
+  if (homePageEl) homePageEl.classList.remove('page-hidden')
+}
+
+function setHomeNowCover(dataUrl) {
+  if (!homeNowCoverImgEl || !homeNowCoverPlaceholderEl) return
+  if (dataUrl) {
+    homeNowCoverImgEl.src = dataUrl
+    homeNowCoverImgEl.style.display = 'block'
+    homeNowCoverPlaceholderEl.style.display = 'none'
+    if (homeFeaturedCoverEl) {
+      homeFeaturedCoverEl.style.backgroundImage = `url(${dataUrl})`
+      homeFeaturedCoverEl.style.backgroundSize = 'cover'
+      homeFeaturedCoverEl.style.backgroundPosition = 'center'
+    }
+  } else {
+    homeNowCoverImgEl.src = ''
+    homeNowCoverImgEl.style.display = 'none'
+    homeNowCoverPlaceholderEl.style.display = 'inline'
+    if (homeFeaturedCoverEl) {
+      homeFeaturedCoverEl.style.backgroundImage = ''
+    }
+  }
+}
 
 // Format seconds as m:ss
 function formatTime(seconds) {
@@ -189,6 +230,15 @@ function setBottomNowPlaying(title, artist) {
   if (bottomTrackArtistEl) {
     bottomTrackArtistEl.textContent = artist || '\u00a0'
   }
+  if (homeNowTitleEl) {
+    homeNowTitleEl.textContent = title || 'Little Busters!'
+  }
+  if (homeNowArtistEl) {
+    homeNowArtistEl.textContent = artist || 'Rita / VISUAL ARTS'
+  }
+  if (homeFeaturedTitleEl && title) {
+    homeFeaturedTitleEl.textContent = title
+  }
 }
 
 // Reset progress bar and time display
@@ -286,6 +336,9 @@ async function loadTrack(index) {
         coverImg.src = meta.coverDataUrl
         coverImg.style.display = 'block'
         coverPlaceholder.style.display = 'none'
+        setHomeNowCover(meta.coverDataUrl)
+      } else {
+        setHomeNowCover(null)
       }
 
       track.metadataCache = {
@@ -344,6 +397,7 @@ function removeTrack(index) {
       trackArtist.textContent = ''
       trackAlbum.textContent = ''
       setBottomNowPlaying('', '')
+      setHomeNowCover(null)
       coverImg.style.display = 'none'
       coverImg.src = ''
       coverPlaceholder.style.display = 'flex'
@@ -367,6 +421,7 @@ function clearPlaylist() {
   trackArtist.textContent = ''
   trackAlbum.textContent = ''
   setBottomNowPlaying('', '')
+  setHomeNowCover(null)
   coverImg.style.display = 'none'
   coverImg.src = ''
   coverPlaceholder.style.display = 'flex'
@@ -715,6 +770,24 @@ if (savedAddCurrentBtn) savedAddCurrentBtn.addEventListener('click', addCurrentQ
 if (savedImportBtn) savedImportBtn.addEventListener('click', importSavedPlaylist)
 if (savedExportBtn) savedExportBtn.addEventListener('click', exportSavedPlaylist)
 
+if (songBackBtn) {
+  songBackBtn.addEventListener('click', () => {
+    showHomePage()
+  })
+}
+
+if (homeGoSongBtn) {
+  homeGoSongBtn.addEventListener('click', () => {
+    showSongPage()
+  })
+}
+
+document.querySelectorAll('[data-open-song]').forEach((el) => {
+  el.addEventListener('click', () => {
+    showSongPage()
+  })
+})
+
 // Play / Pause
 playBtn.addEventListener('click', () => {
   if (playlist.length === 0) {
@@ -791,3 +864,4 @@ progressContainer.addEventListener('click', (e) => {
 updatePlaylistUI()
 setPlayButtonState(false)
 refreshSavedPlaylists()
+showHomePage()
