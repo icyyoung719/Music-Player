@@ -37,6 +37,31 @@ function filePathToURL(filePath) {
   return encodeURI('file://' + withLeadingSlash).replace(/#/g, '%23')
 }
 
+function normalizePath(filePath) {
+  return filePath.replace(/\\/g, '/').toLowerCase()
+}
+
+function getTrackUniqueKey(track) {
+  if (track.path) return `path:${normalizePath(track.path)}`
+
+  if (track.file) {
+    let resolvedPath = null
+    if (window.electronAPI && window.electronAPI.getPathForFile) {
+      try {
+        resolvedPath = window.electronAPI.getPathForFile(track.file)
+      } catch {
+        resolvedPath = null
+      }
+    }
+
+    if (resolvedPath) return `path:${normalizePath(resolvedPath)}`
+
+    return `file:${track.file.name}|${track.file.size}|${track.file.lastModified}`
+  }
+
+  return `name:${track.name}`
+}
+
 // Reset progress bar and time display
 function resetProgress() {
   progressBar.style.width = '0%'
@@ -143,7 +168,20 @@ async function loadTrack(index) {
 function appendToPlaylist(newTracks) {
   if (!newTracks.length) return
   const wasEmpty = playlist.length === 0
-  playlist = playlist.concat(newTracks)
+
+  const existingKeys = new Set(playlist.map(getTrackUniqueKey))
+  const dedupedTracks = []
+
+  for (const track of newTracks) {
+    const key = getTrackUniqueKey(track)
+    if (existingKeys.has(key)) continue
+    existingKeys.add(key)
+    dedupedTracks.push(track)
+  }
+
+  if (!dedupedTracks.length) return
+
+  playlist = playlist.concat(dedupedTracks)
   updatePlaylistUI()
   if (wasEmpty) loadTrack(0)
 }
