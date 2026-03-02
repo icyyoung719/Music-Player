@@ -141,6 +141,29 @@
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .playlist-delete-btn {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.4);
+      padding: 0 0.25rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border-radius: 4px;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+    .playlist-delete-btn:hover {
+      color: #fc8181;
+      background: rgba(252,129,129,0.15);
+      transform: none;
+    }
+    .playlist-delete-btn:active { transform: none; }
+    .playlist-empty {
+      padding: 1.5rem;
+      text-align: center;
+      color: rgba(255,255,255,0.35);
+      font-size: 0.9rem;
+    }
     .progress-section {
       margin-top: 1.25rem;
     }
@@ -195,7 +218,8 @@
     <div class="file-actions">
       <label for="fileInput" class="file-label">🎵 添加文件</label>
       <input type="file" id="fileInput" accept="audio/*" multiple>
-      <button id="folderBtn">📂 选择文件夹</button>
+      <button id="folderBtn">📂 添加文件夹</button>
+      <button id="clearBtn">🗑 清空列表</button>
     </div>
 
     <div class="controls">
