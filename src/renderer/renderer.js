@@ -1,6 +1,7 @@
 // renderer.js
 const fileInput = document.getElementById('fileInput')
 const folderBtn = document.getElementById('folderBtn')
+const clearBtn = document.getElementById('clearBtn')
 const playBtn = document.getElementById('playBtn')
 const prevBtn = document.getElementById('prevBtn')
 const nextBtn = document.getElementById('nextBtn')
@@ -46,6 +47,13 @@ function resetProgress() {
 // Rebuild the playlist DOM
 function updatePlaylistUI() {
   playlistEl.innerHTML = ''
+  if (playlist.length === 0) {
+    const empty = document.createElement('div')
+    empty.className = 'playlist-empty'
+    empty.textContent = '拖入或添加歌曲'
+    playlistEl.appendChild(empty)
+    return
+  }
   playlist.forEach((track, index) => {
     const item = document.createElement('div')
     item.className = 'playlist-item' + (index === currentIndex ? ' active' : '')
@@ -58,8 +66,18 @@ function updatePlaylistUI() {
     titleSpan.className = 'playlist-item-title'
     titleSpan.textContent = track.name
 
+    const delBtn = document.createElement('button')
+    delBtn.className = 'playlist-delete-btn'
+    delBtn.textContent = '✕'
+    delBtn.title = '从列表移除'
+    delBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      removeTrack(index)
+    })
+
     item.appendChild(idxSpan)
     item.appendChild(titleSpan)
+    item.appendChild(delBtn)
     item.addEventListener('click', () => loadTrack(index))
     playlistEl.appendChild(item)
   })
@@ -121,32 +139,86 @@ async function loadTrack(index) {
   updatePlaylistUI()
 }
 
-// Replace the current playlist with newTracks and start playing the first one
-function replacePlaylist(newTracks) {
-  playlist = newTracks
-  currentIndex = -1
+// Append newTracks to the current playlist; auto-play if the queue was empty
+function appendToPlaylist(newTracks) {
+  if (!newTracks.length) return
+  const wasEmpty = playlist.length === 0
+  playlist = playlist.concat(newTracks)
   updatePlaylistUI()
-  if (newTracks.length > 0) loadTrack(0)
+  if (wasEmpty) loadTrack(0)
+}
+
+// Remove a single track from the playlist by index
+function removeTrack(index) {
+  if (index === currentIndex) {
+    audio.pause()
+    audio.src = ''
+    playBtn.textContent = '▶️ 播放'
+    if (playlist.length > 1) {
+      const nextIndex = index < playlist.length - 1 ? index : index - 1
+      playlist.splice(index, 1)
+      currentIndex = -1
+      loadTrack(nextIndex)
+      return
+    } else {
+      playlist.splice(index, 1)
+      currentIndex = -1
+      resetProgress()
+      trackTitle.textContent = '未选择歌曲'
+      trackArtist.textContent = ''
+      trackAlbum.textContent = ''
+      coverImg.style.display = 'none'
+      coverImg.src = ''
+      coverPlaceholder.style.display = 'flex'
+    }
+  } else {
+    playlist.splice(index, 1)
+    if (index < currentIndex) currentIndex--
+  }
+  updatePlaylistUI()
+}
+
+// Clear the entire playlist
+function clearPlaylist() {
+  playlist = []
+  currentIndex = -1
+  audio.pause()
+  audio.src = ''
+  playBtn.textContent = '▶️ 播放'
+  resetProgress()
+  trackTitle.textContent = '未选择歌曲'
+  trackArtist.textContent = ''
+  trackAlbum.textContent = ''
+  coverImg.style.display = 'none'
+  coverImg.src = ''
+  coverPlaceholder.style.display = 'flex'
+  updatePlaylistUI()
 }
 
 // Select multiple files via file input
 fileInput.addEventListener('change', async (e) => {
   const files = Array.from(e.target.files)
   if (!files.length) return
-  replacePlaylist(files.map(f => ({ name: f.name, file: f, path: null })))
+  appendToPlaylist(files.map(f => ({ name: f.name, file: f, path: null })))
   fileInput.value = ''
 })
 
-// Select folder via Electron dialog
+// Select folder via Electron dialog and append its tracks
 folderBtn.addEventListener('click', async () => {
   if (!window.electronAPI || !window.electronAPI.selectFolder) return
   const paths = await window.electronAPI.selectFolder()
   if (!paths || !paths.length) return
-  replacePlaylist(paths.map(p => ({
+  appendToPlaylist(paths.map(p => ({
     name: p.split(/[/\\]/).pop(),
     path: p,
     file: null
   })))
+})
+
+// Clear playlist button
+clearBtn.addEventListener('click', () => {
+  if (playlist.length === 0) return
+  clearPlaylist()
 })
 
 // Play / Pause
@@ -220,3 +292,6 @@ progressContainer.addEventListener('click', (e) => {
   const ratio = (e.clientX - rect.left) / rect.width
   audio.currentTime = Math.max(0, Math.min(1, ratio)) * audio.duration
 })
+
+// Show empty-state hint on initial load
+updatePlaylistUI()
