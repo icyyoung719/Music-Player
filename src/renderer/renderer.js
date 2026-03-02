@@ -20,6 +20,8 @@ const savedPlaylistSelect = document.getElementById('savedPlaylistSelect')
 const savedCreateBtn = document.getElementById('savedCreateBtn')
 const savedRenameBtn = document.getElementById('savedRenameBtn')
 const savedDeleteBtn = document.getElementById('savedDeleteBtn')
+const savedAppendToQueueBtn = document.getElementById('savedAppendToQueueBtn')
+const savedReplaceQueueBtn = document.getElementById('savedReplaceQueueBtn')
 const savedAddCurrentBtn = document.getElementById('savedAddCurrentBtn')
 const savedImportBtn = document.getElementById('savedImportBtn')
 const savedExportBtn = document.getElementById('savedExportBtn')
@@ -472,6 +474,36 @@ function collectCurrentQueueAsTrackInputs() {
   return trackInputs
 }
 
+function collectSelectedSavedPlaylistTracksForQueue() {
+  const selected = getSelectedSavedPlaylist()
+  if (!selected) {
+    return { ok: false, reason: 'NO_PLAYLIST', tracks: [] }
+  }
+
+  if (!selected.trackIds.length) {
+    return { ok: false, reason: 'EMPTY_PLAYLIST', tracks: [] }
+  }
+
+  const tracks = []
+  for (const trackId of selected.trackIds) {
+    const savedTrack = savedState.trackLibrary[trackId]
+    if (!savedTrack || !savedTrack.path) continue
+    const title = savedTrack.metadataCache?.title || getFileNameFromPath(savedTrack.path)
+    tracks.push({
+      name: title,
+      path: savedTrack.path,
+      file: null,
+      metadataCache: savedTrack.metadataCache || { title }
+    })
+  }
+
+  if (!tracks.length) {
+    return { ok: false, reason: 'NO_VALID_TRACKS', tracks: [] }
+  }
+
+  return { ok: true, tracks, playlist: selected }
+}
+
 async function createSavedPlaylist() {
   if (!window.electronAPI || !window.electronAPI.playlistCreate) {
     alert('歌单功能不可用，请重启应用后重试')
@@ -556,6 +588,40 @@ async function addCurrentQueueToSavedPlaylist() {
   alert(`已添加 ${result.addedCount} 首到歌单`) 
 }
 
+function appendSavedPlaylistToCurrentQueue() {
+  const result = collectSelectedSavedPlaylistTracksForQueue()
+  if (!result.ok) {
+    if (result.reason === 'NO_PLAYLIST') {
+      alert('请先选择歌单')
+    } else {
+      alert('该歌单没有可用歌曲')
+    }
+    return
+  }
+
+  appendToPlaylist(result.tracks)
+}
+
+function replaceCurrentQueueWithSavedPlaylist() {
+  const result = collectSelectedSavedPlaylistTracksForQueue()
+  if (!result.ok) {
+    if (result.reason === 'NO_PLAYLIST') {
+      alert('请先选择歌单')
+    } else {
+      alert('该歌单没有可用歌曲')
+    }
+    return
+  }
+
+  if (playlist.length > 0) {
+    const confirmed = confirm('确认使用所选歌单替换当前播放列表吗？')
+    if (!confirmed) return
+  }
+
+  clearPlaylist()
+  appendToPlaylist(result.tracks)
+}
+
 async function importSavedPlaylist() {
   if (!window.electronAPI || !window.electronAPI.playlistImport) return
   const result = await window.electronAPI.playlistImport()
@@ -622,6 +688,8 @@ if (savedPlaylistSelect) {
 if (savedCreateBtn) savedCreateBtn.addEventListener('click', createSavedPlaylist)
 if (savedRenameBtn) savedRenameBtn.addEventListener('click', renameSavedPlaylist)
 if (savedDeleteBtn) savedDeleteBtn.addEventListener('click', deleteSavedPlaylist)
+if (savedAppendToQueueBtn) savedAppendToQueueBtn.addEventListener('click', appendSavedPlaylistToCurrentQueue)
+if (savedReplaceQueueBtn) savedReplaceQueueBtn.addEventListener('click', replaceCurrentQueueWithSavedPlaylist)
 if (savedAddCurrentBtn) savedAddCurrentBtn.addEventListener('click', addCurrentQueueToSavedPlaylist)
 if (savedImportBtn) savedImportBtn.addEventListener('click', importSavedPlaylist)
 if (savedExportBtn) savedExportBtn.addEventListener('click', exportSavedPlaylist)
