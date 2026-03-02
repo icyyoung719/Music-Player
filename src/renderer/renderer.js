@@ -16,6 +16,8 @@ const progressContainer = document.getElementById('progressContainer')
 const progressBar = document.getElementById('progressBar')
 const currentTimeEl = document.getElementById('currentTime')
 const totalTimeEl = document.getElementById('totalTime')
+const bottomTrackTitleEl = document.getElementById('bottomTrackTitle')
+const bottomTrackArtistEl = document.getElementById('bottomTrackArtist')
 const savedPlaylistSelect = document.getElementById('savedPlaylistSelect')
 const savedCreateBtn = document.getElementById('savedCreateBtn')
 const savedRenameBtn = document.getElementById('savedRenameBtn')
@@ -174,6 +176,21 @@ function requestPlaylistName(title, defaultValue) {
   })
 }
 
+function setPlayButtonState(isPlaying) {
+  if (!playBtn) return
+  playBtn.textContent = isPlaying ? '⏸' : '▶'
+  playBtn.title = isPlaying ? '暂停' : '播放'
+}
+
+function setBottomNowPlaying(title, artist) {
+  if (bottomTrackTitleEl) {
+    bottomTrackTitleEl.textContent = title || '\u00a0'
+  }
+  if (bottomTrackArtistEl) {
+    bottomTrackArtistEl.textContent = artist || '\u00a0'
+  }
+}
+
 // Reset progress bar and time display
 function resetProgress() {
   progressBar.style.width = '0%'
@@ -234,6 +251,7 @@ async function loadTrack(index) {
   trackTitle.textContent = track.name
   trackArtist.textContent = ''
   trackAlbum.textContent = ''
+  setBottomNowPlaying(track.name, '')
   coverImg.style.display = 'none'
   coverImg.src = ''
   coverPlaceholder.style.display = 'flex'
@@ -261,6 +279,7 @@ async function loadTrack(index) {
     if (meta) {
       trackTitle.textContent = meta.title || track.name
       trackArtist.textContent = meta.artist || ''
+      setBottomNowPlaying(meta.title || track.name, meta.artist || '')
       const albumParts = [meta.album, meta.year].filter(Boolean)
       trackAlbum.textContent = albumParts.join(' · ')
       if (meta.coverDataUrl) {
@@ -279,7 +298,7 @@ async function loadTrack(index) {
   }
 
   audio.play()
-  playBtn.textContent = '⏸ 暂停'
+  setPlayButtonState(true)
   updatePlaylistUI()
 }
 
@@ -310,7 +329,7 @@ function removeTrack(index) {
   if (index === currentIndex) {
     audio.pause()
     audio.src = ''
-    playBtn.textContent = '▶️ 播放'
+    setPlayButtonState(false)
     if (playlist.length > 1) {
       const nextIndex = index < playlist.length - 1 ? index : index - 1
       playlist.splice(index, 1)
@@ -324,6 +343,7 @@ function removeTrack(index) {
       trackTitle.textContent = '未选择歌曲'
       trackArtist.textContent = ''
       trackAlbum.textContent = ''
+      setBottomNowPlaying('', '')
       coverImg.style.display = 'none'
       coverImg.src = ''
       coverPlaceholder.style.display = 'flex'
@@ -341,11 +361,12 @@ function clearPlaylist() {
   currentIndex = -1
   audio.pause()
   audio.src = ''
-  playBtn.textContent = '▶️ 播放'
+  setPlayButtonState(false)
   resetProgress()
   trackTitle.textContent = '未选择歌曲'
   trackArtist.textContent = ''
   trackAlbum.textContent = ''
+  setBottomNowPlaying('', '')
   coverImg.style.display = 'none'
   coverImg.src = ''
   coverPlaceholder.style.display = 'flex'
@@ -706,10 +727,10 @@ playBtn.addEventListener('click', () => {
   }
   if (audio.paused) {
     audio.play()
-    playBtn.textContent = '⏸ 暂停'
+    setPlayButtonState(true)
   } else {
     audio.pause()
-    playBtn.textContent = '▶️ 播放'
+    setPlayButtonState(false)
   }
 })
 
@@ -741,7 +762,7 @@ audio.addEventListener('ended', () => {
   if (currentIndex < playlist.length - 1) {
     loadTrack(currentIndex + 1)
   } else {
-    playBtn.textContent = '▶️ 播放'
+    setPlayButtonState(false)
   }
 })
 
@@ -768,4 +789,5 @@ progressContainer.addEventListener('click', (e) => {
 
 // Show empty-state hint on initial load
 updatePlaylistUI()
+setPlayButtonState(false)
 refreshSavedPlaylists()

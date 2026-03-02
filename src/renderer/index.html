@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
@@ -9,33 +9,76 @@
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+      background: radial-gradient(circle at 20% 20%, #5e4a39 0%, #2f2a26 42%, #1e1c1a 100%);
       color: #fff;
       min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
-      padding: 1rem 0;
+      overflow: hidden;
     }
     .player {
-      width: 90%;
-      max-width: 600px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 16px;
-      padding: 2rem;
-      backdrop-filter: blur(10px);
+      width: 100vw;
+      height: 100vh;
+      background: linear-gradient(135deg, rgba(255,255,255,0.04), rgba(0,0,0,0.25));
+      display: grid;
+      grid-template-rows: 52px 1fr 132px;
     }
-    .cover {
-      width: 200px;
-      height: 200px;
-      background: linear-gradient(45deg, #667eea 0%, #764ba2 100%);
-      border-radius: 12px;
-      margin: 0 auto 1.5rem;
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      backdrop-filter: blur(6px);
+      background: rgba(0,0,0,0.12);
+    }
+    .topbar-left,
+    .topbar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .icon-btn {
+      min-width: 28px;
+      height: 28px;
+      padding: 0 8px;
+      border: 1px solid rgba(255,255,255,0.2);
+      border-radius: 7px;
+      background: rgba(255,255,255,0.08);
+      color: rgba(255,255,255,0.9);
+      font-size: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: default;
+    }
+    .play-mode-label {
+      font-size: 12px;
+      color: rgba(255,255,255,0.75);
+      margin-right: 4px;
+    }
+    .main {
+      display: grid;
+      grid-template-columns: minmax(300px, 40%) 1fr;
+      gap: 24px;
+      padding: 20px 24px 16px;
+      min-height: 0;
+    }
+    .left-panel {
       display: flex;
       align-items: center;
       justify-content: center;
-      font-size: 3rem;
+      min-height: 0;
+    }
+    .cover {
+      width: min(420px, 90%);
+      aspect-ratio: 1 / 1;
+      background: rgba(255,255,255,0.08);
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,0.18);
+      box-shadow: 0 12px 28px rgba(0,0,0,0.35);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 4rem;
       overflow: hidden;
     }
     .cover img {
@@ -43,293 +86,479 @@
       height: 100%;
       object-fit: cover;
       display: none;
-      border-radius: 12px;
+      border-radius: 18px;
     }
     .cover .cover-placeholder {
       display: flex;
+      color: rgba(255,255,255,0.6);
+    }
+    .right-panel {
+      display: grid;
+      grid-template-rows: auto auto 1fr auto;
+      min-height: 0;
+      gap: 14px;
+    }
+    .meta-block { padding-right: 56px; }
+    .meta-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .meta-tag {
+      font-size: 11px;
+      color: rgba(255,255,255,0.75);
+      border: 1px solid rgba(255,255,255,0.35);
+      border-radius: 4px;
+      padding: 0 6px;
+      line-height: 18px;
     }
     .track-title {
-      font-size: 1.2rem;
+      font-size: 2rem;
       font-weight: 600;
-      text-align: center;
-      margin-bottom: 0.25rem;
+      margin-bottom: 0;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .track-artist {
-      font-size: 0.95rem;
-      color: rgba(255,255,255,0.7);
-      text-align: center;
-      margin-bottom: 0.1rem;
+      font-size: 1rem;
+      color: rgba(255,255,255,0.82);
+      margin-bottom: 0.15rem;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
     }
     .track-album {
-      font-size: 0.85rem;
-      color: rgba(255,255,255,0.5);
-      text-align: center;
-      margin-bottom: 0.75rem;
-      white-space: nowrap;
+      font-size: 0.9rem;
+      color: rgba(255,255,255,0.62);
+      white-space: normal;
+      line-clamp: 2;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
       overflow: hidden;
-      text-overflow: ellipsis;
     }
-    .controls {
-      display: flex;
-      gap: 1rem;
-      justify-content: center;
-      margin-top: 1.5rem;
+    .tabs {
+      display: inline-flex;
+      gap: 4px;
+      background: rgba(255,255,255,0.08);
+      border-radius: 999px;
+      padding: 4px;
+      width: fit-content;
     }
-    button {
-      padding: 0.75rem 1.5rem;
+    .tab {
       border: none;
-      border-radius: 8px;
-      background: #667eea;
-      color: white;
-      cursor: pointer;
-      font-size: 1rem;
-      transition: transform 0.1s;
+      border-radius: 999px;
+      background: transparent;
+      color: rgba(255,255,255,0.7);
+      font-size: 13px;
+      padding: 6px 12px;
+      cursor: default;
     }
-    button:hover { transform: scale(1.05); }
-    button:active { transform: scale(0.95); }
-    button.btn-active { background: #48bb78; }
+    .tab.active {
+      background: rgba(255,255,255,0.2);
+      color: #fff;
+      font-weight: 600;
+    }
+    .content-stack {
+      min-height: 0;
+      display: grid;
+      grid-template-columns: 1fr 42px;
+      gap: 12px;
+    }
+    .content-main {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: 0.9fr 1.1fr;
+      gap: 10px;
+    }
+    .lyrics-placeholder,
+    .panel-card {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 12px;
+      background: rgba(255,255,255,0.05);
+      padding: 12px;
+      overflow: auto;
+    }
+    .lyrics-placeholder {
+      color: rgba(255,255,255,0.62);
+      line-height: 1.85;
+      font-size: 14px;
+    }
+    .float-tools {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      align-items: center;
+      justify-content: center;
+    }
+    .float-tools button {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      padding: 0;
+      border: 1px solid rgba(255,255,255,0.2);
+      background: rgba(255,255,255,0.08);
+      font-size: 12px;
+      cursor: default;
+      transform: none !important;
+    }
     #fileInput { display: none; }
     .file-actions {
       display: flex;
-      gap: 0.75rem;
-      justify-content: center;
-      margin-bottom: 1rem;
       flex-wrap: wrap;
-    }
-    .file-label {
-      display: inline-block;
-      padding: 0.75rem 1.5rem;
-      background: #48bb78;
-      border-radius: 8px;
-      cursor: pointer;
-    }
-    .playlist {
-      margin-top: 1rem;
-      max-height: 180px;
-      overflow-y: auto;
-      border-radius: 8px;
-    }
-    .playlist:not(:empty) {
-      background: rgba(0,0,0,0.2);
-    }
-    .playlist-item {
-      padding: 0.4rem 0.75rem;
-      cursor: pointer;
-      border-radius: 4px;
-      display: flex;
+      gap: 8px;
       align-items: center;
-      gap: 0.5rem;
-      font-size: 0.9rem;
     }
-    .playlist-item:hover { background: rgba(255,255,255,0.1); }
-    .playlist-item.active { background: rgba(102,126,234,0.5); }
-    .playlist-index {
-      color: rgba(255,255,255,0.5);
-      min-width: 1.5rem;
-      text-align: right;
-      font-size: 0.8rem;
-    }
-    .playlist-item-title {
-      flex: 1;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      white-space: nowrap;
-    }
-    .playlist-delete-btn {
-      background: transparent;
-      border: none;
-      color: rgba(255,255,255,0.4);
-      padding: 0 0.25rem;
-      font-size: 0.85rem;
+    .file-label,
+    .file-actions button,
+    .saved-row button {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.22);
+      background: rgba(255,255,255,0.09);
+      color: #fff;
+      font-size: 12px;
       cursor: pointer;
-      border-radius: 4px;
-      line-height: 1;
-      transition: color 0.15s, background 0.15s;
+      transition: background 0.15s, border-color 0.15s;
+      text-decoration: none;
     }
-    .playlist-delete-btn:hover {
-      color: #fc8181;
-      background: rgba(252,129,129,0.15);
+    .file-label:hover,
+    .file-actions button:hover,
+    .saved-row button:hover {
+      background: rgba(255,255,255,0.16);
+      border-color: rgba(255,255,255,0.35);
       transform: none;
     }
-    .playlist-delete-btn:active { transform: none; }
-    .playlist-empty {
-      padding: 1.5rem;
-      text-align: center;
-      color: rgba(255,255,255,0.35);
-      font-size: 0.9rem;
-    }
-    .progress-section {
-      margin-top: 1.25rem;
-    }
-    .time-display {
-      display: flex;
-      justify-content: space-between;
-      font-size: 0.8rem;
-      color: rgba(255,255,255,0.6);
-      margin-bottom: 0.35rem;
-    }
-    .progress-container {
-      width: 100%;
-      height: 6px;
-      background: rgba(255,255,255,0.2);
-      border-radius: 3px;
-      cursor: pointer;
-      position: relative;
-    }
-    .progress-container:hover .progress-bar {
-      background: #7c8ef0;
-    }
-    .progress-bar {
-      height: 100%;
-      background: #667eea;
-      border-radius: 3px;
-      width: 0%;
-      pointer-events: none;
-    }
-    .saved-playlists {
-      margin-top: 1.1rem;
-      padding-top: 1rem;
-      border-top: 1px solid rgba(255,255,255,0.15);
-    }
     .saved-playlists h3 {
-      font-size: 0.95rem;
+      font-size: 14px;
       font-weight: 600;
-      margin-bottom: 0.75rem;
+      color: rgba(255,255,255,0.9);
+      margin-bottom: 8px;
     }
     .saved-row {
       display: flex;
-      gap: 0.5rem;
-      margin-bottom: 0.5rem;
+      gap: 8px;
+      margin-bottom: 8px;
       flex-wrap: wrap;
     }
-    .saved-row select,
-    .saved-row button {
-      font-size: 0.84rem;
-      padding: 0.45rem 0.7rem;
-      border-radius: 6px;
-    }
     .saved-row select {
-      flex: 1;
       min-width: 160px;
-      border: none;
-      background: rgba(255,255,255,0.16);
+      flex: 1;
+      background: rgba(255,255,255,0.12);
+      border: 1px solid rgba(255,255,255,0.18);
       color: #fff;
-    }
-    .saved-row select option {
-      color: #111;
-    }
-    .saved-tracks {
-      margin-top: 0.5rem;
-      max-height: 150px;
-      overflow-y: auto;
       border-radius: 8px;
-      background: rgba(0,0,0,0.18);
+      padding: 7px 10px;
+      font-size: 12px;
     }
+    .saved-row select option { color: #1f1f1f; }
+    .playlist,
+    .saved-tracks {
+      border: 1px solid rgba(255,255,255,0.12);
+      border-radius: 10px;
+      background: rgba(0,0,0,0.18);
+      max-height: 170px;
+      overflow: auto;
+    }
+    .playlist-item,
     .saved-track-item {
+      padding: 0.45rem 0.65rem;
+      cursor: pointer;
+      border-radius: 6px;
       display: flex;
       align-items: center;
       gap: 0.5rem;
-      padding: 0.4rem 0.6rem;
-      font-size: 0.84rem;
+      font-size: 0.85rem;
     }
-    .saved-track-item:hover {
-      background: rgba(255,255,255,0.08);
+    .playlist-item:hover,
+    .saved-track-item:hover { background: rgba(255,255,255,0.08); }
+    .playlist-item.active { background: rgba(255,255,255,0.16); }
+    .playlist-index {
+      color: rgba(255,255,255,0.55);
+      min-width: 1.45rem;
+      text-align: right;
+      font-size: 0.76rem;
     }
+    .playlist-item-title,
     .saved-track-title {
       flex: 1;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    .playlist-delete-btn,
     .saved-track-remove {
       background: transparent;
       border: none;
-      color: rgba(255,255,255,0.4);
+      color: rgba(255,255,255,0.42);
       padding: 0 0.25rem;
-      font-size: 0.85rem;
+      font-size: 0.84rem;
       cursor: pointer;
       border-radius: 4px;
       line-height: 1;
       transition: color 0.15s, background 0.15s;
     }
+    .playlist-delete-btn:hover,
     .saved-track-remove:hover {
       color: #fc8181;
       background: rgba(252,129,129,0.15);
       transform: none;
     }
+    .playlist-empty,
     .saved-empty {
-      padding: 0.95rem;
+      padding: 1rem;
       text-align: center;
-      color: rgba(255,255,255,0.4);
-      font-size: 0.8rem;
+      color: rgba(255,255,255,0.45);
+      font-size: 0.82rem;
+    }
+    .bottombar {
+      border-top: 1px solid rgba(255,255,255,0.12);
+      background: rgba(15,15,15,0.45);
+      backdrop-filter: blur(8px);
+      display: grid;
+      grid-template-rows: auto 1fr;
+      padding: 8px 14px 10px;
+      gap: 10px;
+    }
+    .progress-section { margin: 0; }
+    .time-display {
+      display: flex;
+      justify-content: space-between;
+      font-size: 12px;
+      color: rgba(255,255,255,0.68);
+      margin-bottom: 5px;
+    }
+    .progress-container {
+      width: 100%;
+      height: 4px;
+      background: rgba(255,255,255,0.22);
+      border-radius: 999px;
+      cursor: pointer;
+      position: relative;
+    }
+    .progress-bar {
+      height: 100%;
+      background: #d56e56;
+      border-radius: 999px;
+      width: 0%;
+      pointer-events: none;
+    }
+    .bottom-main {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      align-items: center;
+      gap: 12px;
+    }
+    .bottom-left { min-width: 0; }
+    .bottom-track {
+      font-size: 20px;
+      font-weight: 600;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      margin-bottom: 2px;
+    }
+    .bottom-artist {
+      font-size: 13px;
+      color: rgba(255,255,255,0.75);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+      justify-content: center;
+      align-items: center;
+    }
+    button {
+      padding: 0.5rem 0.85rem;
+      border: none;
+      border-radius: 8px;
+      background: rgba(255,255,255,0.14);
+      color: white;
+      cursor: pointer;
+      font-size: 0.93rem;
+      transition: transform 0.12s, background 0.12s;
+    }
+    button:hover {
+      transform: translateY(-1px);
+      background: rgba(255,255,255,0.2);
+    }
+    button:active { transform: translateY(0); }
+    button.btn-active { background: rgba(213,110,86,0.9); }
+    #playBtn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      font-size: 16px;
+      background: rgba(213,110,86,0.92);
+      padding: 0;
+    }
+    .bottom-right {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+    .bottom-right .icon-btn { cursor: default; }
+    @media (max-width: 1080px) {
+      .main {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        padding: 16px;
+      }
+      .left-panel { min-height: 240px; }
+      .cover { width: min(360px, 68vw); }
+      .meta-block { padding-right: 0; }
+      .content-stack { grid-template-columns: 1fr; }
+      .float-tools {
+        flex-direction: row;
+        justify-content: flex-start;
+      }
+      .bottombar {
+        grid-template-rows: auto auto;
+        height: auto;
+      }
+      .bottom-main {
+        grid-template-columns: 1fr;
+        gap: 10px;
+      }
+      .bottom-left,
+      .bottom-right {
+        justify-content: center;
+        text-align: center;
+      }
     }
   </style>
 </head>
 <body>
   <div class="player">
-    <div class="cover">
-      <span class="cover-placeholder">🎵</span>
-      <img id="coverImg" alt="Album Cover">
-    </div>
-
-    <div class="track-title" id="trackTitle">未选择歌曲</div>
-    <div class="track-artist" id="trackArtist"></div>
-    <div class="track-album" id="trackAlbum"></div>
-
-    <div class="progress-section">
-      <div class="time-display">
-        <span id="currentTime">0:00</span>
-        <span id="totalTime">0:00</span>
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" title="返回">⌄</button>
       </div>
-      <div class="progress-container" id="progressContainer">
-        <div class="progress-bar" id="progressBar"></div>
+      <div class="topbar-right">
+        <span class="play-mode-label">播放器模式</span>
+        <button class="icon-btn" title="全屏">⛶</button>
+        <button class="icon-btn" title="最小化">－</button>
+        <button class="icon-btn" title="最大化">□</button>
+        <button class="icon-btn" title="关闭">✕</button>
       </div>
-    </div>
+    </header>
 
-    <div class="file-actions">
-      <label for="fileInput" class="file-label">🎵 添加文件</label>
-      <input type="file" id="fileInput" accept="audio/*" multiple>
-      <button id="folderBtn">📂 添加文件夹</button>
-      <button id="clearBtn">🗑 清空列表</button>
-    </div>
+    <main class="main">
+      <section class="left-panel">
+        <div class="cover">
+          <span class="cover-placeholder">🎵</span>
+          <img id="coverImg" alt="Album Cover">
+        </div>
+      </section>
 
-    <div class="controls">
-      <button id="prevBtn" title="上一首">⏮</button>
-      <button id="playBtn">▶️ 播放</button>
-      <button id="nextBtn" title="下一首">⏭</button>
-      <button id="loopBtn" title="单曲循环: 关">🔂</button>
-    </div>
+      <section class="right-panel">
+        <div class="meta-block">
+          <div class="meta-row">
+            <div class="track-title" id="trackTitle">未选择歌曲</div>
+            <span class="meta-tag">本地</span>
+            <span class="meta-tag">MV</span>
+          </div>
+          <div class="track-artist" id="trackArtist">请选择本地音乐文件开始播放</div>
+          <div class="track-album" id="trackAlbum"></div>
+        </div>
 
-    <div class="playlist" id="playlist"></div>
+        <div class="tabs">
+          <button class="tab active">歌词</button>
+          <button class="tab">百科</button>
+          <button class="tab">相似推荐</button>
+        </div>
 
-    <section class="saved-playlists">
-      <h3>📚 我的歌单</h3>
+        <div class="content-stack">
+          <div class="content-main">
+            <div class="lyrics-placeholder">
+              作词 / 作曲 / 编曲信息区域（占位）<br>
+              歌词滚动区域（占位）<br>
+              后续可接入逐行高亮与自动滚动。
+            </div>
 
-      <div class="saved-row">
-        <select id="savedPlaylistSelect">
-          <option value="">暂无歌单</option>
-        </select>
-        <button id="savedCreateBtn">新建</button>
-        <button id="savedRenameBtn">重命名</button>
-        <button id="savedDeleteBtn">删除</button>
+            <div class="panel-card">
+              <div class="file-actions">
+                <label for="fileInput" class="file-label">🎵 添加文件</label>
+                <input type="file" id="fileInput" accept="audio/*" multiple>
+                <button id="folderBtn">📂 添加文件夹</button>
+                <button id="clearBtn">🗑 清空列表</button>
+              </div>
+
+              <div style="margin-top: 10px; margin-bottom: 6px; font-size: 13px; color: rgba(255,255,255,0.82);">当前播放列表</div>
+              <div class="playlist" id="playlist"></div>
+
+              <section class="saved-playlists" style="margin-top: 12px;">
+                <h3>📚 我的歌单</h3>
+                <div class="saved-row">
+                  <select id="savedPlaylistSelect">
+                    <option value="">暂无歌单</option>
+                  </select>
+                  <button id="savedCreateBtn">新建</button>
+                  <button id="savedRenameBtn">重命名</button>
+                  <button id="savedDeleteBtn">删除</button>
+                </div>
+                <div class="saved-row">
+                  <button id="savedAppendToQueueBtn">添加到当前列表</button>
+                  <button id="savedReplaceQueueBtn">替换当前列表</button>
+                  <button id="savedAddCurrentBtn">添加当前列表</button>
+                  <button id="savedImportBtn">导入 JSON</button>
+                  <button id="savedExportBtn">导出 JSON</button>
+                </div>
+                <div class="saved-tracks" id="savedTracks"></div>
+              </section>
+            </div>
+          </div>
+
+          <aside class="float-tools">
+            <button title="喜欢">♥</button>
+            <button title="评论">💬</button>
+            <button title="音效">音</button>
+            <button title="翻译">译</button>
+            <button title="更多">⋯</button>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bottombar">
+      <div class="progress-section">
+        <div class="time-display">
+          <span id="currentTime">0:00</span>
+          <span id="totalTime">0:00</span>
+        </div>
+        <div class="progress-container" id="progressContainer">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
       </div>
 
-      <div class="saved-row">
-        <button id="savedAppendToQueueBtn">添加到当前列表</button>
-        <button id="savedReplaceQueueBtn">替换当前列表</button>
-        <button id="savedAddCurrentBtn">添加当前列表</button>
-        <button id="savedImportBtn">导入 JSON</button>
-        <button id="savedExportBtn">导出 JSON</button>
-      </div>
+      <div class="bottom-main">
+        <div class="bottom-left">
+          <div class="bottom-track" id="bottomTrackTitle">&nbsp;</div>
+          <div class="bottom-artist" id="bottomTrackArtist">&nbsp;</div>
+        </div>
 
-      <div class="saved-tracks" id="savedTracks"></div>
-    </section>
+        <div class="controls">
+          <button id="loopBtn" title="单曲循环: 关">🔂</button>
+          <button id="prevBtn" title="上一首">⏮</button>
+          <button id="playBtn" title="播放 / 暂停">▶</button>
+          <button id="nextBtn" title="下一首">⏭</button>
+        </div>
+
+        <div class="bottom-right">
+          <button class="icon-btn" title="歌词">词</button>
+          <button class="icon-btn" title="音量">🔊</button>
+          <button class="icon-btn" title="更多">⋯</button>
+        </div>
+      </div>
+    </footer>
   </div>
 
   <script src="renderer.js"></script>
