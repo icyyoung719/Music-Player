@@ -1,6 +1,7 @@
 // main.js
-const { app, BrowserWindow, ipcMain } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog } = require('electron')
 const path = require('path')
+const fs = require('fs')
 const { parseFile } = require('music-metadata')
 
 function createWindow() {
@@ -38,6 +39,27 @@ app.on('window-all-closed', () => {
 // 主进程监听播放器控制指令
 ipcMain.handle('play-audio', (event, filePath) => {
   console.log('Playing:', filePath)
+})
+
+// 打开文件夹，返回其中所有音频文件路径
+ipcMain.handle('select-folder', async () => {
+  const result = await dialog.showOpenDialog({
+    properties: ['openDirectory']
+  })
+  if (result.canceled || result.filePaths.length === 0) return []
+
+  const folderPath = result.filePaths[0]
+  const audioExtensions = ['.mp3', '.flac', '.aac', '.ogg', '.wav', '.m4a', '.opus', '.wma']
+  try {
+    const files = await fs.promises.readdir(folderPath)
+    return files
+      .filter(file => audioExtensions.includes(path.extname(file).toLowerCase()))
+      .sort()
+      .map(file => path.join(folderPath, file))
+  } catch (err) {
+    console.error('Failed to read folder:', err)
+    return []
+  }
 })
 
 // 解析音频文件元数据
