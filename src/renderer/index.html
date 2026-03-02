@@ -1,8 +1,8 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
   <meta charset="UTF-8">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:;">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; media-src 'self' blob:; img-src 'self' data:;">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>🎵 Music Player</title>
   <style>
@@ -35,6 +35,44 @@
       align-items: center;
       justify-content: center;
       font-size: 3rem;
+      overflow: hidden;
+    }
+    .cover img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+      border-radius: 12px;
+    }
+    .cover .cover-placeholder {
+      display: flex;
+    }
+    .track-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+      text-align: center;
+      margin-bottom: 0.25rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .track-artist {
+      font-size: 0.95rem;
+      color: rgba(255,255,255,0.7);
+      text-align: center;
+      margin-bottom: 0.1rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .track-album {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.5);
+      text-align: center;
+      margin-bottom: 0.75rem;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
     .controls {
       display: flex;
@@ -67,13 +105,18 @@
 </head>
 <body>
   <div class="player">
-    <div class="cover">🎵</div>
-    
+    <div class="cover">
+      <span class="cover-placeholder">🎵</span>
+      <img id="coverImg" alt="Album Cover">
+    </div>
+
+    <div class="track-title" id="trackTitle">未选择歌曲</div>
+    <div class="track-artist" id="trackArtist"></div>
+    <div class="track-album" id="trackAlbum"></div>
+
     <label for="fileInput" class="file-label">📁 选择音乐文件</label>
     <input type="file" id="fileInput" accept="audio/*">
-    
-    <div id="trackInfo">未选择歌曲</div>
-    
+
     <div class="controls">
       <button id="prevBtn">⏮</button>
       <button id="playBtn">▶️ 播放</button>
