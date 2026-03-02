@@ -32,8 +32,11 @@ fileInput.addEventListener('change', async (e) => {
   audio.src = fileURL
 
   // 通过 Electron API 解析元数据
-  if (window.electronAPI && file.path) {
-    const meta = await window.electronAPI.getMetadata(file.path)
+  if (window.electronAPI && window.electronAPI.getPathForFile) {
+    const filePath = window.electronAPI.getPathForFile(file)
+    if (!filePath) return
+
+    const meta = await window.electronAPI.getMetadata(filePath)
     if (meta) {
       trackTitle.textContent = meta.title || file.name
       trackArtist.textContent = meta.artist || ''
@@ -47,7 +50,7 @@ fileInput.addEventListener('change', async (e) => {
       }
     }
 
-    window.electronAPI.playAudio(file.path)
+    window.electronAPI.playAudio(filePath)
   }
 })
 
