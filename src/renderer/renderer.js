@@ -11,17 +11,36 @@ const trackAlbum = document.getElementById('trackAlbum')
 const coverImg = document.getElementById('coverImg')
 const coverPlaceholder = document.querySelector('.cover-placeholder')
 const playlistEl = document.getElementById('playlist')
+const progressContainer = document.getElementById('progressContainer')
+const progressBar = document.getElementById('progressBar')
+const currentTimeEl = document.getElementById('currentTime')
+const totalTimeEl = document.getElementById('totalTime')
 
 let audio = new Audio()
 let playlist = []   // Array of { name, path, file? }
 let currentIndex = -1
 let isLooping = false
 
+// Format seconds as m:ss
+function formatTime(seconds) {
+  if (!seconds || isNaN(seconds)) return '0:00'
+  const m = Math.floor(seconds / 60)
+  const s = Math.floor(seconds % 60)
+  return `${m}:${s.toString().padStart(2, '0')}`
+}
+
 // Convert an absolute file-system path to a properly encoded file:// URL
 function filePathToURL(filePath) {
   const normalized = filePath.replace(/\\/g, '/')
   const withLeadingSlash = normalized.startsWith('/') ? normalized : '/' + normalized
   return encodeURI('file://' + withLeadingSlash).replace(/#/g, '%23')
+}
+
+// Reset progress bar and time display
+function resetProgress() {
+  progressBar.style.width = '0%'
+  currentTimeEl.textContent = '0:00'
+  totalTimeEl.textContent = '0:00'
 }
 
 // Rebuild the playlist DOM
@@ -63,6 +82,7 @@ async function loadTrack(index) {
   coverImg.style.display = 'none'
   coverImg.src = ''
   coverPlaceholder.style.display = 'flex'
+  resetProgress()
 
   // Stop previous playback
   audio.pause()
@@ -178,4 +198,25 @@ audio.addEventListener('ended', () => {
   } else {
     playBtn.textContent = '▶️ 播放'
   }
+})
+
+// Update progress bar and current time while playing
+audio.addEventListener('timeupdate', () => {
+  if (!audio.duration) return
+  const pct = (audio.currentTime / audio.duration) * 100
+  progressBar.style.width = pct + '%'
+  currentTimeEl.textContent = formatTime(audio.currentTime)
+})
+
+// Show total duration once metadata is loaded
+audio.addEventListener('loadedmetadata', () => {
+  totalTimeEl.textContent = formatTime(audio.duration)
+})
+
+// Click on progress bar to seek
+progressContainer.addEventListener('click', (e) => {
+  if (!audio.duration) return
+  const rect = progressContainer.getBoundingClientRect()
+  const ratio = (e.clientX - rect.left) / rect.width
+  audio.currentTime = Math.max(0, Math.min(1, ratio)) * audio.duration
 })
