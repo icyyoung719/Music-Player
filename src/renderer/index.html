@@ -192,6 +192,83 @@
       width: 0%;
       pointer-events: none;
     }
+    .saved-playlists {
+      margin-top: 1.1rem;
+      padding-top: 1rem;
+      border-top: 1px solid rgba(255,255,255,0.15);
+    }
+    .saved-playlists h3 {
+      font-size: 0.95rem;
+      font-weight: 600;
+      margin-bottom: 0.75rem;
+    }
+    .saved-row {
+      display: flex;
+      gap: 0.5rem;
+      margin-bottom: 0.5rem;
+      flex-wrap: wrap;
+    }
+    .saved-row select,
+    .saved-row button {
+      font-size: 0.84rem;
+      padding: 0.45rem 0.7rem;
+      border-radius: 6px;
+    }
+    .saved-row select {
+      flex: 1;
+      min-width: 160px;
+      border: none;
+      background: rgba(255,255,255,0.16);
+      color: #fff;
+    }
+    .saved-row select option {
+      color: #111;
+    }
+    .saved-tracks {
+      margin-top: 0.5rem;
+      max-height: 150px;
+      overflow-y: auto;
+      border-radius: 8px;
+      background: rgba(0,0,0,0.18);
+    }
+    .saved-track-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      padding: 0.4rem 0.6rem;
+      font-size: 0.84rem;
+    }
+    .saved-track-item:hover {
+      background: rgba(255,255,255,0.08);
+    }
+    .saved-track-title {
+      flex: 1;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .saved-track-remove {
+      background: transparent;
+      border: none;
+      color: rgba(255,255,255,0.4);
+      padding: 0 0.25rem;
+      font-size: 0.85rem;
+      cursor: pointer;
+      border-radius: 4px;
+      line-height: 1;
+      transition: color 0.15s, background 0.15s;
+    }
+    .saved-track-remove:hover {
+      color: #fc8181;
+      background: rgba(252,129,129,0.15);
+      transform: none;
+    }
+    .saved-empty {
+      padding: 0.95rem;
+      text-align: center;
+      color: rgba(255,255,255,0.4);
+      font-size: 0.8rem;
+    }
   </style>
 </head>
 <body>
@@ -230,6 +307,27 @@
     </div>
 
     <div class="playlist" id="playlist"></div>
+
+    <section class="saved-playlists">
+      <h3>📚 我的歌单</h3>
+
+      <div class="saved-row">
+        <select id="savedPlaylistSelect">
+          <option value="">暂无歌单</option>
+        </select>
+        <button id="savedCreateBtn">新建</button>
+        <button id="savedRenameBtn">重命名</button>
+        <button id="savedDeleteBtn">删除</button>
+      </div>
+
+      <div class="saved-row">
+        <button id="savedAddCurrentBtn">添加当前列表</button>
+        <button id="savedImportBtn">导入 JSON</button>
+        <button id="savedExportBtn">导出 JSON</button>
+      </div>
+
+      <div class="saved-tracks" id="savedTracks"></div>
+    </section>
   </div>
 
   <script src="renderer.js"></script>

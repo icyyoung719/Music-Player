@@ -6,5 +6,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   playAudio: (filePath) => ipcRenderer.invoke('play-audio', filePath),
   getMetadata: (filePath) => ipcRenderer.invoke('get-metadata', filePath),
   getPathForFile: (file) => webUtils.getPathForFile(file),
-  selectFolder: () => ipcRenderer.invoke('select-folder')
+  selectFolder: () => ipcRenderer.invoke('select-folder'),
+  playlistList: () => ipcRenderer.invoke('playlist:list'),
+  playlistCreate: (name) => ipcRenderer.invoke('playlist:create', name),
+  playlistRename: (playlistId, name) => ipcRenderer.invoke('playlist:rename', { playlistId, name }),
+  playlistDelete: (playlistId) => ipcRenderer.invoke('playlist:delete', playlistId),
+  playlistAddTracks: (playlistId, tracks) => ipcRenderer.invoke('playlist:addTracks', { playlistId, tracks }),
+  playlistRemoveTrack: (playlistId, trackId) => ipcRenderer.invoke('playlist:removeTrack', { playlistId, trackId }),
+  playlistImport: () => ipcRenderer.invoke('playlist:import'),
+  playlistExport: (playlistId) => ipcRenderer.invoke('playlist:export', playlistId)
 })
