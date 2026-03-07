@@ -223,6 +223,20 @@ function setPlayButtonState(isPlaying) {
   playBtn.title = isPlaying ? '暂停' : '播放'
 }
 
+function reportPlayerState() {
+  if (!window.electronAPI || !window.electronAPI.reportPlayerState) return
+
+  const hasQueue = playlist.length > 0
+  const currentTrack = currentIndex >= 0 && currentIndex < playlist.length ? playlist[currentIndex] : null
+  const title = trackTitle && trackTitle.textContent ? trackTitle.textContent : (currentTrack?.name || '')
+
+  window.electronAPI.reportPlayerState({
+    hasQueue,
+    isPlaying: hasQueue && !audio.paused,
+    title
+  })
+}
+
 function setBottomNowPlaying(title, artist) {
   if (bottomTrackTitleEl) {
     bottomTrackTitleEl.textContent = title || '\u00a0'
@@ -289,6 +303,8 @@ function updatePlaylistUI() {
   // Scroll active item into view
   const activeItem = playlistEl.querySelector('.playlist-item.active')
   if (activeItem) activeItem.scrollIntoView({ block: 'nearest' })
+
+  reportPlayerState()
 }
 
 // Load and auto-play a track by playlist index
@@ -350,9 +366,15 @@ async function loadTrack(index) {
     }
   }
 
-  audio.play()
-  setPlayButtonState(true)
+  try {
+    await audio.play()
+    setPlayButtonState(true)
+  } catch (err) {
+    console.warn('Failed to play audio:', err)
+    setPlayButtonState(false)
+  }
   updatePlaylistUI()
+  reportPlayerState()
 }
 
 // Append newTracks to the current playlist; auto-play if the queue was empty
@@ -426,6 +448,47 @@ function clearPlaylist() {
   coverImg.src = ''
   coverPlaceholder.style.display = 'flex'
   updatePlaylistUI()
+  reportPlayerState()
+}
+
+function playPreviousTrack() {
+  if (playlist.length === 0) return
+  const newIndex = currentIndex <= 0 ? playlist.length - 1 : currentIndex - 1
+  loadTrack(newIndex)
+}
+
+function playNextTrack() {
+  if (playlist.length === 0) return
+  const newIndex = currentIndex >= playlist.length - 1 ? 0 : currentIndex + 1
+  loadTrack(newIndex)
+}
+
+function togglePlayback(options = {}) {
+  const { silent = false } = options
+  if (playlist.length === 0) {
+    if (!silent) {
+      alert('请先选择音乐文件 🎵')
+    }
+    return
+  }
+
+  if (currentIndex === -1) {
+    loadTrack(0)
+    return
+  }
+
+  if (audio.paused) {
+    audio.play().then(() => {
+      setPlayButtonState(true)
+      reportPlayerState()
+    }).catch((err) => {
+      console.warn('Failed to resume audio:', err)
+    })
+  } else {
+    audio.pause()
+    setPlayButtonState(false)
+    reportPlayerState()
+  }
 }
 
 function getSelectedSavedPlaylist() {
@@ -790,35 +853,17 @@ document.querySelectorAll('[data-open-song]').forEach((el) => {
 
 // Play / Pause
 playBtn.addEventListener('click', () => {
-  if (playlist.length === 0) {
-    alert('请先选择音乐文件 🎵')
-    return
-  }
-  if (currentIndex === -1) {
-    loadTrack(0)
-    return
-  }
-  if (audio.paused) {
-    audio.play()
-    setPlayButtonState(true)
-  } else {
-    audio.pause()
-    setPlayButtonState(false)
-  }
+  togglePlayback({ silent: false })
 })
 
 // Previous track
 prevBtn.addEventListener('click', () => {
-  if (playlist.length === 0) return
-  const newIndex = currentIndex <= 0 ? playlist.length - 1 : currentIndex - 1
-  loadTrack(newIndex)
+  playPreviousTrack()
 })
 
 // Next track
 nextBtn.addEventListener('click', () => {
-  if (playlist.length === 0) return
-  const newIndex = currentIndex >= playlist.length - 1 ? 0 : currentIndex + 1
-  loadTrack(newIndex)
+  playNextTrack()
 })
 
 // Single-song loop toggle
@@ -836,7 +881,20 @@ audio.addEventListener('ended', () => {
     loadTrack(currentIndex + 1)
   } else {
     setPlayButtonState(false)
+    reportPlayerState()
   }
+})
+
+audio.addEventListener('play', () => {
+  setPlayButtonState(true)
+  reportPlayerState()
+})
+
+audio.addEventListener('pause', () => {
+  if (!audio.ended) {
+    setPlayButtonState(false)
+  }
+  reportPlayerState()
 })
 
 // Update progress bar and current time while playing
@@ -865,3 +923,22 @@ updatePlaylistUI()
 setPlayButtonState(false)
 refreshSavedPlaylists()
 showHomePage()
+reportPlayerState()
+
+if (window.electronAPI && window.electronAPI.onPlayerControl) {
+  window.electronAPI.onPlayerControl((action) => {
+    switch (action) {
+      case 'toggle-play':
+        togglePlayback({ silent: true })
+        break
+      case 'next-track':
+        playNextTrack()
+        break
+      case 'previous-track':
+        playPreviousTrack()
+        break
+      default:
+        break
+    }
+  })
+}

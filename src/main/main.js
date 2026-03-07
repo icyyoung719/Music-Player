@@ -1,9 +1,19 @@
 // main.js
-const { app, BrowserWindow, ipcMain, dialog } = require('electron')
+const { app, BrowserWindow, ipcMain, dialog, Tray, Menu, nativeImage, globalShortcut } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
 const { parseFile } = require('music-metadata')
+
+let mainWindow = null
+let tray = null
+let isQuitting = false
+let minimizeToTrayOnClose = true
+let playbackState = {
+  hasQueue: false,
+  isPlaying: false,
+  title: ''
+}
 
 let playlistState = {
   playlists: [],
@@ -222,6 +232,127 @@ async function importPlaylistsFromObject(imported) {
   return { importedPlaylistCount, importedTrackCount }
 }
 
+function getActiveWindow() {
+  const focused = BrowserWindow.getFocusedWindow()
+  return focused || mainWindow
+}
+
+function sendPlayerControl(action) {
+  const target = getActiveWindow()
+  if (!target || target.isDestroyed()) return
+  target.webContents.send('player:control', action)
+}
+
+function normalizePlaybackState(nextState) {
+  return {
+    hasQueue: !!nextState?.hasQueue,
+    isPlaying: !!nextState?.isPlaying,
+    title: typeof nextState?.title === 'string' ? nextState.title : ''
+  }
+}
+
+function getTrayIcon() {
+  const iconPath = path.join(__dirname, '../../assets/tray.png')
+  if (fs.existsSync(iconPath)) {
+    return nativeImage.createFromPath(iconPath)
+  }
+
+  // 16x16 simple white note-like icon fallback.
+  return nativeImage.createFromDataURL(
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAh1BMVEUAAAAAAAD///////////////////////////////////////////////////////////////////////8AAAD///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////9+fI3BAAAALHRSTlMAAQIDBAUGBwgJCwwNDhASExQVFhcYGRobHB0fICEiIyQlJicoKSorxvKzMgAAAFhJREFUGNNjYIACRkYGBhY2Dg4uJgYWNh4+ISExKSUtPSMzKzsnNy8/KLi4uPjE5OTk5BQUFJSMjI6OjA0MDAwMTEwMDAxMDAwAAAwAX0wR9jB6LwAAAAASUVORK5CYII='
+  )
+}
+
+function buildTrayMenu() {
+  const playPauseLabel = playbackState.isPlaying ? '暂停' : '播放'
+  const playPauseEnabled = playbackState.hasQueue
+
+  return Menu.buildFromTemplate([
+    {
+      label: playPauseLabel,
+      enabled: playPauseEnabled,
+      click: () => sendPlayerControl('toggle-play')
+    },
+    {
+      label: '上一首',
+      enabled: playbackState.hasQueue,
+      click: () => sendPlayerControl('previous-track')
+    },
+    {
+      label: '下一首',
+      enabled: playbackState.hasQueue,
+      click: () => sendPlayerControl('next-track')
+    },
+    { type: 'separator' },
+    {
+      label: '点击关闭时最小化到托盘',
+      type: 'checkbox',
+      checked: minimizeToTrayOnClose,
+      click: (menuItem) => {
+        minimizeToTrayOnClose = menuItem.checked
+      }
+    },
+    {
+      label: '显示主窗口',
+      click: () => {
+        if (!mainWindow || mainWindow.isDestroyed()) return
+        mainWindow.show()
+        mainWindow.focus()
+      }
+    },
+    {
+      label: '退出',
+      click: () => {
+        isQuitting = true
+        app.quit()
+      }
+    }
+  ])
+}
+
+function refreshTrayMenu() {
+  if (!tray) return
+  const nowPlaying = playbackState.title || 'Music Player'
+  tray.setToolTip(playbackState.hasQueue ? `Music Player - ${nowPlaying}` : 'Music Player')
+  tray.setContextMenu(buildTrayMenu())
+}
+
+function createTray() {
+  if (tray) return
+
+  tray = new Tray(getTrayIcon())
+  tray.on('click', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return
+    if (mainWindow.isVisible()) {
+      mainWindow.focus()
+    } else {
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+
+  refreshTrayMenu()
+}
+
+function registerMediaShortcuts() {
+  const bindings = [
+    ['MediaPlayPause', 'toggle-play'],
+    ['MediaNextTrack', 'next-track'],
+    ['MediaPreviousTrack', 'previous-track']
+  ]
+
+  for (const [accelerator, action] of bindings) {
+    try {
+      const ok = globalShortcut.register(accelerator, () => sendPlayerControl(action))
+      if (!ok) {
+        console.warn(`Failed to register media shortcut: ${accelerator}`)
+      }
+    } catch (err) {
+      console.warn(`Failed to register media shortcut: ${accelerator}`, err)
+    }
+  }
+}
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1000,
@@ -238,6 +369,20 @@ function createWindow() {
 
   win.loadFile(path.join(__dirname, '../renderer/index.html'))
 
+  win.on('close', (event) => {
+    if (isQuitting || !minimizeToTrayOnClose) return
+    event.preventDefault()
+    win.hide()
+  })
+
+  win.on('closed', () => {
+    if (mainWindow === win) {
+      mainWindow = null
+    }
+  })
+
+  mainWindow = win
+
   // 开发时打开 DevTools
   // win.webContents.openDevTools()
 }
@@ -250,19 +395,39 @@ app.whenReady().then(async () => {
   }
 
   createWindow()
+  createTray()
+  registerMediaShortcuts()
 
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (BrowserWindow.getAllWindows().length === 0) {
+      createWindow()
+    } else if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.show()
+      mainWindow.focus()
+    }
   })
 })
 
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (process.platform !== 'darwin') {
+    if (minimizeToTrayOnClose) return
+    app.quit()
+  }
+})
+
+app.on('will-quit', () => {
+  isQuitting = true
+  globalShortcut.unregisterAll()
 })
 
 // 主进程监听播放器控制指令
 ipcMain.handle('play-audio', (event, filePath) => {
   console.log('Playing:', filePath)
+})
+
+ipcMain.on('player:state-changed', (event, state) => {
+  playbackState = normalizePlaybackState(state)
+  refreshTrayMenu()
 })
 
 // 打开文件夹，返回其中所有音频文件路径

@@ -14,5 +14,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   playlistAddTracks: (playlistId, tracks) => ipcRenderer.invoke('playlist:addTracks', { playlistId, tracks }),
   playlistRemoveTrack: (playlistId, trackId) => ipcRenderer.invoke('playlist:removeTrack', { playlistId, trackId }),
   playlistImport: () => ipcRenderer.invoke('playlist:import'),
-  playlistExport: (playlistId) => ipcRenderer.invoke('playlist:export', playlistId)
+  playlistExport: (playlistId) => ipcRenderer.invoke('playlist:export', playlistId),
+  reportPlayerState: (state) => ipcRenderer.send('player:state-changed', state),
+  onPlayerControl: (listener) => {
+    if (typeof listener !== 'function') return () => {}
+    const wrapped = (_event, action) => listener(action)
+    ipcRenderer.on('player:control', wrapped)
+    return () => ipcRenderer.removeListener('player:control', wrapped)
+  }
 })
