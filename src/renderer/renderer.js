@@ -38,6 +38,9 @@ const savedAddCurrentBtn = document.getElementById('savedAddCurrentBtn')
 const savedImportBtn = document.getElementById('savedImportBtn')
 const savedExportBtn = document.getElementById('savedExportBtn')
 const savedTracksEl = document.getElementById('savedTracks')
+const themeToggleBtns = document.querySelectorAll('[data-theme-toggle]')
+
+const THEME_STORAGE_KEY = 'music-player-theme'
 
 let audio = new Audio()
 let playlist = []   // Array of { name, path, file?, metadataCache? }
@@ -45,6 +48,42 @@ let currentIndex = -1
 let isLooping = false
 let savedState = { playlists: [], trackLibrary: {} }
 let selectedSavedPlaylistId = null
+
+function applyTheme(theme) {
+  const normalized = theme === 'dark' ? 'dark' : 'light'
+  document.body.setAttribute('data-theme', normalized)
+
+  themeToggleBtns.forEach((btn) => {
+    btn.textContent = normalized === 'dark' ? '☀ 亮色' : '🌙 暗色'
+  })
+}
+
+function initTheme() {
+  let initialTheme = 'light'
+  try {
+    const saved = localStorage.getItem(THEME_STORAGE_KEY)
+    if (saved === 'dark' || saved === 'light') {
+      initialTheme = saved
+    }
+  } catch {
+    initialTheme = 'light'
+  }
+
+  applyTheme(initialTheme)
+
+  themeToggleBtns.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const current = document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
+      const next = current === 'dark' ? 'light' : 'dark'
+      applyTheme(next)
+      try {
+        localStorage.setItem(THEME_STORAGE_KEY, next)
+      } catch {
+        // Ignore storage failure and keep runtime theme.
+      }
+    })
+  })
+}
 
 function showSongPage() {
   if (homePageEl) homePageEl.classList.add('page-hidden')
@@ -924,6 +963,7 @@ setPlayButtonState(false)
 refreshSavedPlaylists()
 showHomePage()
 reportPlayerState()
+initTheme()
 
 if (window.electronAPI && window.electronAPI.onPlayerControl) {
   window.electronAPI.onPlayerControl((action) => {
