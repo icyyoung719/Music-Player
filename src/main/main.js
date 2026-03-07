@@ -251,16 +251,90 @@ function normalizePlaybackState(nextState) {
   }
 }
 
+function getAssetImage(assetFileName, size = null) {
+  const assetPath = path.join(__dirname, '../../assets/icons', assetFileName)
+  if (!fs.existsSync(assetPath)) {
+    return null
+  }
+
+  const img = nativeImage.createFromPath(assetPath)
+  if (img.isEmpty()) {
+    return null
+  }
+
+  if (size && typeof size.width === 'number' && typeof size.height === 'number') {
+    return img.resize({ width: size.width, height: size.height })
+  }
+
+  return img
+}
+
 function getTrayIcon() {
-  const iconPath = path.join(__dirname, '../../assets/tray.png')
-  if (fs.existsSync(iconPath)) {
-    return nativeImage.createFromPath(iconPath)
+  const trayIco = getAssetImage('tray.ico')
+  if (trayIco) {
+    return trayIco
+  }
+
+  const trayPng = getAssetImage('tray.png')
+  if (trayPng) {
+    return trayPng
   }
 
   // 16x16 simple white note-like icon fallback.
   return nativeImage.createFromDataURL(
     'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAMAAAAoLQ9TAAAAh1BMVEUAAAAAAAD///////////////////////////////////////////////////////////////////////8AAAD///////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////9+fI3BAAAALHRSTlMAAQIDBAUGBwgJCwwNDhASExQVFhcYGRobHB0fICEiIyQlJicoKSorxvKzMgAAAFhJREFUGNNjYIACRkYGBhY2Dg4uJgYWNh4+ISExKSUtPSMzKzsnNy8/KLi4uPjE5OTk5BQUFJSMjI6OjA0MDAwMTEwMDAxMDAwAAAwAX0wR9jB6LwAAAAASUVORK5CYII='
   )
+}
+
+function getThumbarIcon(action, active = false) {
+  const size = { width: 16, height: 16 }
+
+  if (action === 'previous-track') {
+    return getAssetImage('thumbar-prev.png', size)
+  }
+
+  if (action === 'next-track') {
+    return getAssetImage('thumbar-next.png', size)
+  }
+
+  if (action === 'pause') {
+    return getAssetImage('thumbar-pause.png', size)
+  }
+
+  // default: play
+  const playIcon = active
+    ? getAssetImage('thumbar-play-active.png', size) || getAssetImage('thumbar-play.png', size)
+    : getAssetImage('thumbar-play.png', size)
+
+  return playIcon
+}
+
+function refreshThumbarButtons() {
+  if (process.platform !== 'win32') return
+  if (!mainWindow || mainWindow.isDestroyed()) return
+
+  const isPlaying = playbackState.hasQueue && playbackState.isPlaying
+
+  mainWindow.setThumbarButtons([
+    {
+      tooltip: '上一首',
+      icon: getThumbarIcon('previous-track'),
+      click: () => sendPlayerControl('previous-track'),
+      flags: []
+    },
+    {
+      tooltip: isPlaying ? '暂停' : '播放',
+      icon: getThumbarIcon(isPlaying ? 'pause' : 'play', true),
+      click: () => sendPlayerControl('toggle-play'),
+      flags: []
+    },
+    {
+      tooltip: '下一首',
+      icon: getThumbarIcon('next-track'),
+      click: () => sendPlayerControl('next-track'),
+      flags: []
+    }
+  ])
 }
 
 function buildTrayMenu() {
@@ -315,6 +389,7 @@ function refreshTrayMenu() {
   const nowPlaying = playbackState.title || 'Music Player'
   tray.setToolTip(playbackState.hasQueue ? `Music Player - ${nowPlaying}` : 'Music Player')
   tray.setContextMenu(buildTrayMenu())
+  refreshThumbarButtons()
 }
 
 function createTray() {
@@ -382,6 +457,7 @@ function createWindow() {
   })
 
   mainWindow = win
+  refreshThumbarButtons()
 
   // 开发时打开 DevTools
   // win.webContents.openDevTools()
