@@ -43,20 +43,51 @@
 ```
 src/
   main/
-    main.js       # Electron 主进程与窗口管理、IPC 处理（含元数据解析）
+    main.js                       # 主进程入口（应用生命周期编排）
+    modules/
+      playerShell.js              # 窗口/托盘/缩略图工具栏/媒体键/播放器状态桥接
+      playlistHandlers.js         # 音频元数据、文件夹选择、歌单存储与相关 IPC
   preload/
-    preload.js    # 安全桥接层（contextBridge）
+    preload.js                    # 安全桥接层（contextBridge）
   renderer/
-    index.html    # 播放器 UI 与页面结构
-    renderer.js   # 前端交互与音频控制逻辑
+    index.html                    # 页面结构（Home + Song）
+    renderer.js                   # 渲染入口与交互编排（导入子模块）
+    modules/
+      theme.js                    # 明暗主题切换与本地持久化
+      trackUtils.js               # 音频/路径/时间等通用工具函数
+assets/
+  icons/
+    tray.png                      # 托盘图标（可替换）
+    thumbar-prev.png              # 缩略图工具栏图标：上一首
+    thumbar-play.png              # 缩略图工具栏图标：播放
+    thumbar-play-active.png       # 缩略图工具栏图标：播放（激活态，可选）
+    thumbar-pause.png             # 缩略图工具栏图标：暂停
+    thumbar-next.png              # 缩略图工具栏图标：下一首
+    README.md                     # 图标规格说明
 ```
 
-- [src/main/main.js](src/main/main.js)：Electron 主进程与窗口管理
-- [src/preload/preload.js](src/preload/preload.js)：安全桥接层（`contextBridge`）
-- [src/renderer/index.html](src/renderer/index.html)：播放器 UI 与页面结构
-- [src/renderer/renderer.js](src/renderer/renderer.js)：前端交互与音频控制逻辑
-- [.gitignore](.gitignore)：Git 忽略规则
-- [package.json](package.json)：脚本与依赖配置
+### 模块拆分说明
+
+- `src/main/main.js`
+  - 只保留 app 生命周期与模块初始化逻辑，避免继续堆叠业务细节。
+- `src/main/modules/playerShell.js`
+  - 管理桌面壳层能力：`BrowserWindow`、`Tray`、`setThumbarButtons`、`globalShortcut`。
+  - 处理主进程与渲染进程的播放器状态同步（`player:state-changed`）。
+- `src/main/modules/playlistHandlers.js`
+  - 管理播放列表状态与持久化（`playlists.json`）。
+  - 注册歌单、导入导出、元数据解析、文件夹扫描等 IPC。
+- `src/renderer/renderer.js`
+  - 作为前端交互“编排层”，聚合 DOM 事件、音频控制、页面切换。
+- `src/renderer/modules/theme.js`
+  - 统一处理主题切换与持久化，避免散落在多个 UI 事件里。
+- `src/renderer/modules/trackUtils.js`
+  - 沉淀纯工具函数，减少重复实现，提高可测试性。
+
+### 后续可继续拆分建议
+
+- `renderer` 侧再拆为：`queueManager`、`savedPlaylistManager`、`audioController`、`viewRenderer`。
+- `main` 侧再拆为：`metadataService`、`playlistStore`、`ipc/registerMainHandlers`。
+- 为模块补充最小单元测试（工具函数、状态变更函数优先）。
 
 ## TODO
 

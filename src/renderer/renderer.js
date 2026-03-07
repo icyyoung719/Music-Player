@@ -1,4 +1,14 @@
 // renderer.js
+import { initTheme } from './modules/theme.js'
+import {
+  formatTime,
+  filePathToURL,
+  getFileNameFromPath,
+  normalizePath,
+  getTrackUniqueKey,
+  getCurrentTrackPath
+} from './modules/trackUtils.js'
+
 const fileInput = document.getElementById('fileInput')
 const folderBtn = document.getElementById('folderBtn')
 const clearBtn = document.getElementById('clearBtn')
@@ -38,9 +48,6 @@ const savedAddCurrentBtn = document.getElementById('savedAddCurrentBtn')
 const savedImportBtn = document.getElementById('savedImportBtn')
 const savedExportBtn = document.getElementById('savedExportBtn')
 const savedTracksEl = document.getElementById('savedTracks')
-const themeToggleBtns = document.querySelectorAll('[data-theme-toggle]')
-
-const THEME_STORAGE_KEY = 'music-player-theme'
 
 let audio = new Audio()
 let playlist = []   // Array of { name, path, file?, metadataCache? }
@@ -48,42 +55,6 @@ let currentIndex = -1
 let isLooping = false
 let savedState = { playlists: [], trackLibrary: {} }
 let selectedSavedPlaylistId = null
-
-function applyTheme(theme) {
-  const normalized = theme === 'dark' ? 'dark' : 'light'
-  document.body.setAttribute('data-theme', normalized)
-
-  themeToggleBtns.forEach((btn) => {
-    btn.textContent = normalized === 'dark' ? '☀ 亮色' : '🌙 暗色'
-  })
-}
-
-function initTheme() {
-  let initialTheme = 'light'
-  try {
-    const saved = localStorage.getItem(THEME_STORAGE_KEY)
-    if (saved === 'dark' || saved === 'light') {
-      initialTheme = saved
-    }
-  } catch {
-    initialTheme = 'light'
-  }
-
-  applyTheme(initialTheme)
-
-  themeToggleBtns.forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const current = document.body.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
-      const next = current === 'dark' ? 'light' : 'dark'
-      applyTheme(next)
-      try {
-        localStorage.setItem(THEME_STORAGE_KEY, next)
-      } catch {
-        // Ignore storage failure and keep runtime theme.
-      }
-    })
-  })
-}
 
 function showSongPage() {
   if (homePageEl) homePageEl.classList.add('page-hidden')
@@ -116,61 +87,6 @@ function setHomeNowCover(dataUrl) {
   }
 }
 
-// Format seconds as m:ss
-function formatTime(seconds) {
-  if (!seconds || isNaN(seconds)) return '0:00'
-  const m = Math.floor(seconds / 60)
-  const s = Math.floor(seconds % 60)
-  return `${m}:${s.toString().padStart(2, '0')}`
-}
-
-// Convert an absolute file-system path to a properly encoded file:// URL
-function filePathToURL(filePath) {
-  const normalized = filePath.replace(/\\/g, '/')
-  const withLeadingSlash = normalized.startsWith('/') ? normalized : '/' + normalized
-  return encodeURI('file://' + withLeadingSlash).replace(/#/g, '%23')
-}
-
-function getFileNameFromPath(filePath) {
-  return (filePath || '').split(/[/\\]/).pop() || filePath || '未知歌曲'
-}
-
-function normalizePath(filePath) {
-  return filePath.replace(/\\/g, '/').toLowerCase()
-}
-
-function getTrackUniqueKey(track) {
-  if (track.path) return `path:${normalizePath(track.path)}`
-
-  if (track.file) {
-    let resolvedPath = null
-    if (window.electronAPI && window.electronAPI.getPathForFile) {
-      try {
-        resolvedPath = window.electronAPI.getPathForFile(track.file)
-      } catch {
-        resolvedPath = null
-      }
-    }
-
-    if (resolvedPath) return `path:${normalizePath(resolvedPath)}`
-
-    return `file:${track.file.name}|${track.file.size}|${track.file.lastModified}`
-  }
-
-  return `name:${track.name}`
-}
-
-function getCurrentTrackPath(track) {
-  if (track.path) return track.path
-  if (track.file && window.electronAPI && window.electronAPI.getPathForFile) {
-    try {
-      return window.electronAPI.getPathForFile(track.file)
-    } catch {
-      return null
-    }
-  }
-  return null
-}
 
 function requestPlaylistName(title, defaultValue) {
   return new Promise((resolve) => {
@@ -421,11 +337,11 @@ function appendToPlaylist(newTracks) {
   if (!newTracks.length) return
   const wasEmpty = playlist.length === 0
 
-  const existingKeys = new Set(playlist.map(getTrackUniqueKey))
+  const existingKeys = new Set(playlist.map(track => getTrackUniqueKey(track, window.electronAPI)))
   const dedupedTracks = []
 
   for (const track of newTracks) {
-    const key = getTrackUniqueKey(track)
+    const key = getTrackUniqueKey(track, window.electronAPI)
     if (existingKeys.has(key)) continue
     existingKeys.add(key)
     dedupedTracks.push(track)
@@ -636,7 +552,7 @@ function collectCurrentQueueAsTrackInputs() {
   const usedPaths = new Set()
 
   for (const track of playlist) {
-    const filePath = getCurrentTrackPath(track)
+    const filePath = getCurrentTrackPath(track, window.electronAPI)
     if (!filePath) continue
 
     const normalizedPath = normalizePath(filePath)
