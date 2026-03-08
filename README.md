@@ -46,33 +46,18 @@
 2. 启动项目
    - `npm run start`
 
-## 项目结构
+## 项目结构（持续演进，不写死）
 
-```
-src/
-  main/
-    main.js                       # 主进程入口（应用生命周期编排）
-    modules/
-      playerShell.js              # 窗口/托盘/缩略图工具栏/媒体键/播放器状态桥接
-      playlistHandlers.js         # 音频元数据、文件夹选择、歌单存储与相关 IPC
-  preload/
-    preload.js                    # 安全桥接层（contextBridge）
-  renderer/
-    index.html                    # 页面结构（Home + Song）
-    renderer.js                   # 渲染入口与交互编排（导入子模块）
-    modules/
-      theme.js                    # 明暗主题切换与本地持久化
-      trackUtils.js               # 音频/路径/时间等通用工具函数
-assets/
-  icons/
-    tray.png                      # 托盘图标（可替换）
-    thumbar-prev.png              # 缩略图工具栏图标：上一首
-    thumbar-play.png              # 缩略图工具栏图标：播放
-    thumbar-play-active.png       # 缩略图工具栏图标：播放（激活态，可选）
-    thumbar-pause.png             # 缩略图工具栏图标：暂停
-    thumbar-next.png              # 缩略图工具栏图标：下一首
-    README.md                     # 图标规格说明
-```
+目录会随着功能拆分持续调整，下面只列“职责边界”和“代表性模块”，而不是固定树形结构。
+
+- 主进程：窗口壳层、托盘、媒体键、IPC 注册
+  - 代表模块：`src/main/main.js`、`src/main/modules/playerShell.js`、`src/main/modules/playlistHandlers.js`
+- 预加载层：安全桥接（`contextBridge`）
+  - 代表模块：`src/preload/preload.js`
+- 渲染层：页面编排 + 按职责拆分的功能模块
+  - 代表模块：`src/renderer/renderer.js`、`src/renderer/modules/theme.js`、`src/renderer/modules/trackUtils.js`、`src/renderer/modules/playbackController.js`、`src/renderer/modules/shortcutManager.js`、`src/renderer/modules/savedPlaylistManager.js`
+- 静态资源：图标、界面资源等
+  - 代表目录：`assets/icons/`
 
 ### 模块拆分说明
 
@@ -85,11 +70,17 @@ assets/
   - 管理播放列表状态与持久化（`playlists.json`）。
   - 注册歌单、导入导出、元数据解析、文件夹扫描等 IPC。
 - `src/renderer/renderer.js`
-  - 作为前端交互“编排层”，聚合 DOM 事件、音频控制、页面切换。
+  - 作为前端交互“编排层”，只负责状态流转与模块装配，不再承载所有细节实现。
 - `src/renderer/modules/theme.js`
   - 统一处理主题切换与持久化，避免散落在多个 UI 事件里。
 - `src/renderer/modules/trackUtils.js`
   - 沉淀纯工具函数，减少重复实现，提高可测试性。
+- `src/renderer/modules/playbackController.js`
+  - 负责播放队列、音频生命周期、进度与元数据同步、播放相关 DOM 交互。
+- `src/renderer/modules/shortcutManager.js`
+  - 管理快捷键配置、面板交互、草稿/确认保存流程与按键分发。
+- `src/renderer/modules/savedPlaylistManager.js`
+  - 管理“我的歌单”相关 UI、状态同步与导入导出流程。
 
 ### 后续可继续拆分建议
 
