@@ -6,12 +6,48 @@ let mainWindow = null
 let tray = null
 let isQuitting = false
 let minimizeToTrayOnClose = true
+let shellPreferencesLoaded = false
 let playbackState = {
   hasQueue: false,
   isPlaying: false,
   title: ''
 }
 let stateListenerRegistered = false
+
+function getShellPreferencesPath() {
+  return path.join(app.getPath('userData'), 'shell-preferences.json')
+}
+
+function loadShellPreferences() {
+  if (shellPreferencesLoaded) return
+  shellPreferencesLoaded = true
+
+  const storePath = getShellPreferencesPath()
+  try {
+    if (!fs.existsSync(storePath)) return
+    const content = fs.readFileSync(storePath, 'utf8')
+    const parsed = JSON.parse(content)
+    if (typeof parsed?.minimizeToTrayOnClose === 'boolean') {
+      minimizeToTrayOnClose = parsed.minimizeToTrayOnClose
+    }
+  } catch (err) {
+    console.error('Failed to load shell preferences:', err)
+  }
+}
+
+function saveShellPreferences() {
+  const storePath = getShellPreferencesPath()
+  const payload = {
+    minimizeToTrayOnClose
+  }
+
+  fs.promises
+    .mkdir(path.dirname(storePath), { recursive: true })
+    .then(() => fs.promises.writeFile(storePath, JSON.stringify(payload, null, 2), 'utf8'))
+    .catch((err) => {
+      console.error('Failed to save shell preferences:', err)
+    })
+}
 
 function getActiveWindow() {
   const focused = BrowserWindow.getFocusedWindow()
@@ -143,6 +179,7 @@ function buildTrayMenu() {
       checked: minimizeToTrayOnClose,
       click: (menuItem) => {
         minimizeToTrayOnClose = menuItem.checked
+        saveShellPreferences()
       }
     },
     {
@@ -208,6 +245,8 @@ function registerMediaShortcuts() {
 }
 
 function createMainWindow() {
+  loadShellPreferences()
+
   const appIconPath = path.join(__dirname, '../../../assets/icons/app-icon.png')
 
   const win = new BrowserWindow({
