@@ -208,18 +208,25 @@ function registerMediaShortcuts() {
 }
 
 function createMainWindow() {
+  const appIconPath = path.join(__dirname, '../../../assets/icons/app-icon.png')
+
   const win = new BrowserWindow({
     width: 1000,
     height: 700,
     minWidth: 800,
     minHeight: 500,
     title: '🎵 Music Player',
+    icon: fs.existsSync(appIconPath) ? appIconPath : undefined,
+    autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, '../../preload/preload.js'),
       contextIsolation: true,
       nodeIntegration: false
     }
   })
+
+  // Remove default Electron menu bar (File/Edit/View...) for a cleaner player UI.
+  win.removeMenu()
 
   win.loadFile(path.join(__dirname, '../../renderer/index.html'))
 
