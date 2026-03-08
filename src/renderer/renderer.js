@@ -48,6 +48,11 @@ const savedAddCurrentBtn = document.getElementById('savedAddCurrentBtn')
 const savedImportBtn = document.getElementById('savedImportBtn')
 const savedExportBtn = document.getElementById('savedExportBtn')
 const savedTracksEl = document.getElementById('savedTracks')
+const shortcutBtn = document.getElementById('shortcutBtn')
+const shortcutOverlay = document.getElementById('shortcutOverlay')
+const shortcutList = document.getElementById('shortcutList')
+const shortcutCloseBtn = document.getElementById('shortcutCloseBtn')
+const shortcutResetBtn = document.getElementById('shortcutResetBtn')
 
 let audio = new Audio()
 let playlist = []   // Array of { name, path, file?, metadataCache? }
@@ -55,6 +60,159 @@ let currentIndex = -1
 let isLooping = false
 let savedState = { playlists: [], trackLibrary: {} }
 let selectedSavedPlaylistId = null
+const SHORTCUT_STORAGE_KEY = 'musicPlayer.shortcuts.v1'
+const SEEK_SECONDS = 5
+const shortcutLabels = {
+  togglePlay: '播放 / 暂停',
+  seekBackward: `快退 ${SEEK_SECONDS} 秒`,
+  seekForward: `快进 ${SEEK_SECONDS} 秒`
+}
+const defaultShortcuts = {
+  togglePlay: 'Space',
+  seekBackward: 'ArrowLeft',
+  seekForward: 'ArrowRight'
+}
+let shortcutConfig = { ...defaultShortcuts }
+let waitingShortcutAction = null
+
+function normalizeShortcutKey(key) {
+  if (typeof key !== 'string') return null
+  if (key === ' ') return 'Space'
+  const value = key.trim()
+  return value || null
+}
+
+function formatShortcutKey(key) {
+  const normalized = normalizeShortcutKey(key)
+  if (!normalized) return '未设置'
+  if (normalized === 'Space') return 'Space'
+  if (normalized.startsWith('Arrow')) return normalized.replace('Arrow', 'Arrow ')
+  return normalized.length === 1 ? normalized.toUpperCase() : normalized
+}
+
+function isEditableElement(target) {
+  if (!target) return false
+  if (target.isContentEditable) return true
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
+function saveShortcutConfig() {
+  try {
+    localStorage.setItem(SHORTCUT_STORAGE_KEY, JSON.stringify(shortcutConfig))
+  } catch (err) {
+    console.warn('Failed to persist shortcuts:', err)
+  }
+}
+
+function loadShortcutConfig() {
+  try {
+    const raw = localStorage.getItem(SHORTCUT_STORAGE_KEY)
+    if (!raw) return
+    const parsed = JSON.parse(raw)
+    if (!parsed || typeof parsed !== 'object') return
+
+    for (const action of Object.keys(defaultShortcuts)) {
+      const key = normalizeShortcutKey(parsed[action])
+      if (key) {
+        shortcutConfig[action] = key
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to load shortcuts:', err)
+  }
+}
+
+function setShortcutForAction(action, key) {
+  const normalizedKey = normalizeShortcutKey(key)
+  if (!normalizedKey) return
+
+  for (const actionName of Object.keys(shortcutConfig)) {
+    if (shortcutConfig[actionName] === normalizedKey) {
+      shortcutConfig[actionName] = ''
+    }
+  }
+
+  shortcutConfig[action] = normalizedKey
+  saveShortcutConfig()
+  renderShortcutPanel()
+}
+
+function resetShortcuts() {
+  shortcutConfig = { ...defaultShortcuts }
+  waitingShortcutAction = null
+  saveShortcutConfig()
+  renderShortcutPanel()
+}
+
+function handleShortcutAction(action) {
+  switch (action) {
+    case 'togglePlay':
+      togglePlayback({ silent: true })
+      break
+    case 'seekBackward':
+      if (!audio.duration) return
+      audio.currentTime = Math.max(0, audio.currentTime - SEEK_SECONDS)
+      break
+    case 'seekForward':
+      if (!audio.duration) return
+      audio.currentTime = Math.min(audio.duration, audio.currentTime + SEEK_SECONDS)
+      break
+    default:
+      break
+  }
+}
+
+function renderShortcutPanel() {
+  if (!shortcutList) return
+  shortcutList.innerHTML = ''
+
+  Object.keys(shortcutLabels).forEach((action) => {
+    const row = document.createElement('div')
+    row.className = 'shortcut-row'
+
+    const nameEl = document.createElement('div')
+    nameEl.className = 'shortcut-name'
+    nameEl.textContent = shortcutLabels[action]
+
+    const keyEl = document.createElement('div')
+    keyEl.className = 'shortcut-key'
+    keyEl.textContent = waitingShortcutAction === action ? '请按键...' : formatShortcutKey(shortcutConfig[action])
+
+    const editBtn = document.createElement('button')
+    editBtn.textContent = waitingShortcutAction === action ? '取消' : '修改'
+    editBtn.addEventListener('click', () => {
+      waitingShortcutAction = waitingShortcutAction === action ? null : action
+      renderShortcutPanel()
+    })
+
+    row.appendChild(nameEl)
+    row.appendChild(keyEl)
+    row.appendChild(editBtn)
+    shortcutList.appendChild(row)
+  })
+}
+
+function showShortcutPanel() {
+  if (!shortcutOverlay) return
+  waitingShortcutAction = null
+  renderShortcutPanel()
+  shortcutOverlay.classList.add('visible')
+  shortcutOverlay.setAttribute('aria-hidden', 'false')
+}
+
+function hideShortcutPanel() {
+  if (!shortcutOverlay) return
+  waitingShortcutAction = null
+  shortcutOverlay.classList.remove('visible')
+  shortcutOverlay.setAttribute('aria-hidden', 'true')
+}
+
+function matchShortcutActionByKey(key) {
+  const normalizedKey = normalizeShortcutKey(key)
+  if (!normalizedKey) return null
+  return Object.keys(shortcutConfig).find(action => shortcutConfig[action] === normalizedKey) || null
+}
 
 function showSongPage() {
   if (homePageEl) homePageEl.classList.add('page-hidden')
@@ -417,6 +575,41 @@ function playNextTrack() {
   const newIndex = currentIndex >= playlist.length - 1 ? 0 : currentIndex + 1
   loadTrack(newIndex)
 }
+
+document.addEventListener('keydown', (e) => {
+  const normalizedKey = normalizeShortcutKey(e.key)
+  if (!normalizedKey) return
+
+  if (waitingShortcutAction) {
+    e.preventDefault()
+    if (normalizedKey === 'Escape') {
+      waitingShortcutAction = null
+      renderShortcutPanel()
+      return
+    }
+    setShortcutForAction(waitingShortcutAction, normalizedKey)
+    waitingShortcutAction = null
+    renderShortcutPanel()
+    return
+  }
+
+  const isShortcutPanelVisible = !!(shortcutOverlay && shortcutOverlay.classList.contains('visible'))
+  if (isShortcutPanelVisible) {
+    if (normalizedKey === 'Escape') {
+      e.preventDefault()
+      hideShortcutPanel()
+    }
+    return
+  }
+
+  if (isEditableElement(e.target)) return
+  if (e.ctrlKey || e.metaKey || e.altKey) return
+
+  const action = matchShortcutActionByKey(normalizedKey)
+  if (!action) return
+  e.preventDefault()
+  handleShortcutAction(action)
+})
 
 function togglePlayback(options = {}) {
   const { silent = false } = options
@@ -800,6 +993,32 @@ if (homeGoSongBtn) {
   })
 }
 
+if (shortcutBtn) {
+  shortcutBtn.addEventListener('click', () => {
+    showShortcutPanel()
+  })
+}
+
+if (shortcutCloseBtn) {
+  shortcutCloseBtn.addEventListener('click', () => {
+    hideShortcutPanel()
+  })
+}
+
+if (shortcutOverlay) {
+  shortcutOverlay.addEventListener('click', (e) => {
+    if (e.target === shortcutOverlay) {
+      hideShortcutPanel()
+    }
+  })
+}
+
+if (shortcutResetBtn) {
+  shortcutResetBtn.addEventListener('click', () => {
+    resetShortcuts()
+  })
+}
+
 document.querySelectorAll('[data-open-song]').forEach((el) => {
   el.addEventListener('click', () => {
     showSongPage()
@@ -874,6 +1093,8 @@ progressContainer.addEventListener('click', (e) => {
 })
 
 // Show empty-state hint on initial load
+loadShortcutConfig()
+renderShortcutPanel()
 updatePlaylistUI()
 setPlayButtonState(false)
 refreshSavedPlaylists()
