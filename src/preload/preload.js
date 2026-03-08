@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   playlistRemoveTrack: (playlistId, trackId) => ipcRenderer.invoke('playlist:removeTrack', { playlistId, trackId }),
   playlistImport: () => ipcRenderer.invoke('playlist:import'),
   playlistExport: (playlistId) => ipcRenderer.invoke('playlist:export', playlistId),
+  minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   reportPlayerState: (state) => ipcRenderer.send('player:state-changed', state),
   onPlayerControl: (listener) => {
     if (typeof listener !== 'function') return () => {}

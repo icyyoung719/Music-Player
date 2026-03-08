@@ -53,6 +53,8 @@ const shortcutOverlay = document.getElementById('shortcutOverlay')
 const shortcutList = document.getElementById('shortcutList')
 const shortcutCloseBtn = document.getElementById('shortcutCloseBtn')
 const shortcutResetBtn = document.getElementById('shortcutResetBtn')
+const shortcutConfirmBtn = document.getElementById('shortcutConfirmBtn')
+const windowMinimizeBtn = document.getElementById('windowMinimizeBtn')
 
 let audio = new Audio()
 let playlist = []   // Array of { name, path, file?, metadataCache? }
@@ -62,32 +64,110 @@ let savedState = { playlists: [], trackLibrary: {} }
 let selectedSavedPlaylistId = null
 const SHORTCUT_STORAGE_KEY = 'musicPlayer.shortcuts.v1'
 const SEEK_SECONDS = 5
-const shortcutLabels = {
-  togglePlay: '播放 / 暂停',
-  seekBackward: `快退 ${SEEK_SECONDS} 秒`,
-  seekForward: `快进 ${SEEK_SECONDS} 秒`
+const MODIFIER_KEYS = new Set(['Control', 'Shift', 'Alt', 'Meta'])
+const shortcutActions = {
+  togglePlay: { label: '播放 / 暂停', defaultKey: 'Space' },
+  seekBackward: { label: `快退 ${SEEK_SECONDS} 秒`, defaultKey: 'ArrowLeft' },
+  seekForward: { label: `快进 ${SEEK_SECONDS} 秒`, defaultKey: 'ArrowRight' },
+  previousTrack: { label: '上一首', defaultKey: '' },
+  nextTrack: { label: '下一首', defaultKey: '' },
+  toggleLoop: { label: '切换单曲循环', defaultKey: '' },
+  showHomePage: { label: '打开主页面', defaultKey: '' },
+  showSongPage: { label: '打开歌曲页', defaultKey: '' },
+  toggleTheme: { label: '切换明暗主题', defaultKey: '' },
+  openShortcuts: { label: '打开快捷键面板', defaultKey: '' },
+  minimizeWindow: { label: '最小化窗口', defaultKey: '' },
+  clearPlaylist: { label: '清空当前列表', defaultKey: '' }
 }
-const defaultShortcuts = {
-  togglePlay: 'Space',
-  seekBackward: 'ArrowLeft',
-  seekForward: 'ArrowRight'
-}
+const shortcutActionOrder = Object.keys(shortcutActions)
+const defaultShortcuts = Object.fromEntries(
+  shortcutActionOrder.map((action) => [action, shortcutActions[action].defaultKey])
+)
 let shortcutConfig = { ...defaultShortcuts }
+let draftShortcutConfig = null
 let waitingShortcutAction = null
 
-function normalizeShortcutKey(key) {
+function cloneShortcutConfig(config) {
+  return Object.fromEntries(shortcutActionOrder.map(action => [action, config[action] || '']))
+}
+
+function getShortcutEditingConfig() {
+  return draftShortcutConfig || shortcutConfig
+}
+
+function hasUnsavedShortcutChanges() {
+  if (!draftShortcutConfig) return false
+  return shortcutActionOrder.some(action => (draftShortcutConfig[action] || '') !== (shortcutConfig[action] || ''))
+}
+
+function normalizeKeyName(key) {
   if (typeof key !== 'string') return null
   if (key === ' ') return 'Space'
   const value = key.trim()
-  return value || null
+  if (!value) return null
+  if (value.length === 1) return value.toUpperCase()
+  return value
 }
 
-function formatShortcutKey(key) {
-  const normalized = normalizeShortcutKey(key)
+function normalizeShortcutString(shortcut) {
+  if (typeof shortcut !== 'string') return null
+  const parts = shortcut.split('+').map(part => part.trim()).filter(Boolean)
+  if (!parts.length) return ''
+
+  const modifiers = []
+  let baseKey = null
+
+  for (const part of parts) {
+    const lower = part.toLowerCase()
+    if (lower === 'ctrl' || lower === 'control') {
+      if (!modifiers.includes('Ctrl')) modifiers.push('Ctrl')
+      continue
+    }
+    if (lower === 'alt') {
+      if (!modifiers.includes('Alt')) modifiers.push('Alt')
+      continue
+    }
+    if (lower === 'shift') {
+      if (!modifiers.includes('Shift')) modifiers.push('Shift')
+      continue
+    }
+    if (lower === 'meta' || lower === 'cmd' || lower === 'win' || lower === 'super') {
+      if (!modifiers.includes('Meta')) modifiers.push('Meta')
+      continue
+    }
+
+    const normalized = normalizeKeyName(part)
+    if (!normalized) continue
+    baseKey = normalized
+  }
+
+  if (!baseKey) {
+    return modifiers.length ? null : ''
+  }
+
+  const order = ['Ctrl', 'Alt', 'Shift', 'Meta']
+  modifiers.sort((a, b) => order.indexOf(a) - order.indexOf(b))
+  return modifiers.length ? `${modifiers.join('+')}+${baseKey}` : baseKey
+}
+
+function getShortcutFromKeyboardEvent(e) {
+  const key = normalizeKeyName(e.key)
+  if (!key) return null
+  if (MODIFIER_KEYS.has(key)) return null
+
+  const modifiers = []
+  if (e.ctrlKey) modifiers.push('Ctrl')
+  if (e.altKey) modifiers.push('Alt')
+  if (e.shiftKey) modifiers.push('Shift')
+  if (e.metaKey) modifiers.push('Meta')
+
+  return modifiers.length ? `${modifiers.join('+')}+${key}` : key
+}
+
+function formatShortcutKey(shortcut) {
+  const normalized = normalizeShortcutString(shortcut)
   if (!normalized) return '未设置'
-  if (normalized === 'Space') return 'Space'
-  if (normalized.startsWith('Arrow')) return normalized.replace('Arrow', 'Arrow ')
-  return normalized.length === 1 ? normalized.toUpperCase() : normalized
+  return normalized.replaceAll('Arrow', 'Arrow ')
 }
 
 function isEditableElement(target) {
@@ -112,9 +192,9 @@ function loadShortcutConfig() {
     const parsed = JSON.parse(raw)
     if (!parsed || typeof parsed !== 'object') return
 
-    for (const action of Object.keys(defaultShortcuts)) {
-      const key = normalizeShortcutKey(parsed[action])
-      if (key) {
+    for (const action of shortcutActionOrder) {
+      const key = normalizeShortcutString(parsed[action])
+      if (typeof key === 'string') {
         shortcutConfig[action] = key
       }
     }
@@ -124,25 +204,45 @@ function loadShortcutConfig() {
 }
 
 function setShortcutForAction(action, key) {
-  const normalizedKey = normalizeShortcutKey(key)
+  if (!draftShortcutConfig) return
+
+  const normalizedKey = normalizeShortcutString(key)
   if (!normalizedKey) return
 
-  for (const actionName of Object.keys(shortcutConfig)) {
-    if (shortcutConfig[actionName] === normalizedKey) {
-      shortcutConfig[actionName] = ''
+  for (const actionName of shortcutActionOrder) {
+    if (draftShortcutConfig[actionName] === normalizedKey) {
+      draftShortcutConfig[actionName] = ''
     }
   }
 
-  shortcutConfig[action] = normalizedKey
-  saveShortcutConfig()
+  draftShortcutConfig[action] = normalizedKey
   renderShortcutPanel()
 }
 
 function resetShortcuts() {
-  shortcutConfig = { ...defaultShortcuts }
+  if (!draftShortcutConfig) return
+  draftShortcutConfig = { ...defaultShortcuts }
   waitingShortcutAction = null
-  saveShortcutConfig()
   renderShortcutPanel()
+}
+
+function clearShortcutForAction(action) {
+  if (!draftShortcutConfig) return
+  draftShortcutConfig[action] = ''
+  renderShortcutPanel()
+}
+
+function applyShortcutChanges() {
+  if (!draftShortcutConfig) return
+  shortcutConfig = cloneShortcutConfig(draftShortcutConfig)
+  saveShortcutConfig()
+}
+
+function toggleLoopState() {
+  isLooping = !isLooping
+  audio.loop = isLooping
+  loopBtn.classList.toggle('btn-active', isLooping)
+  loopBtn.title = isLooping ? '单曲循环: 开' : '单曲循环: 关'
 }
 
 function handleShortcutAction(action) {
@@ -158,6 +258,39 @@ function handleShortcutAction(action) {
       if (!audio.duration) return
       audio.currentTime = Math.min(audio.duration, audio.currentTime + SEEK_SECONDS)
       break
+    case 'previousTrack':
+      playPreviousTrack()
+      break
+    case 'nextTrack':
+      playNextTrack()
+      break
+    case 'toggleLoop':
+      toggleLoopState()
+      break
+    case 'showHomePage':
+      showHomePage()
+      break
+    case 'showSongPage':
+      showSongPage()
+      break
+    case 'toggleTheme': {
+      const themeToggle = document.querySelector('[data-theme-toggle]')
+      if (themeToggle) themeToggle.click()
+      break
+    }
+    case 'openShortcuts':
+      showShortcutPanel()
+      break
+    case 'minimizeWindow':
+      if (window.electronAPI && window.electronAPI.minimizeWindow) {
+        window.electronAPI.minimizeWindow()
+      }
+      break
+    case 'clearPlaylist':
+      if (playlist.length > 0) {
+        clearPlaylist()
+      }
+      break
     default:
       break
   }
@@ -166,18 +299,19 @@ function handleShortcutAction(action) {
 function renderShortcutPanel() {
   if (!shortcutList) return
   shortcutList.innerHTML = ''
+  const currentConfig = getShortcutEditingConfig()
 
-  Object.keys(shortcutLabels).forEach((action) => {
+  shortcutActionOrder.forEach((action) => {
     const row = document.createElement('div')
     row.className = 'shortcut-row'
 
     const nameEl = document.createElement('div')
     nameEl.className = 'shortcut-name'
-    nameEl.textContent = shortcutLabels[action]
+    nameEl.textContent = shortcutActions[action].label
 
     const keyEl = document.createElement('div')
     keyEl.className = 'shortcut-key'
-    keyEl.textContent = waitingShortcutAction === action ? '请按键...' : formatShortcutKey(shortcutConfig[action])
+    keyEl.textContent = waitingShortcutAction === action ? '请按键...' : formatShortcutKey(currentConfig[action])
 
     const editBtn = document.createElement('button')
     editBtn.textContent = waitingShortcutAction === action ? '取消' : '修改'
@@ -186,32 +320,53 @@ function renderShortcutPanel() {
       renderShortcutPanel()
     })
 
+    const clearBtn = document.createElement('button')
+    clearBtn.textContent = '清空'
+    clearBtn.title = '清空该动作的快捷键绑定'
+    clearBtn.disabled = !currentConfig[action]
+    clearBtn.addEventListener('click', () => {
+      clearShortcutForAction(action)
+    })
+
     row.appendChild(nameEl)
     row.appendChild(keyEl)
     row.appendChild(editBtn)
+    row.appendChild(clearBtn)
     shortcutList.appendChild(row)
   })
 }
 
 function showShortcutPanel() {
   if (!shortcutOverlay) return
+  draftShortcutConfig = cloneShortcutConfig(shortcutConfig)
   waitingShortcutAction = null
   renderShortcutPanel()
   shortcutOverlay.classList.add('visible')
   shortcutOverlay.setAttribute('aria-hidden', 'false')
 }
 
-function hideShortcutPanel() {
+function hideShortcutPanel(options = {}) {
   if (!shortcutOverlay) return
+  const { force = false } = options
+
+  if (!force && hasUnsavedShortcutChanges()) {
+    const confirmed = confirm('快捷键修改尚未保存，确认放弃本次修改并退出吗？')
+    if (!confirmed) {
+      return false
+    }
+  }
+
   waitingShortcutAction = null
+  draftShortcutConfig = null
   shortcutOverlay.classList.remove('visible')
   shortcutOverlay.setAttribute('aria-hidden', 'true')
+  return true
 }
 
 function matchShortcutActionByKey(key) {
-  const normalizedKey = normalizeShortcutKey(key)
+  const normalizedKey = normalizeShortcutString(key)
   if (!normalizedKey) return null
-  return Object.keys(shortcutConfig).find(action => shortcutConfig[action] === normalizedKey) || null
+  return shortcutActionOrder.find(action => shortcutConfig[action] === normalizedKey) || null
 }
 
 function showSongPage() {
@@ -577,17 +732,17 @@ function playNextTrack() {
 }
 
 document.addEventListener('keydown', (e) => {
-  const normalizedKey = normalizeShortcutKey(e.key)
-  if (!normalizedKey) return
+  const pressedShortcut = getShortcutFromKeyboardEvent(e)
 
   if (waitingShortcutAction) {
     e.preventDefault()
-    if (normalizedKey === 'Escape') {
+    if (e.key === 'Escape') {
       waitingShortcutAction = null
       renderShortcutPanel()
       return
     }
-    setShortcutForAction(waitingShortcutAction, normalizedKey)
+    if (!pressedShortcut) return
+    setShortcutForAction(waitingShortcutAction, pressedShortcut)
     waitingShortcutAction = null
     renderShortcutPanel()
     return
@@ -595,18 +750,23 @@ document.addEventListener('keydown', (e) => {
 
   const isShortcutPanelVisible = !!(shortcutOverlay && shortcutOverlay.classList.contains('visible'))
   if (isShortcutPanelVisible) {
-    if (normalizedKey === 'Escape') {
+    if (e.key === 'Escape') {
       e.preventDefault()
       hideShortcutPanel()
     }
     return
   }
 
+  if (!pressedShortcut) return
   if (isEditableElement(e.target)) return
-  if (e.ctrlKey || e.metaKey || e.altKey) return
 
-  const action = matchShortcutActionByKey(normalizedKey)
+  const action = matchShortcutActionByKey(pressedShortcut)
   if (!action) return
+
+  if (e.repeat && (action === 'togglePlay' || action === 'toggleLoop')) {
+    return
+  }
+
   e.preventDefault()
   handleShortcutAction(action)
 })
@@ -1015,7 +1175,24 @@ if (shortcutOverlay) {
 
 if (shortcutResetBtn) {
   shortcutResetBtn.addEventListener('click', () => {
+    const confirmed = confirm('确定要恢复默认快捷键吗？\n当前自定义绑定将被覆盖。')
+    if (!confirmed) return
     resetShortcuts()
+  })
+}
+
+if (shortcutConfirmBtn) {
+  shortcutConfirmBtn.addEventListener('click', () => {
+    applyShortcutChanges()
+    hideShortcutPanel({ force: true })
+  })
+}
+
+if (windowMinimizeBtn) {
+  windowMinimizeBtn.addEventListener('click', () => {
+    if (window.electronAPI && window.electronAPI.minimizeWindow) {
+      window.electronAPI.minimizeWindow()
+    }
   })
 }
 
@@ -1042,10 +1219,7 @@ nextBtn.addEventListener('click', () => {
 
 // Single-song loop toggle
 loopBtn.addEventListener('click', () => {
-  isLooping = !isLooping
-  audio.loop = isLooping
-  loopBtn.classList.toggle('btn-active', isLooping)
-  loopBtn.title = isLooping ? '单曲循环: 开' : '单曲循环: 关'
+  toggleLoopState()
 })
 
 // Auto-advance to next track when current one ends (only when not looping)

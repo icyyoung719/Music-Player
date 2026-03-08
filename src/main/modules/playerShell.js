@@ -296,6 +296,16 @@ function initializeShell() {
       playbackState = normalizePlaybackState(state)
       refreshTrayMenu()
     })
+
+    ipcMain.handle('window:minimize', () => {
+      const target = getActiveWindow()
+      if (!target || target.isDestroyed()) {
+        return { ok: false }
+      }
+
+      target.minimize()
+      return { ok: true }
+    })
   }
 }
 

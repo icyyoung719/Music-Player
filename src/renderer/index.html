@@ -755,7 +755,7 @@
     }
     .shortcut-row {
       display: grid;
-      grid-template-columns: 1fr auto auto;
+      grid-template-columns: 1fr auto auto auto;
       gap: 8px;
       align-items: center;
       border: 1px solid var(--line);
@@ -781,12 +781,26 @@
     }
     .shortcut-actions {
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
+      align-items: center;
       gap: 8px;
+    }
+    .shortcut-reset {
+      opacity: 0.82;
+    }
+    .shortcut-reset:hover {
+      opacity: 1;
+    }
+    .shortcut-confirm {
+      background: linear-gradient(145deg, var(--accent), var(--accent-2));
+      color: #fff;
+      border-color: transparent;
+      min-width: 92px;
+      font-weight: 700;
     }
     .shortcut-actions button,
     .shortcut-row button {
-      min-width: 68px;
+      min-width: 56px;
     }
 
     @keyframes page-rise {
@@ -952,7 +966,7 @@
           <span class="play-mode-label">播放器模式</span>
           <button class="theme-toggle" data-theme-toggle title="切换明暗主题">🌙 暗色</button>
           <button class="icon-btn" title="全屏">⛶</button>
-          <button class="icon-btn" title="最小化">－</button>
+          <button class="icon-btn" id="windowMinimizeBtn" title="最小化">－</button>
           <button class="icon-btn" title="最大化">□</button>
           <button class="icon-btn" title="关闭">✕</button>
         </div>
@@ -1076,12 +1090,13 @@
         <button id="shortcutCloseBtn" title="关闭">关闭</button>
       </div>
       <div class="shortcut-tip">
-        空格控制播放/暂停，左右方向键控制快退/快进。<br>
-        点击“修改”后按下新按键即可保存。
+        支持单键与组合键（示例：<code>Space</code>、<code>Ctrl+Right</code>、<code>Alt+M</code>）。<br>
+        点击“修改”后按下目标按键可保存，点击“清空”可取消该功能绑定。
       </div>
       <div class="shortcut-list" id="shortcutList"></div>
       <div class="shortcut-actions">
-        <button id="shortcutResetBtn" title="恢复默认快捷键">恢复默认</button>
+        <button id="shortcutResetBtn" class="shortcut-reset" title="恢复默认快捷键">恢复默认</button>
+        <button id="shortcutConfirmBtn" class="shortcut-confirm" title="确认并关闭快捷键面板">确认</button>
       </div>
     </div>
   </div>
