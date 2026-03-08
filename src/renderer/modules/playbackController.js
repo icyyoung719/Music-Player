@@ -20,6 +20,8 @@ export function createPlaybackController(options) {
   let playlist = []
   let currentIndex = -1
   let isLooping = false
+  let isSeeking = false
+  let previewSeekRatio = null
 
   function setPlayButtonState(isPlaying) {
     if (!dom.playBtn) return
@@ -51,8 +53,21 @@ export function createPlaybackController(options) {
 
   function resetProgress() {
     dom.progressBar.style.width = '0%'
+    dom.progressContainer.style.setProperty('--progress', '0%')
     dom.currentTimeEl.textContent = '0:00'
     dom.totalTimeEl.textContent = '0:00'
+  }
+
+  function updateProgressUIByRatio(ratio, currentTime) {
+    const safeRatio = Math.max(0, Math.min(1, ratio || 0))
+    const pct = safeRatio * 100
+    const pctText = pct + '%'
+    dom.progressBar.style.width = pctText
+    dom.progressContainer.style.setProperty('--progress', pctText)
+
+    if (Number.isFinite(currentTime)) {
+      dom.currentTimeEl.textContent = formatTime(currentTime)
+    }
   }
 
   function resetTrackMeta() {
@@ -362,6 +377,38 @@ export function createPlaybackController(options) {
   }
 
   function bindAudioEvents() {
+    const getSeekRatioFromClientX = (clientX) => {
+      const rect = dom.progressContainer.getBoundingClientRect()
+      const ratio = (clientX - rect.left) / rect.width
+      return Math.max(0, Math.min(1, ratio))
+    }
+
+    const updateSeekPreview = (ratio) => {
+      if (!audio.duration) return
+      previewSeekRatio = Math.max(0, Math.min(1, ratio))
+      updateProgressUIByRatio(previewSeekRatio, previewSeekRatio * audio.duration)
+    }
+
+    const commitSeekPreview = () => {
+      if (!audio.duration || previewSeekRatio === null) return
+      audio.currentTime = previewSeekRatio * audio.duration
+      previewSeekRatio = null
+    }
+
+    const endSeeking = (pointerId, shouldCommit = true) => {
+      if (!isSeeking) return
+      if (shouldCommit) {
+        commitSeekPreview()
+      } else {
+        previewSeekRatio = null
+      }
+      isSeeking = false
+      dom.progressContainer.classList.remove('seeking')
+      if (pointerId !== undefined && dom.progressContainer.hasPointerCapture(pointerId)) {
+        dom.progressContainer.releasePointerCapture(pointerId)
+      }
+    }
+
     audio.addEventListener('ended', () => {
       if (isLooping) return
       if (currentIndex < playlist.length - 1) {
@@ -383,21 +430,36 @@ export function createPlaybackController(options) {
     })
 
     audio.addEventListener('timeupdate', () => {
-      if (!audio.duration) return
-      const pct = (audio.currentTime / audio.duration) * 100
-      dom.progressBar.style.width = pct + '%'
-      dom.currentTimeEl.textContent = formatTime(audio.currentTime)
+      if (!audio.duration || isSeeking) return
+      updateProgressUIByRatio(audio.currentTime / audio.duration, audio.currentTime)
     })
 
     audio.addEventListener('loadedmetadata', () => {
       dom.totalTimeEl.textContent = formatTime(audio.duration)
+      updateProgressUIByRatio(audio.duration ? audio.currentTime / audio.duration : 0, audio.currentTime)
     })
 
-    dom.progressContainer.addEventListener('click', (e) => {
+    dom.progressContainer.addEventListener('pointerdown', (e) => {
       if (!audio.duration) return
-      const rect = dom.progressContainer.getBoundingClientRect()
-      const ratio = (e.clientX - rect.left) / rect.width
-      audio.currentTime = Math.max(0, Math.min(1, ratio)) * audio.duration
+      isSeeking = true
+      dom.progressContainer.classList.add('seeking')
+      dom.progressContainer.setPointerCapture(e.pointerId)
+      updateSeekPreview(getSeekRatioFromClientX(e.clientX))
+    })
+
+    dom.progressContainer.addEventListener('pointermove', (e) => {
+      if (!isSeeking) return
+      updateSeekPreview(getSeekRatioFromClientX(e.clientX))
+    })
+
+    dom.progressContainer.addEventListener('pointerup', (e) => {
+      if (!isSeeking) return
+      updateSeekPreview(getSeekRatioFromClientX(e.clientX))
+      endSeeking(e.pointerId)
+    })
+
+    dom.progressContainer.addEventListener('pointercancel', (e) => {
+      endSeeking(e.pointerId, false)
     })
   }
 
