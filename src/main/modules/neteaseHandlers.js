@@ -494,8 +494,15 @@ async function resolveSongUrlWithLevelFallback(songId, preferredLevel) {
 function isNeteaseAudioHost(rawUrl) {
   try {
     const u = new URL(rawUrl)
-    if (u.protocol !== 'https:') return false
-    return /(^|\.)music\.126\.net$/i.test(u.hostname)
+    const protocolAllowed = u.protocol === 'https:' || u.protocol === 'http:'
+    if (!protocolAllowed) return false
+
+    const hostAllowed =
+      /(^|\.)music\.126\.net$/i.test(u.hostname) ||
+      /(^|\.)vod\.126\.net$/i.test(u.hostname) ||
+      /(^|\.)nosdn\.127\.net$/i.test(u.hostname)
+
+    return hostAllowed
   } catch {
     return false
   }
@@ -1276,7 +1283,11 @@ function registerNeteaseHandlers() {
       const resolved = resolveResult.resolved
 
       if (!isNeteaseAudioHost(resolved.url)) {
-        return { ok: false, error: 'URL_NOT_ALLOWED' }
+        return {
+          ok: false,
+          error: 'URL_NOT_ALLOWED',
+          message: `音源地址不在白名单域名内: ${resolved.url}`
+        }
       }
 
       return {
@@ -1314,7 +1325,11 @@ function registerNeteaseHandlers() {
       const resolved = resolveResult.resolved
 
       if (!isNeteaseAudioHost(resolved.url)) {
-        return { ok: false, error: 'URL_NOT_ALLOWED' }
+        return {
+          ok: false,
+          error: 'URL_NOT_ALLOWED',
+          message: `音源地址不在白名单域名内: ${resolved.url}`
+        }
       }
 
       const fileName = safeFileName(payload?.fileName || `${songId}-${level}`)

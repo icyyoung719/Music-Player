@@ -455,6 +455,8 @@ export function createNeteaseManager(options) {
       const msg = res?.message || res?.error || 'DOWNLOAD_CREATE_FAILED'
       if (res?.error === 'URL_NOT_FOUND') {
         setResult(`创建下载任务失败: ${msg}（可能受版权或账号权限限制）`, true)
+      } else if (res?.error === 'URL_NOT_ALLOWED') {
+        setResult(`创建下载任务失败: ${msg}`, true)
       } else {
         setResult(`创建下载任务失败: ${msg}`, true)
       }
