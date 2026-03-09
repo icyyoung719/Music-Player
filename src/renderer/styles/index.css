@@ -115,6 +115,56 @@ body {
   color: var(--text-sub);
   font-size: 13px;
 }
+.home-user-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+}
+.home-user-avatar {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-sub);
+  background:
+    radial-gradient(circle at 70% 24%, rgba(255,255,255,0.46), transparent 45%),
+    linear-gradient(145deg, rgba(233, 118, 89, 0.34), rgba(96, 78, 153, 0.26));
+  background-size: cover;
+  background-position: center;
+  font-size: 12px;
+  font-weight: 700;
+}
+.home-user-text {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+.home-user-name {
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 160px;
+}
+.home-user-detail {
+  color: var(--text-sub);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 240px;
+}
 .shortcut-btn {
   padding: 8px 12px;
   border-radius: 999px;
@@ -1070,6 +1120,14 @@ button.btn-active {
 }
 @media (max-width: 1080px) {
   .home-topbar { grid-template-columns: 1fr; padding: 10px; }
+  .home-user {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .home-user-account {
+    max-width: min(100%, 360px);
+    border-radius: 12px;
+  }
   .home-body {
     grid-template-columns: 1fr;
     padding: 10px;

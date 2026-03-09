@@ -668,6 +668,14 @@ export function createNeteaseManager(options) {
       })
     }
 
+    if (electronAPI && electronAPI.onNeteaseAuthStateUpdate) {
+      electronAPI.onNeteaseAuthStateUpdate((payload) => {
+        if (payload?.state) {
+          applyAuthStateToForm(payload.state)
+        }
+      })
+    }
+
     refreshAuthState()
     loadTasks()
   }

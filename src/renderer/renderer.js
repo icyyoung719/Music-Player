@@ -3,6 +3,7 @@ import { createShortcutManager } from './modules/shortcutManager.js'
 import { createSavedPlaylistManager } from './modules/savedPlaylistManager.js'
 import { createPlaybackController } from './modules/playbackController.js'
 import { createNeteaseManager } from './modules/neteaseManager.js'
+import { createAccountManager } from './modules/accountManager.js'
 
 const homePageEl = document.getElementById('homePage')
 const songPageEl = document.getElementById('songPage')
@@ -12,6 +13,9 @@ const homeFeaturedCoverEl = document.getElementById('homeFeaturedCover')
 const windowMinimizeBtn = document.getElementById('windowMinimizeBtn')
 const homeLoginBtn = document.getElementById('homeLoginBtn')
 const neteaseAuthOpenWindowBtn = document.getElementById('neteaseAuthOpenWindowBtn')
+const homeUserNameEl = document.getElementById('homeUserName')
+const homeUserDetailEl = document.getElementById('homeUserDetail')
+const homeUserAvatarEl = document.getElementById('homeUserAvatar')
 
 const shortcutDom = {
   shortcutBtn: document.getElementById('shortcutBtn'),
@@ -122,6 +126,7 @@ const shortcutActions = {
 
 let shortcutManager = null
 let playbackController = null
+let accountManager = null
 
 function showSongPage() {
   if (homePageEl) homePageEl.classList.add('page-hidden')
@@ -261,13 +266,24 @@ function openNeteaseAuthWindow(page = 'email') {
 }
 
 function setupNeteaseAuthWindowEntrances() {
-  if (homeLoginBtn) {
-    homeLoginBtn.addEventListener('click', () => openNeteaseAuthWindow('email'))
-  }
-
   if (neteaseAuthOpenWindowBtn) {
     neteaseAuthOpenWindowBtn.addEventListener('click', () => openNeteaseAuthWindow('email'))
   }
+}
+
+function setupAccountManager() {
+  accountManager = createAccountManager({
+    electronAPI: window.electronAPI,
+    dom: {
+      userNameEl: homeUserNameEl,
+      userDetailEl: homeUserDetailEl,
+      avatarEl: homeUserAvatarEl,
+      loginBtnEl: homeLoginBtn
+    },
+    onRequestLoginWindow: () => openNeteaseAuthWindow('email')
+  })
+
+  accountManager.init()
 }
 
 function setupPlaybackController() {
@@ -385,6 +401,7 @@ function initRenderer() {
   setupPlaybackController()
   setupSavedPlaylistManager()
   setupNeteaseManager()
+  setupAccountManager()
   setupShortcutManager()
   setupPlayerControlListener()
 

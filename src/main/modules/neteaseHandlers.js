@@ -23,6 +23,11 @@ let authState = {
   refreshToken: '',
   userName: '',
   userId: '',
+  avatarUrl: '',
+  signature: '',
+  vipType: 0,
+  follows: 0,
+  followeds: 0,
   updatedAt: 0
 }
 
@@ -210,6 +215,12 @@ function sanitizeQrKey(qrKey) {
   return text
 }
 
+function normalizeAvatarUrl(value) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  return text.replace(/^http:\/\//i, 'https://')
+}
+
 function normalizeCookieHeader(setCookieHeader) {
   if (!Array.isArray(setCookieHeader)) return ''
   return setCookieHeader
@@ -282,17 +293,49 @@ async function refreshProfileFromAuth() {
     const profile = data?.profile || null
     if (!profile) return null
 
-    authState.userId = String(profile.userId || authState.userId || '')
-    authState.userName = String(profile.nickname || authState.userName || '')
+    applyProfileToAuthState(profile)
+    await enrichAuthStateProfileByUserId(authState.userId)
     await persistAuthState()
 
-    return {
-      userId: authState.userId,
-      userName: authState.userName
-    }
+    return getPublicAccountSummary()
   } catch {
     return null
   }
+}
+
+async function fetchUserDetailProfile(userId) {
+  const uid = String(userId || '').trim()
+  if (!uid) return null
+
+  try {
+    const url = `https://music.163.com/api/v1/user/detail/${encodeURIComponent(uid)}`
+    const data = await requestJson(url, {
+      method: 'GET',
+      headers: buildAuthHeaders(),
+      timeout: 12000
+    })
+    return data?.profile || null
+  } catch {
+    return null
+  }
+}
+
+async function enrichAuthStateProfileByUserId(userId) {
+  const detailProfile = await fetchUserDetailProfile(userId)
+  if (!detailProfile) return
+  applyProfileToAuthState(detailProfile)
+}
+
+function applyProfileToAuthState(profile) {
+  if (!profile || typeof profile !== 'object') return
+
+  authState.userId = String(profile.userId || authState.userId || '')
+  authState.userName = String(profile.nickname || authState.userName || '')
+  authState.avatarUrl = normalizeAvatarUrl(profile.avatarUrl || authState.avatarUrl || '')
+  authState.signature = String(profile.signature || authState.signature || '')
+  authState.vipType = Number(profile.vipType ?? authState.vipType ?? 0) || 0
+  authState.follows = Number(profile.follows ?? authState.follows ?? 0) || 0
+  authState.followeds = Number(profile.followeds ?? authState.followeds ?? 0) || 0
 }
 
 async function buildQrCodeDataUrl(content) {
@@ -591,6 +634,7 @@ async function ensureAuthStateLoaded() {
         ...authState,
         ...parsed
       }
+      authState.avatarUrl = normalizeAvatarUrl(authState.avatarUrl)
     }
   } catch (err) {
     if (err.code !== 'ENOENT') {
@@ -610,10 +654,46 @@ function getPublicAuthState() {
     apiBaseUrl: authState.apiBaseUrl,
     userName: authState.userName,
     userId: authState.userId,
+    avatarUrl: authState.avatarUrl,
+    signature: authState.signature,
+    vipType: Number(authState.vipType || 0),
+    follows: Number(authState.follows || 0),
+    followeds: Number(authState.followeds || 0),
+    isLoggedIn: Boolean(authState.userId || authState.cookie),
     hasCookie: Boolean(authState.cookie),
     hasAccessToken: Boolean(authState.accessToken),
     hasRefreshToken: Boolean(authState.refreshToken),
     updatedAt: authState.updatedAt || 0
+  }
+}
+
+function getPublicAccountSummary() {
+  const vipType = Number(authState.vipType || 0)
+  const isLoggedIn = Boolean(authState.userId || authState.cookie)
+  return {
+    isLoggedIn,
+    userName: authState.userName || '',
+    userId: authState.userId || '',
+    avatarUrl: authState.avatarUrl || '',
+    signature: authState.signature || '',
+    follows: Number(authState.follows || 0),
+    followeds: Number(authState.followeds || 0),
+    vipType,
+    vipLabel: vipType > 0 ? `VIP ${vipType}` : '普通用户'
+  }
+}
+
+function emitAuthStateUpdate(reason = 'changed') {
+  const payload = {
+    reason,
+    state: getPublicAuthState(),
+    account: getPublicAccountSummary()
+  }
+
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('netease:auth:state-updated', payload)
+    }
   }
 }
 
@@ -1090,6 +1170,24 @@ function registerNeteaseHandlers() {
     return { ok: true, state: getPublicAuthState() }
   })
 
+  ipcMain.handle('netease:auth:get-account-summary', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+
+    if (payload?.refresh && (authState.cookie || authState.userId)) {
+      try {
+        await refreshProfileFromAuth()
+      } catch {
+        // Ignore refresh errors and return cached summary for UI fallback.
+      }
+    }
+
+    return {
+      ok: true,
+      account: getPublicAccountSummary(),
+      state: getPublicAuthState()
+    }
+  })
+
   ipcMain.handle('netease:auth:update', async (_event, payload) => {
     await ensureAuthStateLoaded()
 
@@ -1102,6 +1200,7 @@ function registerNeteaseHandlers() {
     authState.userId = String(payload?.userId ?? authState.userId ?? '').trim()
 
     await persistAuthState()
+    emitAuthStateUpdate('manual-update')
     return { ok: true, state: getPublicAuthState() }
   })
 
@@ -1156,17 +1255,16 @@ function registerNeteaseHandlers() {
         authState.cookie = cookie
       }
 
-      authState.userName = String(result.data?.profile?.nickname || authState.userName || '')
-      authState.userId = String(result.data?.account?.id || result.data?.profile?.userId || authState.userId || '')
+      applyProfileToAuthState(result.data?.profile)
+      authState.userId = String(result.data?.account?.id || authState.userId || '')
+      await enrichAuthStateProfileByUserId(authState.userId)
       await persistAuthState()
+      emitAuthStateUpdate('login-email')
 
       return {
         ok: true,
         state: getPublicAuthState(),
-        profile: {
-          userName: authState.userName,
-          userId: authState.userId
-        }
+        profile: getPublicAccountSummary()
       }
     } catch (err) {
       console.error('Failed to login with email:', err)
@@ -1325,17 +1423,16 @@ function registerNeteaseHandlers() {
         authState.cookie = cookie
       }
 
-      authState.userName = String(result.data?.profile?.nickname || authState.userName || '')
-      authState.userId = String(result.data?.account?.id || result.data?.profile?.userId || authState.userId || '')
+      applyProfileToAuthState(result.data?.profile)
+      authState.userId = String(result.data?.account?.id || authState.userId || '')
+      await enrichAuthStateProfileByUserId(authState.userId)
       await persistAuthState()
+      emitAuthStateUpdate('login-phone-captcha')
 
       return {
         ok: true,
         state: getPublicAuthState(),
-        profile: {
-          userName: authState.userName,
-          userId: authState.userId
-        }
+        profile: getPublicAccountSummary()
       }
     } catch (err) {
       console.error('Failed to login with phone captcha:', err)
@@ -1445,6 +1542,7 @@ function registerNeteaseHandlers() {
         }
 
         const profile = await refreshProfileFromAuth()
+        emitAuthStateUpdate('qr-authorized')
         const verified = Boolean(profile?.userId || authState.userId)
         return {
           ok: true,
@@ -1490,9 +1588,15 @@ function registerNeteaseHandlers() {
       refreshToken: '',
       userName: '',
       userId: '',
+      avatarUrl: '',
+      signature: '',
+      vipType: 0,
+      follows: 0,
+      followeds: 0,
       updatedAt: Date.now()
     }
     await persistAuthState()
+    emitAuthStateUpdate('clear')
     return { ok: true, state: getPublicAuthState() }
   })
 
@@ -1502,16 +1606,22 @@ function registerNeteaseHandlers() {
       const data = await requestNeteaseApi('/api/w/nuser/account/get', {}, { method: 'POST' })
       const profile = data?.profile || null
       if (profile) {
-        authState.userId = String(profile.userId || authState.userId || '')
-        authState.userName = String(profile.nickname || authState.userName || '')
+        applyProfileToAuthState(profile)
+        await enrichAuthStateProfileByUserId(authState.userId)
         await persistAuthState()
+        emitAuthStateUpdate('verify')
       }
       return {
         ok: true,
         profile: profile
           ? {
               userId: String(profile.userId || ''),
-              nickname: profile.nickname || ''
+              nickname: profile.nickname || '',
+              avatarUrl: profile.avatarUrl || '',
+              signature: profile.signature || '',
+              follows: Number(profile.follows || 0),
+              followeds: Number(profile.followeds || 0),
+              vipType: Number(profile.vipType || 0)
             }
           : null,
         code: Number(data?.code || 0)

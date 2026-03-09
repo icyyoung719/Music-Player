@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   neteaseGetDownloadDir: () => ipcRenderer.invoke('netease:get-download-dir'),
   neteaseDownloadDirect: (payload) => ipcRenderer.invoke('netease:download-direct', payload),
   neteaseAuthGetState: () => ipcRenderer.invoke('netease:auth:get-state'),
+  neteaseAuthGetAccountSummary: (payload) => ipcRenderer.invoke('netease:auth:get-account-summary', payload),
   neteaseAuthUpdate: (payload) => ipcRenderer.invoke('netease:auth:update', payload),
   neteaseAuthLoginEmail: (payload) => ipcRenderer.invoke('netease:auth:login-email', payload),
   neteaseAuthSendCaptcha: (payload) => ipcRenderer.invoke('netease:auth:send-captcha', payload),
@@ -36,6 +37,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const wrapped = (_event, page) => listener(page)
     ipcRenderer.on('netease:auth-window:set-page', wrapped)
     return () => ipcRenderer.removeListener('netease:auth-window:set-page', wrapped)
+  },
+  onNeteaseAuthStateUpdate: (listener) => {
+    if (typeof listener !== 'function') return () => {}
+    const wrapped = (_event, payload) => listener(payload)
+    ipcRenderer.on('netease:auth:state-updated', wrapped)
+    return () => ipcRenderer.removeListener('netease:auth:state-updated', wrapped)
   },
   neteaseAuthRequest: (payload) => ipcRenderer.invoke('netease:auth:request', payload),
   neteaseResolveSongDownloadUrl: (payload) => ipcRenderer.invoke('netease:resolve-song-download-url', payload),

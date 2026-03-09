@@ -404,6 +404,14 @@ function registerEvents() {
     })
   }
 
+  if (window.electronAPI?.onNeteaseAuthStateUpdate) {
+    window.electronAPI.onNeteaseAuthStateUpdate((payload) => {
+      if (payload?.state) {
+        applyState(payload.state)
+      }
+    })
+  }
+
   window.addEventListener('beforeunload', () => {
     stopQrPolling()
   })
