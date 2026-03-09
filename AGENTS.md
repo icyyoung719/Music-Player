@@ -7,7 +7,9 @@ This file helps coding agents work safely and consistently in this Electron musi
 - Install: `npm install`
 - Run app: `npm run start`
 - Main entry: `src/main/main.js`
-- Renderer entry: `src/renderer/renderer.js`
+- Renderer shell: `src/renderer/index.html`
+- Renderer bootstrap: `src/renderer/bootstrap.js`
+- Renderer orchestrator: `src/renderer/renderer.js`
 
 ## Code Map
 - `src/main/modules/playerShell.js`
@@ -17,7 +19,13 @@ This file helps coding agents work safely and consistently in this Electron musi
 - `src/preload/preload.js`
   - Safe API exposure from main to renderer.
 - `src/renderer/index.html`
-  - UI structure and style.
+  - Renderer shell only (CSP/meta, mount root, module script).
+- `src/renderer/bootstrap.js`
+  - Loads HTML partials, mounts DOM, then imports renderer orchestrator.
+- `src/renderer/partials/*.html`
+  - Split page structure (home/song/shortcut overlay).
+- `src/renderer/styles/index.css`
+  - Consolidated UI styling and responsive rules.
 - `src/renderer/modules/*.js`
   - Feature modules for playback, shortcuts, theme, playlists.
 

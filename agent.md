@@ -10,7 +10,10 @@
 ## Architecture
 - Main process: app lifecycle, tray, media shortcuts, IPC registration.
 - Preload: secure bridge via `contextBridge` and `ipcRenderer`.
+- Renderer shell: `src/renderer/index.html` provides CSP/meta and mount root.
+- Renderer bootstrap: `src/renderer/bootstrap.js` loads partial DOM before orchestrator runs.
 - Renderer orchestrator: `src/renderer/renderer.js` wires modules and DOM.
+- Renderer view split: `src/renderer/partials/*.html` + `src/renderer/styles/index.css`.
 - Renderer modules:
   - `playbackController.js`: queue, audio lifecycle, progress/seek, metadata sync.
   - `savedPlaylistManager.js`: saved playlists UI + import/export.
@@ -36,10 +39,11 @@
 
 ## Common Change Workflow
 1. Read target module and related IPC/preload calls.
-2. Implement narrow change in module layer first.
-3. Update renderer wiring only if needed.
-4. Run app with `npm run start` for manual verification.
-5. If UI behavior changes, also sanity-check theme variants.
+2. If UI markup/CSS is involved, decide layer first: `partials`, `styles`, or `renderer` wiring.
+3. Implement narrow change in module layer first.
+4. Update renderer wiring only if needed.
+5. Run app with `npm run start` for manual verification.
+6. If UI behavior changes, also sanity-check theme variants and both home/song pages.
 
 ## Known Gaps
 - No unit/integration test harness yet.

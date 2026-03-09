@@ -1,0 +1,188 @@
+<div class="song-page page-hidden" id="songPage">
+  <div class="song-page-bg">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn" id="songBackBtn" title="返回主页面">⌄</button>
+      </div>
+      <div class="topbar-right">
+        <span class="play-mode-label">播放器模式</span>
+        <button class="theme-toggle" data-theme-toggle title="切换明暗主题">🌙 暗色</button>
+        <button class="icon-btn" title="全屏">⛶</button>
+        <button class="icon-btn" id="windowMinimizeBtn" title="最小化">－</button>
+        <button class="icon-btn" title="最大化">□</button>
+        <button class="icon-btn" title="关闭">✕</button>
+      </div>
+    </header>
+
+    <main class="main">
+      <section class="left-panel">
+        <div class="cover">
+          <span class="cover-placeholder">🎵</span>
+          <img id="coverImg" alt="Album Cover">
+        </div>
+      </section>
+
+      <section class="right-panel">
+        <div class="meta-block">
+          <div class="meta-row">
+            <div class="track-title" id="trackTitle">未选择歌曲</div>
+            <span class="meta-tag">本地</span>
+            <span class="meta-tag">MV</span>
+          </div>
+          <div class="track-artist" id="trackArtist">请选择本地音乐文件开始播放</div>
+          <div class="track-album" id="trackAlbum"></div>
+        </div>
+
+        <div class="tabs">
+          <button class="tab active">歌词</button>
+          <button class="tab">百科</button>
+          <button class="tab">相似推荐</button>
+        </div>
+
+        <div class="content-stack">
+          <div class="content-main">
+            <div class="lyrics-placeholder">
+              作词 / 作曲 / 编曲信息区域（占位）<br>
+              歌词滚动区域（占位）<br>
+              后续可接入逐行高亮与自动滚动。
+            </div>
+
+            <div class="panel-card">
+              <div class="file-actions">
+                <label for="fileInput" class="file-label">🎵 添加文件</label>
+                <input type="file" id="fileInput" accept="audio/*" multiple>
+                <button id="folderBtn">📂 添加文件夹</button>
+                <button id="clearBtn">🗑 清空列表</button>
+              </div>
+
+              <div style="margin-top: 10px; margin-bottom: 6px; font-size: 13px; color: rgba(255,255,255,0.82);">当前播放列表</div>
+              <div class="playlist" id="playlist"></div>
+
+              <section class="netease-box">
+                <h3>☁ 网易云授权接入</h3>
+                <div class="netease-tip">支持邮箱登录、手机号+验证码登录（更友好）、保存授权配置、验证登录态，并创建“按歌曲 ID 下载”任务。下载目录默认 `%USERPROFILE%\\Music\\MyPlayerDownloads`。</div>
+
+                <div class="netease-auth-status" id="neteaseAuthStatus">授权状态: 未加载</div>
+                <div class="netease-auth-grid">
+                  <input id="neteaseAuthApiBase" class="full" type="text" placeholder="API Base（默认 https://music.163.com）">
+                  <input id="neteaseAuthEmail" type="text" placeholder="网易云邮箱账号">
+                  <input id="neteaseAuthPassword" type="password" placeholder="网易云密码">
+                  <input id="neteaseAuthCountryCode" type="text" placeholder="国家码（默认 86）" value="86">
+                  <input id="neteaseAuthPhone" type="text" placeholder="手机号">
+                  <input id="neteaseAuthCaptcha" type="text" placeholder="短信验证码">
+                  <input id="neteaseAuthUserName" type="text" placeholder="用户昵称（可选）">
+                  <input id="neteaseAuthUserId" type="text" placeholder="用户 ID（可选）">
+                  <input id="neteaseAuthAccessToken" type="text" placeholder="Access Token（可选）">
+                  <input id="neteaseAuthRefreshToken" type="text" placeholder="Refresh Token（可选）">
+                </div>
+                <div class="netease-row">
+                  <button id="neteaseAuthEmailLoginBtn">邮箱登录</button>
+                  <button id="neteaseAuthSendCaptchaBtn">发送验证码</button>
+                  <button id="neteaseAuthPhoneCaptchaLoginBtn">手机号+验证码登录</button>
+                  <button id="neteaseAuthSaveBtn">保存授权信息</button>
+                  <button id="neteaseAuthVerifyBtn">验证授权</button>
+                  <button id="neteaseAuthClearBtn">清空授权</button>
+                </div>
+
+                <div class="netease-qr-box">
+                  <div class="netease-qr-view" id="neteaseQrView">
+                    <img id="neteaseQrImg" alt="二维码登录">
+                    <span id="neteaseQrPlaceholder">点击“生成二维码”开始</span>
+                  </div>
+                  <div class="netease-qr-link" id="neteaseQrLink">二维码登录链接将在这里显示</div>
+                  <div class="netease-row">
+                    <button id="neteaseAuthQrCreateBtn">生成二维码</button>
+                    <button id="neteaseAuthQrOpenBtn">打开二维码链接</button>
+                    <button id="neteaseAuthQrStartPollBtn">开始轮询状态</button>
+                    <button id="neteaseAuthQrStopPollBtn">停止轮询</button>
+                  </div>
+                </div>
+
+                <div class="netease-result" id="neteaseResult">请输入 ID 后点击“查询”。</div>
+                <div class="netease-row">
+                  <input id="neteaseSongIdDownloadInput" type="text" placeholder="输入歌曲 ID 直接下载（需授权）">
+                  <select id="neteaseDownloadLevelSelect">
+                    <option value="standard">standard</option>
+                    <option value="higher">higher</option>
+                    <option value="exhigh" selected>exhigh</option>
+                    <option value="lossless">lossless</option>
+                  </select>
+                  <button id="neteaseDownloadSongBtn">按 ID 下载</button>
+                  <button id="neteaseDownloadSongAndQueueBtn">下载并加入当前列表</button>
+                </div>
+                <div class="netease-row">
+                  <button id="neteaseDownloadDirBtn">查看下载目录</button>
+                  <input id="neteaseDirectUrlInput" type="text" placeholder="粘贴官方直链（https://...music.126.net/...）">
+                  <button id="neteaseDirectDownloadBtn">下载直链到本地</button>
+                </div>
+                <div class="netease-task-list" id="neteaseTaskList">
+                  <div class="netease-task-empty">暂无下载任务</div>
+                </div>
+              </section>
+
+              <section class="saved-playlists" style="margin-top: 12px;">
+                <h3>📚 我的歌单</h3>
+                <div class="saved-row">
+                  <select id="savedPlaylistSelect">
+                    <option value="">暂无歌单</option>
+                  </select>
+                  <button id="savedCreateBtn">新建</button>
+                  <button id="savedRenameBtn">重命名</button>
+                  <button id="savedDeleteBtn">删除</button>
+                </div>
+                <div class="saved-row">
+                  <button id="savedAppendToQueueBtn">添加到当前列表</button>
+                  <button id="savedReplaceQueueBtn">替换当前列表</button>
+                  <button id="savedAddCurrentBtn">添加到当前歌单</button>
+                  <button id="savedImportBtn">导入 JSON</button>
+                  <button id="savedExportBtn">导出 JSON</button>
+                </div>
+                <div class="saved-tracks" id="savedTracks"></div>
+              </section>
+            </div>
+          </div>
+
+          <aside class="float-tools">
+            <button title="喜欢">♥</button>
+            <button title="评论">💬</button>
+            <button title="音效">音</button>
+            <button title="翻译">译</button>
+            <button title="更多">⋯</button>
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer class="bottombar">
+      <div class="progress-section">
+        <div class="time-display">
+          <span id="currentTime">0:00</span>
+          <span id="totalTime">0:00</span>
+        </div>
+        <div class="progress-container" id="progressContainer">
+          <div class="progress-bar" id="progressBar"></div>
+        </div>
+      </div>
+
+      <div class="bottom-main">
+        <div class="bottom-left">
+          <div class="bottom-track" id="bottomTrackTitle">&nbsp;</div>
+          <div class="bottom-artist" id="bottomTrackArtist">&nbsp;</div>
+        </div>
+
+        <div class="controls">
+          <button id="loopBtn" title="单曲循环: 关">🔂</button>
+          <button id="prevBtn" title="上一首">⏮</button>
+          <button id="playBtn" title="播放 / 暂停">▶</button>
+          <button id="nextBtn" title="下一首">⏭</button>
+        </div>
+
+        <div class="bottom-right">
+          <button class="icon-btn" title="歌词">词</button>
+          <button class="icon-btn" title="音量">🔊</button>
+          <button class="icon-btn" title="更多">⋯</button>
+        </div>
+      </div>
+    </footer>
+  </div>
+</div>
