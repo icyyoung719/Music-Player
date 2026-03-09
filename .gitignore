@@ -17,3 +17,7 @@ dist/
 build/
 out/
 release/
+
+# IDE 和编辑器配置文件
+.vscode/
+.idea/

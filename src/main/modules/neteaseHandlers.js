@@ -10,6 +10,8 @@ let handlersRegistered = false
 
 const DEFAULT_DOWNLOAD_DIR = path.join(os.homedir(), 'Music', 'MyPlayerDownloads')
 const AUTH_STORE_NAME = 'netease-auth.json'
+const TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
+const TRACK_COVER_DIR_NAME = 'netease-track-covers'
 const MAX_DOWNLOAD_CONCURRENCY = 2
 const NETEASE_BASE_COOKIE = 'appver=2.7.1.198277; os=pc'
 
@@ -23,6 +25,9 @@ let authState = {
   userId: '',
   updatedAt: 0
 }
+
+let trackMetadataLoaded = false
+let trackMetadataStore = {}
 
 const downloadTasks = new Map()
 const pendingTaskIds = []
@@ -300,6 +305,153 @@ async function buildQrCodeDataUrl(content) {
 
 function getAuthStorePath() {
   return path.join(app.getPath('userData'), AUTH_STORE_NAME)
+}
+
+function getTrackMetadataStorePath() {
+  return path.join(app.getPath('userData'), TRACK_METADATA_STORE_NAME)
+}
+
+function getTrackCoverDirPath() {
+  return path.join(app.getPath('userData'), TRACK_COVER_DIR_NAME)
+}
+
+function normalizeTrackPathKey(filePath) {
+  const resolved = path.resolve(String(filePath || ''))
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+async function ensureTrackMetadataLoaded() {
+  if (trackMetadataLoaded) return
+  trackMetadataLoaded = true
+
+  try {
+    const content = await fs.promises.readFile(getTrackMetadataStorePath(), 'utf8')
+    const parsed = JSON.parse(content)
+    trackMetadataStore = parsed && typeof parsed === 'object' ? parsed : {}
+  } catch (err) {
+    trackMetadataStore = {}
+    if (err.code !== 'ENOENT') {
+      console.error('Failed to read netease track metadata store:', err)
+    }
+  }
+}
+
+async function persistTrackMetadataStore() {
+  await fs.promises.mkdir(path.dirname(getTrackMetadataStorePath()), { recursive: true })
+  await fs.promises.writeFile(getTrackMetadataStorePath(), JSON.stringify(trackMetadataStore, null, 2), 'utf8')
+}
+
+function normalizeAudioExt(value) {
+  const text = String(value || '').replace(/^\./, '').trim().toLowerCase()
+  const allowed = new Set(['mp3', 'flac', 'm4a', 'aac', 'wav', 'ogg', 'opus'])
+  if (allowed.has(text)) return text
+  return ''
+}
+
+function resolveAudioExtByUrl(rawUrl) {
+  try {
+    const ext = path.extname(new URL(rawUrl).pathname || '')
+    return normalizeAudioExt(ext)
+  } catch {
+    return ''
+  }
+}
+
+function resolveAudioExtByResolvedUrl(resolved) {
+  const fromType = normalizeAudioExt(resolved?.type)
+  if (fromType) return fromType
+  const fromUrl = resolveAudioExtByUrl(resolved?.url)
+  if (fromUrl) return fromUrl
+  return 'mp3'
+}
+
+function resolveCoverExtByUrl(rawUrl) {
+  try {
+    const ext = path.extname(new URL(rawUrl).pathname || '').replace('.', '').toLowerCase()
+    const allowed = new Set(['jpg', 'jpeg', 'png', 'webp'])
+    if (allowed.has(ext)) return ext === 'jpeg' ? 'jpg' : ext
+  } catch {
+    // fall through
+  }
+  return 'jpg'
+}
+
+function extractSongMetadata(song, fallbackSongId) {
+  if (!song || typeof song !== 'object') return null
+
+  const artist = Array.isArray(song.ar)
+    ? song.ar.map((item) => item?.name).filter(Boolean).join(' / ')
+    : Array.isArray(song.artists)
+      ? song.artists.map((item) => item?.name).filter(Boolean).join(' / ')
+      : ''
+
+  const album = song.al || song.album || null
+  const publishTime = Number(album?.publishTime || 0)
+  const year = publishTime > 0 ? new Date(publishTime).getFullYear() : null
+
+  return {
+    songId: String(song.id || fallbackSongId || ''),
+    title: String(song.name || '').trim(),
+    artist: String(artist || '').trim(),
+    album: String(album?.name || '').trim(),
+    year: Number.isFinite(year) ? year : null,
+    coverUrl: String(album?.picUrl || '').trim()
+  }
+}
+
+async function fetchSongMetadataById(songId) {
+  try {
+    const url = `https://music.163.com/api/song/detail/?ids=[${songId}]`
+    const data = await requestJson(url)
+    const song = Array.isArray(data?.songs) ? data.songs[0] : null
+    return extractSongMetadata(song, songId)
+  } catch (err) {
+    console.warn('Failed to fetch song detail metadata:', err?.message || err)
+    return null
+  }
+}
+
+async function persistTrackMetadataForTask(task) {
+  if (!task || !task.filePath || task.status !== 'succeeded') return
+
+  const sourceMetadata = task.songMetadata && typeof task.songMetadata === 'object'
+    ? task.songMetadata
+    : null
+  if (!sourceMetadata) return
+
+  const entry = {
+    songId: sourceMetadata.songId || task.songId || '',
+    title: sourceMetadata.title || task.title || path.basename(task.filePath),
+    artist: sourceMetadata.artist || '',
+    album: sourceMetadata.album || '',
+    year: Number.isFinite(Number(sourceMetadata.year)) ? Number(sourceMetadata.year) : null,
+    coverPath: '',
+    coverUrl: sourceMetadata.coverUrl || '',
+    updatedAt: Date.now()
+  }
+
+  if (entry.coverUrl) {
+    try {
+      const coverBuffer = await requestBuffer(entry.coverUrl, {
+        headers: buildAuthHeaders(),
+        timeout: 12000
+      })
+      if (coverBuffer.length > 0) {
+        await fs.promises.mkdir(getTrackCoverDirPath(), { recursive: true })
+        const songIdPart = entry.songId || md5(task.filePath)
+        const ext = resolveCoverExtByUrl(entry.coverUrl)
+        const coverPath = path.join(getTrackCoverDirPath(), `${songIdPart}.${ext}`)
+        await fs.promises.writeFile(coverPath, coverBuffer)
+        entry.coverPath = coverPath
+      }
+    } catch (err) {
+      console.warn('Failed to cache NetEase cover image:', err?.message || err)
+    }
+  }
+
+  await ensureTrackMetadataLoaded()
+  trackMetadataStore[normalizeTrackPathKey(task.filePath)] = entry
+  await persistTrackMetadataStore()
 }
 
 async function ensureAuthStateLoaded() {
@@ -593,6 +745,7 @@ async function runSingleTask(taskId) {
     task.progress = 1
     task.finishedAt = Date.now()
     task.updatedAt = Date.now()
+    await persistTrackMetadataForTask(task)
     emitDownloadTaskUpdate(task)
   } catch (err) {
     const isCanceled = task.status === 'canceled'
@@ -636,6 +789,10 @@ async function createDownloadTask(payload) {
     source: payload.source || 'song-id',
     songId: payload.songId || '',
     title: payload.title || finalFileName,
+    songMetadata:
+      payload.songMetadata && typeof payload.songMetadata === 'object'
+        ? payload.songMetadata
+        : null,
     url: payload.url,
     filePath,
     status: 'pending',
@@ -1323,6 +1480,7 @@ function registerNeteaseHandlers() {
       }
 
       const resolved = resolveResult.resolved
+      const songMetadata = await fetchSongMetadataById(songId)
 
       if (!isNeteaseAudioHost(resolved.url)) {
         return {
@@ -1332,13 +1490,16 @@ function registerNeteaseHandlers() {
         }
       }
 
-      const fileName = safeFileName(payload?.fileName || `${songId}-${level}`)
+      const defaultExt = resolveAudioExtByResolvedUrl(resolved)
+      const defaultTitle = songMetadata?.title || `歌曲 ${songId}`
+      const fileName = safeFileName(payload?.fileName || `${defaultTitle}-${level}.${defaultExt}`)
       const created = await createDownloadTask({
         source: 'song-id',
         songId,
         url: resolved.url,
         fileName,
-        title: payload?.title || `歌曲 ${songId}`
+        title: payload?.title || defaultTitle,
+        songMetadata
       })
 
       return {

@@ -4,6 +4,8 @@ const fs = require('fs')
 const crypto = require('crypto')
 const { parseFile } = require('music-metadata')
 
+const NETEASE_TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
+
 let playlistState = {
   playlists: [],
   trackLibrary: {}
@@ -13,6 +15,46 @@ let handlersRegistered = false
 
 function getPlaylistStorePath() {
   return path.join(app.getPath('userData'), 'playlists.json')
+}
+
+function getNeteaseTrackMetadataStorePath() {
+  return path.join(app.getPath('userData'), NETEASE_TRACK_METADATA_STORE_NAME)
+}
+
+function normalizeTrackPathKey(filePath) {
+  const resolved = path.resolve(String(filePath || ''))
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function resolveImageMimeByPath(filePath) {
+  const ext = String(path.extname(filePath || '')).toLowerCase()
+  if (ext === '.png') return 'image/png'
+  if (ext === '.webp') return 'image/webp'
+  return 'image/jpeg'
+}
+
+async function readNeteaseTrackMetadataByPath(filePath) {
+  try {
+    const content = await fs.promises.readFile(getNeteaseTrackMetadataStorePath(), 'utf8')
+    const parsed = JSON.parse(content)
+    if (!parsed || typeof parsed !== 'object') return null
+    const record = parsed[normalizeTrackPathKey(filePath)]
+    return record && typeof record === 'object' ? record : null
+  } catch {
+    return null
+  }
+}
+
+async function readCoverDataUrlByPath(coverPath) {
+  if (!coverPath) return null
+  try {
+    const buffer = await fs.promises.readFile(coverPath)
+    if (!buffer.length) return null
+    const mime = resolveImageMimeByPath(coverPath)
+    return `data:${mime};base64,${buffer.toString('base64')}`
+  } catch {
+    return null
+  }
 }
 
 function createId() {
@@ -252,6 +294,7 @@ function registerPlaylistHandlers() {
   })
 
   ipcMain.handle('get-metadata', async (event, filePath) => {
+    let parsedMeta = null
     try {
       const metadata = await parseFile(filePath)
       const { common, format } = metadata
@@ -263,7 +306,7 @@ function registerPlaylistHandlers() {
         coverDataUrl = `data:${pic.format};base64,${base64}`
       }
 
-      return {
+      parsedMeta = {
         title: common.title || null,
         artist: common.artist || null,
         album: common.album || null,
@@ -273,8 +316,29 @@ function registerPlaylistHandlers() {
       }
     } catch (err) {
       console.error('Failed to parse metadata:', err)
-      return null
     }
+
+    const fallback = await readNeteaseTrackMetadataByPath(filePath)
+    const fallbackCoverDataUrl = await readCoverDataUrlByPath(fallback?.coverPath)
+
+    const merged = {
+      title: parsedMeta?.title || fallback?.title || null,
+      artist: parsedMeta?.artist || fallback?.artist || null,
+      album: parsedMeta?.album || fallback?.album || null,
+      year: parsedMeta?.year || fallback?.year || null,
+      duration: parsedMeta?.duration || null,
+      coverDataUrl: parsedMeta?.coverDataUrl || fallbackCoverDataUrl || null
+    }
+
+    const hasMeaningfulField =
+      Boolean(merged.title) ||
+      Boolean(merged.artist) ||
+      Boolean(merged.album) ||
+      Boolean(merged.year) ||
+      Boolean(merged.duration) ||
+      Boolean(merged.coverDataUrl)
+
+    return hasMeaningfulField ? merged : null
   })
 
   ipcMain.handle('playlist:list', async () => {
