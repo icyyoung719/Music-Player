@@ -93,6 +93,29 @@
       background: var(--panel);
       font-size: 13px;
     }
+    .home-search select,
+    .home-search input {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: var(--panel-strong);
+      color: var(--text-main);
+      padding: 6px 9px;
+      font-size: 12px;
+    }
+    .home-search input {
+      flex: 1;
+      min-width: 120px;
+    }
+    .home-search button {
+      padding: 7px 10px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: var(--muted-btn);
+      color: var(--text-main);
+      font-size: 12px;
+      cursor: pointer;
+    }
+    .home-search button:hover { background: var(--panel-strong); }
     .home-user {
       display: flex;
       align-items: center;
@@ -562,6 +585,155 @@
       color: var(--text-main);
       margin-bottom: 8px;
     }
+    .netease-box {
+      margin-top: 12px;
+      padding-top: 12px;
+      border-top: 1px dashed var(--line);
+    }
+    .netease-box h3 {
+      font-size: 14px;
+      margin-bottom: 8px;
+    }
+    .netease-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    .netease-row input,
+    .netease-row select {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: var(--text-main);
+      background: var(--panel);
+      padding: 8px 10px;
+      font-size: 12px;
+      min-width: 130px;
+    }
+    .netease-row input {
+      flex: 1;
+      min-width: 220px;
+    }
+    .netease-tip {
+      font-size: 12px;
+      color: var(--text-sub);
+      line-height: 1.5;
+      margin-bottom: 8px;
+    }
+    .netease-result {
+      min-height: 36px;
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      padding: 8px 10px;
+      color: var(--text-main);
+      font-size: 12px;
+      line-height: 1.45;
+      background: var(--panel);
+      margin-bottom: 8px;
+      word-break: break-all;
+    }
+    .netease-auth-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(180px, 1fr));
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .netease-auth-grid input,
+    .netease-auth-grid textarea,
+    .netease-auth-grid select {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      color: var(--text-main);
+      background: var(--panel);
+      padding: 8px 10px;
+      font-size: 12px;
+      width: 100%;
+    }
+    .netease-auth-grid .full {
+      grid-column: 1 / -1;
+    }
+    .netease-auth-status {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+      padding: 8px 10px;
+      font-size: 12px;
+      margin-bottom: 8px;
+      color: var(--text-main);
+    }
+    .netease-task-list {
+      border: 1px solid var(--line);
+      border-radius: 9px;
+      background: var(--panel);
+      max-height: 180px;
+      overflow: auto;
+      padding: 6px;
+      display: grid;
+      gap: 6px;
+    }
+    .netease-task-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px 8px;
+      background: rgba(255, 255, 255, 0.12);
+      font-size: 12px;
+      color: var(--text-main);
+      line-height: 1.4;
+    }
+    .netease-task-line {
+      margin-bottom: 2px;
+      word-break: break-all;
+    }
+    .netease-task-path {
+      color: var(--text-sub);
+      font-size: 11px;
+    }
+    .netease-task-cancel {
+      margin-top: 4px;
+      padding: 4px 8px;
+      border-radius: 7px;
+      font-size: 11px;
+    }
+    .netease-task-empty {
+      text-align: center;
+      color: var(--text-sub);
+      font-size: 12px;
+      padding: 12px;
+    }
+    .netease-qr-box {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel);
+      padding: 10px;
+      margin-bottom: 8px;
+    }
+    .netease-qr-view {
+      width: 180px;
+      height: 180px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+      margin-bottom: 8px;
+      color: var(--text-sub);
+      font-size: 12px;
+    }
+    .netease-qr-view img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      display: none;
+    }
+    .netease-qr-link {
+      font-size: 11px;
+      color: var(--text-sub);
+      word-break: break-all;
+      margin-bottom: 8px;
+    }
     .saved-row select {
       min-width: 170px;
       flex: 1;
@@ -939,7 +1111,16 @@
   <div class="home-page" id="homePage">
     <header class="home-topbar">
       <div class="home-logo">🎵 网易云音乐</div>
-      <div class="home-search">🔎 夢の続き - 鈴木このみ</div>
+      <div class="home-search">
+        <span>🔎</span>
+        <select id="neteaseTypeSelect" title="查询类型">
+          <option value="song">歌曲 ID</option>
+          <option value="playlist">歌单 ID</option>
+        </select>
+        <input id="neteaseIdInput" type="text" placeholder="输入纯数字 ID，例如 1901371647">
+        <button id="neteaseSearchBtn" title="查询网易云 ID">查询</button>
+        <button id="neteaseOpenBtn" title="打开官方页面">打开</button>
+      </div>
       <div class="home-user">
         <span>🙂 Icyyoung719</span>
         <button class="shortcut-btn" id="shortcutBtn" title="查看和自定义快捷键">⌨ 快捷键</button>
@@ -1086,6 +1267,68 @@
                 <div style="margin-top: 10px; margin-bottom: 6px; font-size: 13px; color: rgba(255,255,255,0.82);">当前播放列表</div>
                 <div class="playlist" id="playlist"></div>
 
+                <section class="netease-box">
+                  <h3>☁ 网易云授权接入</h3>
+                  <div class="netease-tip">支持邮箱登录、手机号+验证码登录（更友好）、保存授权配置、验证登录态，并创建“按歌曲 ID 下载”任务。下载目录默认 `%USERPROFILE%\\Music\\MyPlayerDownloads`。</div>
+
+                  <div class="netease-auth-status" id="neteaseAuthStatus">授权状态: 未加载</div>
+                  <div class="netease-auth-grid">
+                    <input id="neteaseAuthApiBase" class="full" type="text" placeholder="API Base（默认 https://music.163.com）">
+                    <input id="neteaseAuthEmail" type="text" placeholder="网易云邮箱账号">
+                    <input id="neteaseAuthPassword" type="password" placeholder="网易云密码">
+                    <input id="neteaseAuthCountryCode" type="text" placeholder="国家码（默认 86）" value="86">
+                    <input id="neteaseAuthPhone" type="text" placeholder="手机号">
+                    <input id="neteaseAuthCaptcha" type="text" placeholder="短信验证码">
+                    <input id="neteaseAuthUserName" type="text" placeholder="用户昵称（可选）">
+                    <input id="neteaseAuthUserId" type="text" placeholder="用户 ID（可选）">
+                    <input id="neteaseAuthAccessToken" type="text" placeholder="Access Token（可选）">
+                    <input id="neteaseAuthRefreshToken" type="text" placeholder="Refresh Token（可选）">
+                  </div>
+                  <div class="netease-row">
+                    <button id="neteaseAuthEmailLoginBtn">邮箱登录</button>
+                    <button id="neteaseAuthSendCaptchaBtn">发送验证码</button>
+                    <button id="neteaseAuthPhoneCaptchaLoginBtn">手机号+验证码登录</button>
+                    <button id="neteaseAuthSaveBtn">保存授权信息</button>
+                    <button id="neteaseAuthVerifyBtn">验证授权</button>
+                    <button id="neteaseAuthClearBtn">清空授权</button>
+                  </div>
+
+                  <div class="netease-qr-box">
+                    <div class="netease-qr-view" id="neteaseQrView">
+                      <img id="neteaseQrImg" alt="二维码登录">
+                      <span id="neteaseQrPlaceholder">点击“生成二维码”开始</span>
+                    </div>
+                    <div class="netease-qr-link" id="neteaseQrLink">二维码登录链接将在这里显示</div>
+                    <div class="netease-row">
+                      <button id="neteaseAuthQrCreateBtn">生成二维码</button>
+                      <button id="neteaseAuthQrOpenBtn">打开二维码链接</button>
+                      <button id="neteaseAuthQrStartPollBtn">开始轮询状态</button>
+                      <button id="neteaseAuthQrStopPollBtn">停止轮询</button>
+                    </div>
+                  </div>
+
+                  <div class="netease-result" id="neteaseResult">请输入 ID 后点击“查询”。</div>
+                  <div class="netease-row">
+                    <input id="neteaseSongIdDownloadInput" type="text" placeholder="输入歌曲 ID 直接下载（需授权）">
+                    <select id="neteaseDownloadLevelSelect">
+                      <option value="standard">standard</option>
+                      <option value="higher">higher</option>
+                      <option value="exhigh" selected>exhigh</option>
+                      <option value="lossless">lossless</option>
+                    </select>
+                    <button id="neteaseDownloadSongBtn">按 ID 下载</button>
+                    <button id="neteaseDownloadSongAndQueueBtn">下载并加入当前列表</button>
+                  </div>
+                  <div class="netease-row">
+                    <button id="neteaseDownloadDirBtn">查看下载目录</button>
+                    <input id="neteaseDirectUrlInput" type="text" placeholder="粘贴官方直链（https://...music.126.net/...）">
+                    <button id="neteaseDirectDownloadBtn">下载直链到本地</button>
+                  </div>
+                  <div class="netease-task-list" id="neteaseTaskList">
+                    <div class="netease-task-empty">暂无下载任务</div>
+                  </div>
+                </section>
+
                 <section class="saved-playlists" style="margin-top: 12px;">
                   <h3>📚 我的歌单</h3>
                   <div class="saved-row">
@@ -1099,7 +1342,7 @@
                   <div class="saved-row">
                     <button id="savedAppendToQueueBtn">添加到当前列表</button>
                     <button id="savedReplaceQueueBtn">替换当前列表</button>
-                    <button id="savedAddCurrentBtn">添加当前列表</button>
+                    <button id="savedAddCurrentBtn">添加到当前歌单</button>
                     <button id="savedImportBtn">导入 JSON</button>
                     <button id="savedExportBtn">导出 JSON</button>
                   </div>

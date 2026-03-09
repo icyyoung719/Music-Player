@@ -156,3 +156,17 @@
 ## 说明
 
 当前版本为基础可运行版本，后续可围绕 TODO 逐步演进为完整播放器。
+
+## 网易云接入
+**参考**：
+https://github.com/TartaricAcid/NetMusic   这是MC的一个网易云播放器mod，可以参考其API如何调用网易云的接口获取歌曲信息和下载链接等
+https://github.com/FengLiuFeseliud/CloudMusic-Mod  另一个API参考，包含登录API等
+
+先尝试，如果遇到了权限问题，则考虑是否还需要接入网易云的登陆API等（先不主动考虑，先看看能不能直接获取到公开的歌曲信息和下载链接）
+
+后续会做登录逻辑，由授权账号下载，所以不存在权限问题
+
+参考这个仓库，添加播放器接入网易云
+1. 搜索栏： 支持搜索歌曲id ，歌单id
+2. 能够获取到指定歌曲，并提供下载保存到本地的功能（默认下载到 %USERPROFILE%\Music\MyPlayerDownloads 目录下）
+3. ...

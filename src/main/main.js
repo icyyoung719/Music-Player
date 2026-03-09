@@ -10,8 +10,10 @@ const {
   initializePlaylistState,
   registerPlaylistHandlers
 } = require('./modules/playlistHandlers')
+const { registerNeteaseHandlers } = require('./modules/neteaseHandlers')
 
 registerPlaylistHandlers()
+registerNeteaseHandlers()
 
 app.whenReady().then(async () => {
   try {

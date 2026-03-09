@@ -2,6 +2,7 @@
 import { createShortcutManager } from './modules/shortcutManager.js'
 import { createSavedPlaylistManager } from './modules/savedPlaylistManager.js'
 import { createPlaybackController } from './modules/playbackController.js'
+import { createNeteaseManager } from './modules/neteaseManager.js'
 
 const homePageEl = document.getElementById('homePage')
 const songPageEl = document.getElementById('songPage')
@@ -57,6 +58,47 @@ const playbackDom = {
   homeFeaturedTitleEl: document.getElementById('homeFeaturedTitle'),
   songBackBtn: document.getElementById('songBackBtn'),
   homeGoSongBtn: document.getElementById('homeGoSongBtn')
+}
+
+const neteaseDom = {
+  input: document.getElementById('neteaseIdInput'),
+  type: document.getElementById('neteaseTypeSelect'),
+  searchBtn: document.getElementById('neteaseSearchBtn'),
+  openBtn: document.getElementById('neteaseOpenBtn'),
+  result: document.getElementById('neteaseResult'),
+  authApiBaseInput: document.getElementById('neteaseAuthApiBase'),
+  authEmailInput: document.getElementById('neteaseAuthEmail'),
+  authPasswordInput: document.getElementById('neteaseAuthPassword'),
+  authEmailLoginBtn: document.getElementById('neteaseAuthEmailLoginBtn'),
+  authCountryCodeInput: document.getElementById('neteaseAuthCountryCode'),
+  authPhoneInput: document.getElementById('neteaseAuthPhone'),
+  authCaptchaInput: document.getElementById('neteaseAuthCaptcha'),
+  authSendCaptchaBtn: document.getElementById('neteaseAuthSendCaptchaBtn'),
+  authPhoneCaptchaLoginBtn: document.getElementById('neteaseAuthPhoneCaptchaLoginBtn'),
+  authQrView: document.getElementById('neteaseQrView'),
+  authQrImg: document.getElementById('neteaseQrImg'),
+  authQrPlaceholder: document.getElementById('neteaseQrPlaceholder'),
+  authQrLink: document.getElementById('neteaseQrLink'),
+  authQrCreateBtn: document.getElementById('neteaseAuthQrCreateBtn'),
+  authQrOpenBtn: document.getElementById('neteaseAuthQrOpenBtn'),
+  authQrStartPollBtn: document.getElementById('neteaseAuthQrStartPollBtn'),
+  authQrStopPollBtn: document.getElementById('neteaseAuthQrStopPollBtn'),
+  authAccessTokenInput: document.getElementById('neteaseAuthAccessToken'),
+  authRefreshTokenInput: document.getElementById('neteaseAuthRefreshToken'),
+  authUserNameInput: document.getElementById('neteaseAuthUserName'),
+  authUserIdInput: document.getElementById('neteaseAuthUserId'),
+  authSaveBtn: document.getElementById('neteaseAuthSaveBtn'),
+  authVerifyBtn: document.getElementById('neteaseAuthVerifyBtn'),
+  authClearBtn: document.getElementById('neteaseAuthClearBtn'),
+  authStatus: document.getElementById('neteaseAuthStatus'),
+  songIdDownloadInput: document.getElementById('neteaseSongIdDownloadInput'),
+  downloadLevelSelect: document.getElementById('neteaseDownloadLevelSelect'),
+  downloadSongBtn: document.getElementById('neteaseDownloadSongBtn'),
+  downloadSongAndQueueBtn: document.getElementById('neteaseDownloadSongAndQueueBtn'),
+  downloadDirBtn: document.getElementById('neteaseDownloadDirBtn'),
+  directUrlInput: document.getElementById('neteaseDirectUrlInput'),
+  directDownloadBtn: document.getElementById('neteaseDirectDownloadBtn'),
+  taskList: document.getElementById('neteaseTaskList')
 }
 
 const SHORTCUT_STORAGE_KEY = 'musicPlayer.shortcuts.v1'
@@ -294,6 +336,24 @@ function setupShortcutManager() {
   shortcutManager.init()
 }
 
+function setupNeteaseManager() {
+  const manager = createNeteaseManager({
+    electronAPI: window.electronAPI,
+    dom: neteaseDom,
+    onAppendDownloadedTrack: (track) => {
+      if (!playbackController || !track?.path) return
+      playbackController.appendToPlaylist([
+        {
+          name: track.name || track.path.split(/[/\\]/).pop(),
+          path: track.path,
+          file: null
+        }
+      ])
+    }
+  })
+  manager.init()
+}
+
 function setupPlayerControlListener() {
   if (!window.electronAPI || !window.electronAPI.onPlayerControl) return
 
@@ -306,6 +366,7 @@ function initRenderer() {
   setupWindowEvents()
   setupPlaybackController()
   setupSavedPlaylistManager()
+  setupNeteaseManager()
   setupShortcutManager()
   setupPlayerControlListener()
 
