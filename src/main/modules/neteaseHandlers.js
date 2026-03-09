@@ -9,6 +9,9 @@ const crypto = require('crypto')
 let handlersRegistered = false
 
 const DEFAULT_DOWNLOAD_DIR = path.join(os.homedir(), 'Music', 'MyPlayerDownloads')
+const DOWNLOAD_DIR_SONGS = 'Songs'
+const DOWNLOAD_DIR_TEMP = 'Temp'
+const DOWNLOAD_DIR_LISTS = 'Lists'
 const AUTH_STORE_NAME = 'netease-auth.json'
 const TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
 const TRACK_COVER_DIR_NAME = 'netease-track-covers'
@@ -724,6 +727,132 @@ function createTaskId() {
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+function emitGlobalToast(payload) {
+  const message = String(payload?.message || '').trim()
+  if (!message) return
+
+  const toastPayload = {
+    id: createTaskId(),
+    message,
+    level: String(payload?.level || 'info'),
+    createdAt: Date.now(),
+    ...payload
+  }
+
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) {
+      win.webContents.send('app:toast', toastPayload)
+    }
+  }
+}
+
+function getDownloadRootDir() {
+  return DEFAULT_DOWNLOAD_DIR
+}
+
+function safeFolderName(name, fallback = 'default') {
+  const value = safeFileName(name || fallback)
+  return value || fallback
+}
+
+function resolveDownloadDir(dirType, playlistName) {
+  const type = String(dirType || 'songs').trim().toLowerCase()
+  const rootDir = getDownloadRootDir()
+
+  if (type === 'temp') {
+    return { dirType: 'temp', dirPath: path.join(rootDir, DOWNLOAD_DIR_TEMP) }
+  }
+
+  if (type === 'lists') {
+    const child = safeFolderName(playlistName || '未命名歌单', '未命名歌单')
+    return {
+      dirType: 'lists',
+      dirPath: path.join(rootDir, DOWNLOAD_DIR_LISTS, child),
+      playlistFolder: child
+    }
+  }
+
+  return { dirType: 'songs', dirPath: path.join(rootDir, DOWNLOAD_DIR_SONGS) }
+}
+
+async function ensureDownloadBaseDirs() {
+  const root = getDownloadRootDir()
+  const songsDir = resolveDownloadDir('songs').dirPath
+  const tempDir = resolveDownloadDir('temp').dirPath
+  const listsDir = path.join(root, DOWNLOAD_DIR_LISTS)
+
+  await fs.promises.mkdir(root, { recursive: true })
+  await fs.promises.mkdir(songsDir, { recursive: true })
+  await fs.promises.mkdir(tempDir, { recursive: true })
+  await fs.promises.mkdir(listsDir, { recursive: true })
+
+  return {
+    root,
+    songs: songsDir,
+    temp: tempDir,
+    lists: listsDir
+  }
+}
+
+async function countFilesRecursive(targetDir) {
+  let count = 0
+  const stack = [targetDir]
+  while (stack.length > 0) {
+    const current = stack.pop()
+    let entries = []
+    try {
+      entries = await fs.promises.readdir(current, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(full)
+      } else if (entry.isFile()) {
+        count++
+      }
+    }
+  }
+  return count
+}
+
+function createSkippedTask(payload) {
+  const id = createTaskId()
+  const now = Date.now()
+  return {
+    id,
+    source: payload.source || 'song-id',
+    songId: payload.songId || '',
+    title: payload.title || payload.fileName || `song-${payload.songId || now}`,
+    songMetadata:
+      payload.songMetadata && typeof payload.songMetadata === 'object'
+        ? payload.songMetadata
+        : null,
+    url: payload.url,
+    filePath: payload.filePath,
+    status: 'skipped',
+    progress: 1,
+    totalBytes: 0,
+    receivedBytes: 0,
+    error: payload.error || '',
+    skipReason: payload.skipReason || 'duplicate',
+    downloadMode: payload.downloadMode || 'song-download-only',
+    targetDirType: payload.targetDirType || 'songs',
+    playlistContext:
+      payload.playlistContext && typeof payload.playlistContext === 'object'
+        ? payload.playlistContext
+        : null,
+    addToQueue: Boolean(payload.addToQueue),
+    savePlaylistName: String(payload.savePlaylistName || '').trim(),
+    savePlaylistBatchKey: String(payload.savePlaylistBatchKey || '').trim(),
+    createdAt: now,
+    updatedAt: now,
+    finishedAt: now
+  }
+}
+
 function emitDownloadTaskUpdate(task) {
   const payload = { ...task }
   for (const win of BrowserWindow.getAllWindows()) {
@@ -952,6 +1081,12 @@ async function runSingleTask(taskId) {
     task.updatedAt = Date.now()
     await persistTrackMetadataForTask(task)
     emitDownloadTaskUpdate(task)
+    emitGlobalToast({
+      level: 'success',
+      message: `下载完成: ${task.title || task.songId || path.basename(task.filePath || '')}`,
+      taskId: task.id,
+      taskStatus: task.status
+    })
   } catch (err) {
     const isCanceled = task.status === 'canceled'
     if (!isCanceled) {
@@ -960,6 +1095,13 @@ async function runSingleTask(taskId) {
       task.finishedAt = Date.now()
       task.updatedAt = Date.now()
       emitDownloadTaskUpdate(task)
+      emitGlobalToast({
+        level: 'error',
+        message: `下载失败: ${task.title || task.songId || task.id}`,
+        taskId: task.id,
+        taskStatus: task.status,
+        error: task.error
+      })
     }
   } finally {
     activeDownloadHandles.delete(taskId)
@@ -981,11 +1123,41 @@ async function consumeDownloadQueue() {
 }
 
 async function createDownloadTask(payload) {
-  await fs.promises.mkdir(DEFAULT_DOWNLOAD_DIR, { recursive: true })
+  await ensureDownloadBaseDirs()
 
   const fileNameInput = safeFileName(payload.fileName || `song-${payload.songId || Date.now()}`)
   const finalFileName = maybeAddFileExt(fileNameInput, payload.url)
-  const filePath = path.join(DEFAULT_DOWNLOAD_DIR, finalFileName)
+  const dirResolved = resolveDownloadDir(payload.targetDirType, payload.playlistName)
+  await fs.promises.mkdir(dirResolved.dirPath, { recursive: true })
+  const filePath = path.join(dirResolved.dirPath, finalFileName)
+
+  const duplicateStrategy = String(payload.duplicateStrategy || 'skip').trim().toLowerCase()
+  if (duplicateStrategy === 'skip') {
+    try {
+      await fs.promises.access(filePath, fs.constants.F_OK)
+      const skippedTask = createSkippedTask({
+        ...payload,
+        filePath,
+        fileName: finalFileName,
+        skipReason: 'duplicate-file',
+        targetDirType: dirResolved.dirType,
+        playlistContext: payload.playlistContext
+      })
+
+      downloadTasks.set(skippedTask.id, skippedTask)
+      emitDownloadTaskUpdate(skippedTask)
+      emitGlobalToast({
+        level: 'info',
+        message: `已跳过重复下载: ${skippedTask.title || skippedTask.songId || finalFileName}`,
+        taskId: skippedTask.id,
+        taskStatus: skippedTask.status
+      })
+      return { ok: true, task: skippedTask }
+    } catch {
+      // ignore access errors, continue to create normal task
+    }
+  }
+
   const id = createTaskId()
   const now = Date.now()
 
@@ -1005,6 +1177,16 @@ async function createDownloadTask(payload) {
     totalBytes: 0,
     receivedBytes: 0,
     error: '',
+    skipReason: '',
+    downloadMode: payload.downloadMode || 'song-download-only',
+    targetDirType: dirResolved.dirType,
+    playlistContext:
+      payload.playlistContext && typeof payload.playlistContext === 'object'
+        ? payload.playlistContext
+        : null,
+    addToQueue: Boolean(payload.addToQueue),
+    savePlaylistName: String(payload.savePlaylistName || '').trim(),
+    savePlaylistBatchKey: String(payload.savePlaylistBatchKey || '').trim(),
     createdAt: now,
     updatedAt: now
   }
@@ -1039,6 +1221,99 @@ function safeFileName(name) {
 
 function isAllowedDownloadHost(rawUrl) {
   return isNeteaseAudioHost(rawUrl)
+}
+
+async function createSongDownloadTaskFromId(payload) {
+  await ensureAuthStateLoaded()
+
+  const songId = sanitizeSongId(payload?.songId)
+  if (!songId) {
+    return { ok: false, error: 'INVALID_SONG_ID' }
+  }
+
+  const level = String(payload?.level || 'exhigh').trim() || 'exhigh'
+
+  const resolveResult = await resolveSongUrlWithLevelFallback(songId, level)
+  if (!resolveResult.ok || !resolveResult.resolved?.url) {
+    return {
+      ok: false,
+      error: 'URL_NOT_FOUND',
+      message: resolveResult.message,
+      attempts: resolveResult.attempts || []
+    }
+  }
+
+  const resolved = resolveResult.resolved
+  const songMetadata = await fetchSongMetadataById(songId)
+
+  if (!isNeteaseAudioHost(resolved.url)) {
+    return {
+      ok: false,
+      error: 'URL_NOT_ALLOWED',
+      message: `音源地址不在白名单域名内: ${resolved.url}`
+    }
+  }
+
+  const defaultExt = resolveAudioExtByResolvedUrl(resolved)
+  const defaultTitle = songMetadata?.title || `歌曲 ${songId}`
+  const fileName = safeFileName(payload?.fileName || `${defaultTitle}-${level}.${defaultExt}`)
+
+  const created = await createDownloadTask({
+    source: payload?.source || 'song-id',
+    songId,
+    url: resolved.url,
+    fileName,
+    title: payload?.title || defaultTitle,
+    songMetadata,
+    targetDirType: payload?.targetDirType || 'songs',
+    playlistName: payload?.playlistName || '',
+    duplicateStrategy: payload?.duplicateStrategy || 'skip',
+    downloadMode: payload?.downloadMode || 'song-download-only',
+    playlistContext: payload?.playlistContext || null,
+    addToQueue: Boolean(payload?.addToQueue),
+    savePlaylistName: payload?.savePlaylistName || '',
+    savePlaylistBatchKey: payload?.savePlaylistBatchKey || ''
+  })
+
+  return {
+    ...created,
+    pickedLevel: resolveResult.pickedLevel,
+    attempts: resolveResult.attempts
+  }
+}
+
+async function fetchPlaylistTracksById(playlistId) {
+  const url = `https://music.163.com/api/v6/playlist/detail?id=${playlistId}`
+  const data = await requestJson(url)
+  const playlist = data?.playlist
+  if (!playlist) return null
+
+  const name = String(playlist.name || `歌单 ${playlistId}`).trim()
+  const creator = String(playlist?.creator?.nickname || '').trim()
+  const trackList = Array.isArray(playlist.tracks) ? playlist.tracks : []
+
+  const tracks = trackList
+    .map((track) => {
+      const id = sanitizeSongId(track?.id)
+      if (!id) return null
+      const artist = Array.isArray(track?.ar)
+        ? track.ar.map((item) => item?.name).filter(Boolean).join(' / ')
+        : ''
+      return {
+        songId: id,
+        title: String(track?.name || `歌曲 ${id}`).trim(),
+        artist
+      }
+    })
+    .filter(Boolean)
+
+  return {
+    id: String(playlistId),
+    name,
+    creator,
+    trackCount: Number(playlist.trackCount || tracks.length),
+    tracks
+  }
 }
 
 function registerNeteaseHandlers() {
@@ -1135,11 +1410,55 @@ function registerNeteaseHandlers() {
 
   ipcMain.handle('netease:get-download-dir', async () => {
     try {
-      await fs.promises.mkdir(DEFAULT_DOWNLOAD_DIR, { recursive: true })
-      return { ok: true, dir: DEFAULT_DOWNLOAD_DIR }
+      const dirs = await ensureDownloadBaseDirs()
+      return { ok: true, dir: dirs.songs }
     } catch (err) {
       console.error('Failed to prepare download dir:', err)
       return { ok: false, error: 'MKDIR_FAILED' }
+    }
+  })
+
+  ipcMain.handle('netease:get-download-dirs', async () => {
+    try {
+      const dirs = await ensureDownloadBaseDirs()
+      return { ok: true, dirs }
+    } catch (err) {
+      console.error('Failed to prepare download dirs:', err)
+      return { ok: false, error: 'MKDIR_FAILED' }
+    }
+  })
+
+  ipcMain.handle('netease:open-download-dir', async (_event, payload) => {
+    try {
+      const dirResolved = resolveDownloadDir(payload?.dirType || 'songs', payload?.playlistName || '')
+      await fs.promises.mkdir(dirResolved.dirPath, { recursive: true })
+      const openError = await shell.openPath(dirResolved.dirPath)
+      if (openError) {
+        return { ok: false, error: 'OPEN_PATH_FAILED', message: openError }
+      }
+      return { ok: true, dirPath: dirResolved.dirPath, dirType: dirResolved.dirType }
+    } catch (err) {
+      return { ok: false, error: 'OPEN_PATH_FAILED', message: err?.message || '' }
+    }
+  })
+
+  ipcMain.handle('netease:clear-temp-downloads', async () => {
+    try {
+      const tempDir = resolveDownloadDir('temp').dirPath
+      await fs.promises.mkdir(tempDir, { recursive: true })
+      const beforeCount = await countFilesRecursive(tempDir)
+      await fs.promises.rm(tempDir, { recursive: true, force: true })
+      await fs.promises.mkdir(tempDir, { recursive: true })
+
+      emitGlobalToast({
+        level: 'info',
+        message: `已清理缓存歌曲 ${beforeCount} 首`,
+        scope: 'temp-cleanup'
+      })
+
+      return { ok: true, removedFiles: beforeCount, dirPath: tempDir }
+    } catch (err) {
+      return { ok: false, error: 'TEMP_CLEAR_FAILED', message: err?.message || '' }
     }
   })
 
@@ -1695,56 +2014,133 @@ function registerNeteaseHandlers() {
   })
 
   ipcMain.handle('netease:download-by-song-id', async (_event, payload) => {
-    await ensureAuthStateLoaded()
-
-    const songId = sanitizeSongId(payload?.songId)
-    if (!songId) {
-      return { ok: false, error: 'INVALID_SONG_ID' }
-    }
-
-    const level = String(payload?.level || 'exhigh').trim() || 'exhigh'
     try {
-      const resolveResult = await resolveSongUrlWithLevelFallback(songId, level)
-      if (!resolveResult.ok || !resolveResult.resolved?.url) {
-        return {
-          ok: false,
-          error: 'URL_NOT_FOUND',
-          message: resolveResult.message,
-          attempts: resolveResult.attempts || []
-        }
-      }
-
-      const resolved = resolveResult.resolved
-      const songMetadata = await fetchSongMetadataById(songId)
-
-      if (!isNeteaseAudioHost(resolved.url)) {
-        return {
-          ok: false,
-          error: 'URL_NOT_ALLOWED',
-          message: `音源地址不在白名单域名内: ${resolved.url}`
-        }
-      }
-
-      const defaultExt = resolveAudioExtByResolvedUrl(resolved)
-      const defaultTitle = songMetadata?.title || `歌曲 ${songId}`
-      const fileName = safeFileName(payload?.fileName || `${defaultTitle}-${level}.${defaultExt}`)
-      const created = await createDownloadTask({
+      return await createSongDownloadTaskFromId({
+        ...payload,
         source: 'song-id',
-        songId,
-        url: resolved.url,
-        fileName,
-        title: payload?.title || defaultTitle,
-        songMetadata
+        targetDirType: payload?.targetDirType || 'songs',
+        duplicateStrategy: payload?.duplicateStrategy || 'skip',
+        downloadMode: payload?.downloadMode || 'song-download-only',
+        addToQueue: Boolean(payload?.addToQueue),
+        savePlaylistName: payload?.savePlaylistName || ''
       })
-
-      return {
-        ...created,
-        pickedLevel: resolveResult.pickedLevel,
-        attempts: resolveResult.attempts
-      }
     } catch (err) {
       console.error('Failed to create song-id download task:', err)
       return { ok: false, error: 'DOWNLOAD_CREATE_FAILED', message: err?.message || '' }
+    }
+  })
+
+  ipcMain.handle('netease:download-song-task', async (_event, payload) => {
+    const mode = String(payload?.mode || 'song-download-only').trim()
+    const modeMap = {
+      'song-download-only': { targetDirType: 'songs', addToQueue: false },
+      'song-temp-queue-only': { targetDirType: 'temp', addToQueue: true },
+      'song-download-and-queue': { targetDirType: 'songs', addToQueue: true }
+    }
+
+    const resolvedMode = modeMap[mode] || modeMap['song-download-only']
+
+    try {
+      return await createSongDownloadTaskFromId({
+        ...payload,
+        targetDirType: resolvedMode.targetDirType,
+        addToQueue: resolvedMode.addToQueue,
+        duplicateStrategy: payload?.duplicateStrategy || 'skip',
+        downloadMode: mode,
+        source: 'song-id'
+      })
+    } catch (err) {
+      return { ok: false, error: 'DOWNLOAD_CREATE_FAILED', message: err?.message || '' }
+    }
+  })
+
+  ipcMain.handle('netease:download-playlist-by-id', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+
+    const playlistId = sanitizeId(payload?.playlistId)
+    if (!playlistId) return { ok: false, error: 'INVALID_PLAYLIST_ID' }
+
+    const mode = String(payload?.mode || 'playlist-download-only').trim()
+    const level = String(payload?.level || 'exhigh').trim() || 'exhigh'
+    const duplicateStrategy = String(payload?.duplicateStrategy || 'skip').trim().toLowerCase() || 'skip'
+
+    try {
+      const playlist = await fetchPlaylistTracksById(playlistId)
+      if (!playlist || !Array.isArray(playlist.tracks) || playlist.tracks.length === 0) {
+        return { ok: false, error: 'PLAYLIST_EMPTY_OR_NOT_FOUND' }
+      }
+
+      const optionsByMode = {
+        'playlist-download-only': {
+          targetDirType: 'lists',
+          addToQueue: false,
+          savePlaylistName: ''
+        },
+        'playlist-download-and-queue': {
+          targetDirType: 'lists',
+          addToQueue: true,
+          savePlaylistName: ''
+        },
+        'playlist-download-and-save': {
+          targetDirType: 'lists',
+          addToQueue: false,
+          savePlaylistName: playlist.name
+        }
+      }
+
+      const selected = optionsByMode[mode] || optionsByMode['playlist-download-only']
+      const savePlaylistBatchKey = selected.savePlaylistName ? createTaskId() : ''
+
+      const createdTasks = []
+      const failedItems = []
+      for (const track of playlist.tracks) {
+        try {
+          const created = await createSongDownloadTaskFromId({
+            songId: track.songId,
+            level,
+            title: track.title,
+            fileName: `${track.title || `歌曲 ${track.songId}`}-${level}.mp3`,
+            targetDirType: selected.targetDirType,
+            playlistName: playlist.name,
+            duplicateStrategy,
+            source: 'playlist-id',
+            downloadMode: mode,
+            playlistContext: {
+              playlistId,
+              playlistName: playlist.name,
+              creator: playlist.creator || ''
+            },
+            addToQueue: selected.addToQueue,
+            savePlaylistName: selected.savePlaylistName,
+            savePlaylistBatchKey
+          })
+
+          if (created?.ok && created.task) {
+            createdTasks.push(created.task)
+          } else {
+            failedItems.push({ songId: track.songId, error: created?.error || 'DOWNLOAD_CREATE_FAILED' })
+          }
+        } catch (err) {
+          failedItems.push({ songId: track.songId, error: err?.message || 'DOWNLOAD_CREATE_FAILED' })
+        }
+      }
+
+      return {
+        ok: true,
+        playlist: {
+          id: playlist.id,
+          name: playlist.name,
+          creator: playlist.creator,
+          trackCount: playlist.trackCount
+        },
+        createdCount: createdTasks.length,
+        failedCount: failedItems.length,
+        tasks: createdTasks,
+        failedItems
+      }
+    } catch (err) {
+      console.error('Failed to create playlist download tasks:', err)
+      return { ok: false, error: 'PLAYLIST_DOWNLOAD_CREATE_FAILED', message: err?.message || '' }
     }
   })
 

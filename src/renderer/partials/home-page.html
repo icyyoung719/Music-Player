@@ -27,7 +27,8 @@
 
   <div class="home-body">
     <aside class="home-sidebar">
-      <div class="menu-item active">🏠 推荐</div>
+      <div class="menu-item active" id="homeMenuRecommend" data-home-view="recommend">🏠 推荐</div>
+      <div class="menu-item" id="homeMenuDownload" data-home-view="download">⬇ 下载管理</div>
       <div class="menu-item">🧭 精选</div>
       <div class="menu-item">📻 播客</div>
       <div class="menu-item">🎮 漫游</div>
@@ -44,48 +45,117 @@
     </aside>
 
     <main class="home-content">
-      <div class="hero-cards">
-        <div class="hero-card">
-          <div class="hero-cover" data-open-song></div>
-          <div class="hero-meta">每日推荐 | 从「杏音七雨空」听起</div>
+      <section id="homeRecommendView" class="home-content-view">
+        <div class="hero-cards">
+          <div class="hero-card">
+            <div class="hero-cover" data-open-song></div>
+            <div class="hero-meta">每日推荐 | 从「杏音七雨空」听起</div>
+          </div>
+          <div class="hero-card">
+            <div class="hero-cover"></div>
+            <div class="hero-meta">私人雷达 | 今天《Coming Home》爱不释耳</div>
+          </div>
+          <div class="hero-card">
+            <div class="hero-cover"></div>
+            <div class="hero-meta">私人漫游 | 从「I Just Close My Eyes」出发</div>
+          </div>
+          <div class="hero-card">
+            <div class="hero-cover"></div>
+            <div class="hero-meta">二次元日推 | Weight of the World</div>
+          </div>
+          <div class="hero-card">
+            <div class="hero-cover"></div>
+            <div class="hero-meta">每日播客 | 天蓝滚滚我不怕怕</div>
+          </div>
         </div>
-        <div class="hero-card">
-          <div class="hero-cover"></div>
-          <div class="hero-meta">私人雷达 | 今天《Coming Home》爱不释耳</div>
-        </div>
-        <div class="hero-card">
-          <div class="hero-cover"></div>
-          <div class="hero-meta">私人漫游 | 从「I Just Close My Eyes」出发</div>
-        </div>
-        <div class="hero-card">
-          <div class="hero-cover"></div>
-          <div class="hero-meta">二次元日推 | Weight of the World</div>
-        </div>
-        <div class="hero-card">
-          <div class="hero-cover"></div>
-          <div class="hero-meta">每日播客 | 天蓝滚滚我不怕怕</div>
-        </div>
-      </div>
 
-      <div class="section-title">推荐歌单</div>
-      <div class="playlist-grid">
-        <div class="playlist-card" data-open-song>
-          <div class="playlist-thumb" id="homeFeaturedCover"></div>
-          <div class="playlist-name" id="homeFeaturedTitle">Little Busters!</div>
+        <div class="section-title">推荐歌单</div>
+        <div class="playlist-grid">
+          <div class="playlist-card" data-open-song>
+            <div class="playlist-thumb" id="homeFeaturedCover"></div>
+            <div class="playlist-name" id="homeFeaturedTitle">Little Busters!</div>
+          </div>
+          <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">网易评论最多的日语（音乐）歌曲</div></div>
+          <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">历史 | 顶羽被困按下</div></div>
+          <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">元气日语：当可爱的女孩子邀给你情书</div></div>
+          <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">动漫—游意难平催泪神曲</div></div>
+          <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">少女与战车各国 bgm</div></div>
         </div>
-        <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">网易评论最多的日语（音乐）歌曲</div></div>
-        <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">历史 | 顶羽被困按下</div></div>
-        <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">元气日语：当可爱的女孩子邀给你情书</div></div>
-        <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">动漫—游意难平催泪神曲</div></div>
-        <div class="playlist-card"><div class="playlist-thumb"></div><div class="playlist-name">少女与战车各国 bgm</div></div>
-      </div>
 
-      <div class="section-title">精选活动</div>
-      <div class="home-banner-row">
-        <div class="home-banner"></div>
-        <div class="home-banner"></div>
-        <div class="home-banner"></div>
-      </div>
+        <div class="section-title">精选活动</div>
+        <div class="home-banner-row">
+          <div class="home-banner"></div>
+          <div class="home-banner"></div>
+          <div class="home-banner"></div>
+        </div>
+      </section>
+
+      <section id="homeDownloadView" class="home-content-view page-hidden">
+        <div class="download-title-row">
+          <h2>下载管理</h2>
+          <div class="download-dir-row">
+            <button id="downloadOpenSongsDirBtn">打开单曲目录</button>
+            <button id="downloadOpenTempDirBtn">打开缓存目录</button>
+            <button id="downloadOpenListsDirBtn">打开歌单目录</button>
+            <button id="downloadClearTempBtn">清理缓存歌曲</button>
+          </div>
+        </div>
+
+        <div class="download-grid">
+          <section class="download-card">
+            <h3>单曲 ID 查询与下载</h3>
+            <div class="download-row">
+              <input id="downloadSongIdInput" type="text" placeholder="输入歌曲 ID，例如 1901371647">
+              <button id="downloadSongResolveBtn">查询歌曲</button>
+            </div>
+            <div class="download-preview" id="downloadSongPreview">请先输入歌曲 ID 查询。</div>
+            <div class="download-row">
+              <select id="downloadQualitySelect" title="下载音质">
+                <option value="standard">standard</option>
+                <option value="higher">higher</option>
+                <option value="exhigh" selected>exhigh</option>
+                <option value="lossless">lossless</option>
+              </select>
+              <button id="downloadSongOnlyBtn">下载</button>
+              <button id="downloadSongTempQueueBtn">仅添加到播放列表</button>
+              <button id="downloadSongAndQueueBtn">下载并添加到播放列表</button>
+            </div>
+          </section>
+
+          <section class="download-card">
+            <h3>歌单 ID 查询与下载</h3>
+            <div class="download-row">
+              <input id="downloadPlaylistIdInput" type="text" placeholder="输入歌单 ID，例如 3778678">
+              <button id="downloadPlaylistResolveBtn">查询歌单</button>
+            </div>
+            <div class="download-preview" id="downloadPlaylistPreview">请先输入歌单 ID 查询。</div>
+            <div class="download-row">
+              <button id="downloadPlaylistOnlyBtn">下载歌单到 Lists</button>
+              <button id="downloadPlaylistAndQueueBtn">下载并添加到播放列表</button>
+              <button id="downloadPlaylistAndSaveBtn">下载并添加到本地歌单</button>
+            </div>
+          </section>
+        </div>
+
+        <section class="download-card download-queue-card">
+          <div class="download-queue-head">
+            <h3>下载队列</h3>
+            <div class="download-row">
+              <select id="downloadTaskFilterSelect">
+                <option value="all">全部</option>
+                <option value="active">进行中</option>
+                <option value="succeeded">已完成</option>
+                <option value="failed">失败</option>
+                <option value="skipped">已跳过</option>
+                <option value="canceled">已取消</option>
+              </select>
+            </div>
+          </div>
+          <div class="download-task-list" id="downloadTaskList">
+            <div class="netease-task-empty">暂无下载任务</div>
+          </div>
+        </section>
+      </section>
     </main>
   </div>
 

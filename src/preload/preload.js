@@ -19,7 +19,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
   neteaseOpenPage: (payload) => ipcRenderer.invoke('netease:open-page', payload),
   neteaseOpenExternalUrl: (payload) => ipcRenderer.invoke('netease:open-external-url', payload),
   neteaseGetDownloadDir: () => ipcRenderer.invoke('netease:get-download-dir'),
+  neteaseGetDownloadDirs: () => ipcRenderer.invoke('netease:get-download-dirs'),
+  neteaseOpenDownloadDir: (payload) => ipcRenderer.invoke('netease:open-download-dir', payload),
+  neteaseClearTempDownloads: () => ipcRenderer.invoke('netease:clear-temp-downloads'),
   neteaseDownloadDirect: (payload) => ipcRenderer.invoke('netease:download-direct', payload),
+  neteaseDownloadSongTask: (payload) => ipcRenderer.invoke('netease:download-song-task', payload),
+  neteaseDownloadPlaylistById: (payload) => ipcRenderer.invoke('netease:download-playlist-by-id', payload),
   neteaseAuthGetState: () => ipcRenderer.invoke('netease:auth:get-state'),
   neteaseAuthGetAccountSummary: (payload) => ipcRenderer.invoke('netease:auth:get-account-summary', payload),
   neteaseAuthUpdate: (payload) => ipcRenderer.invoke('netease:auth:update', payload),
@@ -54,6 +59,12 @@ contextBridge.exposeInMainWorld('electronAPI', {
     const wrapped = (_event, task) => listener(task)
     ipcRenderer.on('netease:download-task-updated', wrapped)
     return () => ipcRenderer.removeListener('netease:download-task-updated', wrapped)
+  },
+  onAppToast: (listener) => {
+    if (typeof listener !== 'function') return () => {}
+    const wrapped = (_event, payload) => listener(payload)
+    ipcRenderer.on('app:toast', wrapped)
+    return () => ipcRenderer.removeListener('app:toast', wrapped)
   },
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
   reportPlayerState: (state) => ipcRenderer.send('player:state-changed', state),

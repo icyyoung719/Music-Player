@@ -260,6 +260,118 @@ body {
   padding: 18px 22px;
   overflow: auto;
 }
+.home-content-view {
+  min-height: 100%;
+}
+.download-title-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.download-title-row h2 {
+  font-size: 28px;
+  color: var(--text-main);
+}
+.download-dir-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.download-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(280px, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.download-card {
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  background: var(--panel);
+  padding: 12px;
+}
+.download-card h3 {
+  font-size: 15px;
+  margin-bottom: 8px;
+}
+.download-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+.download-row input,
+.download-row select {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  color: var(--text-main);
+  background: var(--panel);
+  padding: 8px 10px;
+  font-size: 12px;
+  min-width: 130px;
+}
+.download-row input {
+  flex: 1;
+  min-width: 220px;
+}
+.download-preview {
+  min-height: 40px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel-strong);
+  padding: 8px 10px;
+  color: var(--text-main);
+  font-size: 12px;
+  margin-bottom: 8px;
+  line-height: 1.45;
+  word-break: break-all;
+}
+.download-queue-card {
+  margin-top: 6px;
+}
+.download-queue-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+.download-task-list {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--panel);
+  max-height: 280px;
+  overflow: auto;
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+}
+.download-task-item {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 8px;
+  background: rgba(255, 255, 255, 0.12);
+  font-size: 12px;
+  color: var(--text-main);
+  line-height: 1.4;
+}
+.download-task-line {
+  margin-bottom: 2px;
+  word-break: break-all;
+}
+.download-task-path {
+  color: var(--text-sub);
+  font-size: 11px;
+}
+.download-task-cancel {
+  margin-top: 4px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+}
 .hero-cards {
   display: grid;
   grid-template-columns: repeat(5, minmax(130px, 1fr));
@@ -1096,6 +1208,50 @@ button.btn-active {
   min-width: 56px;
 }
 
+.app-toast-container {
+  position: fixed;
+  right: 14px;
+  bottom: 16px;
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.app-toast {
+  width: min(320px, calc(100vw - 28px));
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel-strong);
+  color: var(--text-main);
+  box-shadow: var(--shadow);
+  padding: 9px 10px;
+  animation: toast-rise-in 0.22s ease both;
+}
+.app-toast-title {
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 3px;
+}
+.app-toast-body {
+  font-size: 12px;
+  line-height: 1.42;
+  color: var(--text-sub);
+  word-break: break-all;
+}
+.app-toast-success {
+  border-left: 4px solid #4cb86b;
+}
+.app-toast-error {
+  border-left: 4px solid #cf3f3f;
+}
+.app-toast-info {
+  border-left: 4px solid #4f8df6;
+}
+.app-toast.is-leaving {
+  animation: toast-rise-out 0.26s ease forwards;
+}
+
 @keyframes page-rise {
   from { opacity: 0; transform: translateY(8px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1113,10 +1269,19 @@ button.btn-active {
   65% { transform: translateX(115%); }
   100% { transform: translateX(115%); }
 }
+@keyframes toast-rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes toast-rise-out {
+  from { opacity: 1; transform: translateY(0); }
+  to { opacity: 0; transform: translateY(-12px); }
+}
 
 @media (max-width: 1200px) {
   .playlist-grid { grid-template-columns: repeat(4, minmax(120px, 1fr)); }
   .hero-cards { grid-template-columns: repeat(3, minmax(120px, 1fr)); }
+  .download-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 1080px) {
   .home-topbar { grid-template-columns: 1fr; padding: 10px; }
@@ -1155,6 +1320,14 @@ button.btn-active {
   .bottom-right {
     justify-content: center;
     text-align: center;
+  }
+  .app-toast-container {
+    right: 8px;
+    left: 8px;
+    bottom: 8px;
+  }
+  .app-toast {
+    width: 100%;
   }
 }
 @media (max-width: 680px) {

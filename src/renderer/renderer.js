@@ -4,18 +4,25 @@ import { createSavedPlaylistManager } from './modules/savedPlaylistManager.js'
 import { createPlaybackController } from './modules/playbackController.js'
 import { createNeteaseManager } from './modules/neteaseManager.js'
 import { createAccountManager } from './modules/accountManager.js'
+import { createDownloadManager } from './modules/downloadManager.js'
+import { createToastManager } from './modules/toastManager.js'
 
 const homePageEl = document.getElementById('homePage')
 const songPageEl = document.getElementById('songPage')
 const homeNowCoverImgEl = document.getElementById('homeNowCoverImg')
 const homeNowCoverPlaceholderEl = document.getElementById('homeNowCoverPlaceholder')
 const homeFeaturedCoverEl = document.getElementById('homeFeaturedCover')
+const homeMenuRecommendEl = document.getElementById('homeMenuRecommend')
+const homeMenuDownloadEl = document.getElementById('homeMenuDownload')
+const homeRecommendViewEl = document.getElementById('homeRecommendView')
+const homeDownloadViewEl = document.getElementById('homeDownloadView')
 const windowMinimizeBtn = document.getElementById('windowMinimizeBtn')
 const homeLoginBtn = document.getElementById('homeLoginBtn')
 const neteaseAuthOpenWindowBtn = document.getElementById('neteaseAuthOpenWindowBtn')
 const homeUserNameEl = document.getElementById('homeUserName')
 const homeUserDetailEl = document.getElementById('homeUserDetail')
 const homeUserAvatarEl = document.getElementById('homeUserAvatar')
+const appToastContainerEl = document.getElementById('appToastContainer')
 
 const shortcutDom = {
   shortcutBtn: document.getElementById('shortcutBtn'),
@@ -107,6 +114,28 @@ const neteaseDom = {
   taskList: document.getElementById('neteaseTaskList')
 }
 
+const downloadDom = {
+  songIdInput: document.getElementById('downloadSongIdInput'),
+  songResolveBtn: document.getElementById('downloadSongResolveBtn'),
+  songPreview: document.getElementById('downloadSongPreview'),
+  qualitySelect: document.getElementById('downloadQualitySelect'),
+  songOnlyBtn: document.getElementById('downloadSongOnlyBtn'),
+  songTempQueueBtn: document.getElementById('downloadSongTempQueueBtn'),
+  songAndQueueBtn: document.getElementById('downloadSongAndQueueBtn'),
+  playlistIdInput: document.getElementById('downloadPlaylistIdInput'),
+  playlistResolveBtn: document.getElementById('downloadPlaylistResolveBtn'),
+  playlistPreview: document.getElementById('downloadPlaylistPreview'),
+  playlistOnlyBtn: document.getElementById('downloadPlaylistOnlyBtn'),
+  playlistAndQueueBtn: document.getElementById('downloadPlaylistAndQueueBtn'),
+  playlistAndSaveBtn: document.getElementById('downloadPlaylistAndSaveBtn'),
+  openSongsDirBtn: document.getElementById('downloadOpenSongsDirBtn'),
+  openTempDirBtn: document.getElementById('downloadOpenTempDirBtn'),
+  openListsDirBtn: document.getElementById('downloadOpenListsDirBtn'),
+  clearTempBtn: document.getElementById('downloadClearTempBtn'),
+  taskFilterSelect: document.getElementById('downloadTaskFilterSelect'),
+  taskList: document.getElementById('downloadTaskList')
+}
+
 const SHORTCUT_STORAGE_KEY = 'musicPlayer.shortcuts.v1'
 const SEEK_SECONDS = 5
 const shortcutActions = {
@@ -127,6 +156,31 @@ const shortcutActions = {
 let shortcutManager = null
 let playbackController = null
 let accountManager = null
+let savedPlaylistManager = null
+let toastManager = null
+let currentHomeView = 'recommend'
+const createdSavedPlaylistIdsByName = new Map()
+const pendingSavedPlaylistPromises = new Map()
+
+function showHomeView(view) {
+  currentHomeView = view === 'download' ? 'download' : 'recommend'
+
+  if (homeRecommendViewEl) {
+    homeRecommendViewEl.classList.toggle('page-hidden', currentHomeView !== 'recommend')
+  }
+
+  if (homeDownloadViewEl) {
+    homeDownloadViewEl.classList.toggle('page-hidden', currentHomeView !== 'download')
+  }
+
+  if (homeMenuRecommendEl) {
+    homeMenuRecommendEl.classList.toggle('active', currentHomeView === 'recommend')
+  }
+
+  if (homeMenuDownloadEl) {
+    homeMenuDownloadEl.classList.toggle('active', currentHomeView === 'download')
+  }
+}
 
 function showSongPage() {
   if (homePageEl) homePageEl.classList.add('page-hidden')
@@ -136,6 +190,7 @@ function showSongPage() {
 function showHomePage() {
   if (songPageEl) songPageEl.classList.add('page-hidden')
   if (homePageEl) homePageEl.classList.remove('page-hidden')
+  showHomeView(currentHomeView)
 }
 
 function setHomeNowCover(dataUrl) {
@@ -258,6 +313,20 @@ function setupWindowEvents() {
       }
     })
   }
+
+  if (homeMenuRecommendEl) {
+    homeMenuRecommendEl.addEventListener('click', () => {
+      showHomePage()
+      showHomeView('recommend')
+    })
+  }
+
+  if (homeMenuDownloadEl) {
+    homeMenuDownloadEl.addEventListener('click', () => {
+      showHomePage()
+      showHomeView('download')
+    })
+  }
 }
 
 function openNeteaseAuthWindow(page = 'email') {
@@ -299,7 +368,7 @@ function setupPlaybackController() {
 }
 
 function setupSavedPlaylistManager() {
-  const manager = createSavedPlaylistManager({
+  savedPlaylistManager = createSavedPlaylistManager({
     electronAPI: window.electronAPI,
     dom: savedPlaylistDom,
     promptForPlaylistName: requestPlaylistName,
@@ -308,7 +377,59 @@ function setupSavedPlaylistManager() {
     replaceQueueWithTracks: (tracks) => playbackController.replaceCurrentQueueWithTracks(tracks)
   })
 
-  manager.init()
+  savedPlaylistManager.init()
+}
+
+async function ensureSavedPlaylistByName(name, playlistKey = '') {
+  const cleanName = String(name || '').trim()
+  const cacheKey = String(playlistKey || cleanName).trim()
+  if (!cleanName || !window.electronAPI || !window.electronAPI.playlistCreate) return ''
+  if (cacheKey && createdSavedPlaylistIdsByName.has(cacheKey)) {
+    return createdSavedPlaylistIdsByName.get(cacheKey)
+  }
+
+  if (cacheKey && pendingSavedPlaylistPromises.has(cacheKey)) {
+    return pendingSavedPlaylistPromises.get(cacheKey)
+  }
+
+  const createPromise = (async () => {
+    const created = await window.electronAPI.playlistCreate(cleanName)
+    if (!created?.ok || !created?.playlist?.id) return ''
+    const playlistId = created.playlist.id
+    if (cacheKey) {
+      createdSavedPlaylistIdsByName.set(cacheKey, playlistId)
+    }
+    return playlistId
+  })()
+
+  if (cacheKey) {
+    pendingSavedPlaylistPromises.set(cacheKey, createPromise)
+  }
+
+  const playlistId = await createPromise
+  if (cacheKey) {
+    pendingSavedPlaylistPromises.delete(cacheKey)
+  }
+  return playlistId
+}
+
+async function appendDownloadedTrackToSavedPlaylist(playlistId, track) {
+  if (!playlistId || !track?.path || !window.electronAPI || !window.electronAPI.playlistAddTracks) return
+  await window.electronAPI.playlistAddTracks(playlistId, [
+    {
+      path: track.path,
+      metadataCache: {
+        title: track.title,
+        artist: track.artist,
+        album: track.album,
+        duration: track.duration
+      }
+    }
+  ])
+
+  if (savedPlaylistManager && savedPlaylistManager.refreshSavedPlaylists) {
+    savedPlaylistManager.refreshSavedPlaylists(playlistId)
+  }
 }
 
 function setupShortcutManager() {
@@ -387,6 +508,34 @@ function setupNeteaseManager() {
   manager.init()
 }
 
+function setupToastManager() {
+  toastManager = createToastManager({
+    electronAPI: window.electronAPI,
+    container: appToastContainerEl
+  })
+  toastManager.init()
+}
+
+function setupDownloadManager() {
+  const manager = createDownloadManager({
+    electronAPI: window.electronAPI,
+    dom: downloadDom,
+    onAppendTrack: (track) => {
+      if (!playbackController || !track?.path) return
+      playbackController.appendToPlaylist([{ name: track.name, path: track.path, file: null }])
+    },
+    onPushToast: (payload) => {
+      if (toastManager) {
+        toastManager.pushToast(payload)
+      }
+    },
+    onEnsureSavedPlaylist: ensureSavedPlaylistByName,
+    onAppendTrackToSavedPlaylist: appendDownloadedTrackToSavedPlaylist
+  })
+
+  manager.init()
+}
+
 function setupPlayerControlListener() {
   if (!window.electronAPI || !window.electronAPI.onPlayerControl) return
 
@@ -397,15 +546,18 @@ function setupPlayerControlListener() {
 
 function initRenderer() {
   setupWindowEvents()
+  setupToastManager()
   setupNeteaseAuthWindowEntrances()
   setupPlaybackController()
   setupSavedPlaylistManager()
   setupNeteaseManager()
+  setupDownloadManager()
   setupAccountManager()
   setupShortcutManager()
   setupPlayerControlListener()
 
   showHomePage()
+  showHomeView('recommend')
   initTheme()
 }
 
