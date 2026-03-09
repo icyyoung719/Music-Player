@@ -29,6 +29,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   neteaseAuthQrCheck: (payload) => ipcRenderer.invoke('netease:auth:qr:check', payload),
   neteaseAuthClear: () => ipcRenderer.invoke('netease:auth:clear'),
   neteaseAuthVerify: () => ipcRenderer.invoke('netease:auth:verify'),
+  neteaseAuthOpenWindow: (payload) => ipcRenderer.invoke('netease:auth:open-window', payload),
+  neteaseAuthCloseWindow: () => ipcRenderer.send('netease:auth-window:close'),
+  onNeteaseAuthWindowSetPage: (listener) => {
+    if (typeof listener !== 'function') return () => {}
+    const wrapped = (_event, page) => listener(page)
+    ipcRenderer.on('netease:auth-window:set-page', wrapped)
+    return () => ipcRenderer.removeListener('netease:auth-window:set-page', wrapped)
+  },
   neteaseAuthRequest: (payload) => ipcRenderer.invoke('netease:auth:request', payload),
   neteaseResolveSongDownloadUrl: (payload) => ipcRenderer.invoke('netease:resolve-song-download-url', payload),
   neteaseDownloadBySongId: (payload) => ipcRenderer.invoke('netease:download-by-song-id', payload),

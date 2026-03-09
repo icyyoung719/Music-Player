@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:;">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>网易云登录</title>
+  <link rel="stylesheet" href="./styles/auth-window.css">
+</head>
+<body>
+  <div class="auth-shell">
+    <header class="auth-header">
+      <div>
+        <div class="auth-title">网易云账号登录</div>
+        <div class="auth-subtitle">在独立窗口完成授权，不打断播放器操作</div>
+      </div>
+      <button id="authWindowCloseBtn" class="ghost-btn" title="关闭窗口">关闭</button>
+    </header>
+
+    <div class="auth-status" id="authStatus">授权状态: 初始化中...</div>
+
+    <nav class="auth-tabs" aria-label="登录方式">
+      <button class="auth-tab is-active" data-page="email">邮箱登录</button>
+      <button class="auth-tab" data-page="phone">手机号登录</button>
+      <button class="auth-tab" data-page="qr">二维码登录</button>
+      <button class="auth-tab" data-page="token">授权管理</button>
+    </nav>
+
+    <main class="auth-content">
+      <section class="auth-page is-active" data-page="email">
+        <label class="field-label" for="authApiBase">API Base（默认可不改）</label>
+        <input id="authApiBase" type="text" placeholder="https://music.163.com">
+
+        <div class="two-col">
+          <div>
+            <label class="field-label" for="authEmail">网易云邮箱账号</label>
+            <input id="authEmail" type="text" placeholder="name@example.com">
+          </div>
+          <div>
+            <label class="field-label" for="authPassword">网易云密码</label>
+            <input id="authPassword" type="password" placeholder="输入密码后可回车登录">
+          </div>
+        </div>
+
+        <div class="action-row">
+          <button id="authEmailLoginBtn" class="primary-btn">邮箱登录</button>
+        </div>
+      </section>
+
+      <section class="auth-page" data-page="phone">
+        <label class="field-label" for="authApiBasePhone">API Base（默认可不改）</label>
+        <input id="authApiBasePhone" type="text" placeholder="https://music.163.com">
+
+        <div class="two-col">
+          <div>
+            <label class="field-label" for="authCountryCode">国家码</label>
+            <input id="authCountryCode" type="text" value="86" placeholder="86">
+          </div>
+          <div>
+            <label class="field-label" for="authPhone">手机号</label>
+            <input id="authPhone" type="text" placeholder="请输入手机号">
+          </div>
+        </div>
+
+        <div class="two-col">
+          <div>
+            <label class="field-label" for="authCaptcha">短信验证码</label>
+            <input id="authCaptcha" type="text" placeholder="6位验证码">
+          </div>
+          <div class="action-col">
+            <button id="authSendCaptchaBtn">发送验证码</button>
+            <button id="authPhoneCaptchaLoginBtn" class="primary-btn">手机号+验证码登录</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="auth-page" data-page="qr">
+        <label class="field-label" for="authApiBaseQr">API Base（默认可不改）</label>
+        <input id="authApiBaseQr" type="text" placeholder="https://music.163.com">
+
+        <div class="qr-wrap">
+          <div class="qr-view" id="authQrView">
+            <img id="authQrImg" alt="网易云二维码登录">
+            <span id="authQrPlaceholder">点击“生成二维码”开始</span>
+          </div>
+          <div class="qr-link" id="authQrLink">二维码登录链接将在这里显示</div>
+        </div>
+
+        <div class="action-row">
+          <button id="authQrCreateBtn" class="primary-btn">生成二维码</button>
+          <button id="authQrOpenBtn">打开二维码链接</button>
+          <button id="authQrStartPollBtn">开始轮询</button>
+          <button id="authQrStopPollBtn">停止轮询</button>
+        </div>
+      </section>
+
+      <section class="auth-page" data-page="token">
+        <div class="two-col">
+          <div>
+            <label class="field-label" for="authUserName">用户昵称</label>
+            <input id="authUserName" type="text" placeholder="可选">
+          </div>
+          <div>
+            <label class="field-label" for="authUserId">用户 ID</label>
+            <input id="authUserId" type="text" placeholder="可选">
+          </div>
+        </div>
+
+        <label class="field-label" for="authAccessToken">Access Token</label>
+        <input id="authAccessToken" type="text" placeholder="可选">
+
+        <label class="field-label" for="authRefreshToken">Refresh Token</label>
+        <input id="authRefreshToken" type="text" placeholder="可选">
+
+        <div class="action-row">
+          <button id="authSaveBtn" class="primary-btn">保存授权信息</button>
+          <button id="authVerifyBtn">验证授权</button>
+          <button id="authClearBtn" class="warn-btn">清空授权</button>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script type="module" src="./modules/authWindow.js"></script>
+</body>
+</html>

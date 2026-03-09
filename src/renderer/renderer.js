@@ -10,6 +10,8 @@ const homeNowCoverImgEl = document.getElementById('homeNowCoverImg')
 const homeNowCoverPlaceholderEl = document.getElementById('homeNowCoverPlaceholder')
 const homeFeaturedCoverEl = document.getElementById('homeFeaturedCover')
 const windowMinimizeBtn = document.getElementById('windowMinimizeBtn')
+const homeLoginBtn = document.getElementById('homeLoginBtn')
+const neteaseAuthOpenWindowBtn = document.getElementById('neteaseAuthOpenWindowBtn')
 
 const shortcutDom = {
   shortcutBtn: document.getElementById('shortcutBtn'),
@@ -253,6 +255,21 @@ function setupWindowEvents() {
   }
 }
 
+function openNeteaseAuthWindow(page = 'email') {
+  if (!window.electronAPI || !window.electronAPI.neteaseAuthOpenWindow) return
+  window.electronAPI.neteaseAuthOpenWindow({ page })
+}
+
+function setupNeteaseAuthWindowEntrances() {
+  if (homeLoginBtn) {
+    homeLoginBtn.addEventListener('click', () => openNeteaseAuthWindow('email'))
+  }
+
+  if (neteaseAuthOpenWindowBtn) {
+    neteaseAuthOpenWindowBtn.addEventListener('click', () => openNeteaseAuthWindow('email'))
+  }
+}
+
 function setupPlaybackController() {
   playbackController = createPlaybackController({
     electronAPI: window.electronAPI,
@@ -364,6 +381,7 @@ function setupPlayerControlListener() {
 
 function initRenderer() {
   setupWindowEvents()
+  setupNeteaseAuthWindowEntrances()
   setupPlaybackController()
   setupSavedPlaylistManager()
   setupNeteaseManager()

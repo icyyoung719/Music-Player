@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs')
 
 let mainWindow = null
+let authWindow = null
 let tray = null
 let isQuitting = false
 let minimizeToTrayOnClose = true
@@ -286,6 +287,53 @@ function createMainWindow() {
   return win
 }
 
+function getAuthWindowStartPage(payload) {
+  const page = String(payload?.page || '').trim().toLowerCase()
+  const supportedPages = new Set(['email', 'phone', 'qr', 'token'])
+  return supportedPages.has(page) ? page : 'email'
+}
+
+function openNeteaseAuthWindow(payload = {}) {
+  const startPage = getAuthWindowStartPage(payload)
+
+  if (authWindow && !authWindow.isDestroyed()) {
+    authWindow.webContents.send('netease:auth-window:set-page', startPage)
+    authWindow.show()
+    authWindow.focus()
+    return { ok: true }
+  }
+
+  const win = new BrowserWindow({
+    width: 720,
+    height: 620,
+    minWidth: 620,
+    minHeight: 540,
+    parent: mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined,
+    modal: false,
+    autoHideMenuBar: true,
+    title: '网易云登录',
+    webPreferences: {
+      preload: path.join(__dirname, '../../preload/preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false
+    }
+  })
+
+  win.removeMenu()
+  win.loadFile(path.join(__dirname, '../../renderer/auth-window.html'), {
+    query: { page: startPage }
+  })
+
+  win.on('closed', () => {
+    if (authWindow === win) {
+      authWindow = null
+    }
+  })
+
+  authWindow = win
+  return { ok: true }
+}
+
 function initializeShell() {
   createTray()
   registerMediaShortcuts()
@@ -306,6 +354,20 @@ function initializeShell() {
       target.minimize()
       return { ok: true }
     })
+
+    ipcMain.handle('netease:auth:open-window', (_event, payload) => {
+      try {
+        return openNeteaseAuthWindow(payload)
+      } catch (err) {
+        console.error('Failed to open NetEase auth window:', err)
+        return { ok: false, error: 'OPEN_AUTH_WINDOW_FAILED' }
+      }
+    })
+
+    ipcMain.on('netease:auth-window:close', () => {
+      if (!authWindow || authWindow.isDestroyed()) return
+      authWindow.close()
+    })
   }
 }
 
@@ -324,6 +386,10 @@ function shouldKeepAliveOnWindowAllClosed() {
 
 function handleWillQuit() {
   isQuitting = true
+  if (authWindow && !authWindow.isDestroyed()) {
+    authWindow.destroy()
+    authWindow = null
+  }
   globalShortcut.unregisterAll()
 }
 

@@ -60,42 +60,13 @@
 
               <section class="netease-box">
                 <h3>☁ 网易云授权接入</h3>
-                <div class="netease-tip">支持邮箱登录、手机号+验证码登录（更友好）、保存授权配置、验证登录态，并创建“按歌曲 ID 下载”任务。下载目录默认 `%USERPROFILE%\\Music\\MyPlayerDownloads`。</div>
+                <div class="netease-tip">登录与授权配置已迁移到独立登录窗口。点击下方按钮可打开多方式登录页面（邮箱 / 手机验证码 / 二维码 / 授权管理）。下载目录默认 `%USERPROFILE%\\Music\\MyPlayerDownloads`。</div>
 
                 <div class="netease-auth-status" id="neteaseAuthStatus">授权状态: 未加载</div>
-                <div class="netease-auth-grid">
-                  <input id="neteaseAuthApiBase" class="full" type="text" placeholder="API Base（默认 https://music.163.com）">
-                  <input id="neteaseAuthEmail" type="text" placeholder="网易云邮箱账号">
-                  <input id="neteaseAuthPassword" type="password" placeholder="网易云密码">
-                  <input id="neteaseAuthCountryCode" type="text" placeholder="国家码（默认 86）" value="86">
-                  <input id="neteaseAuthPhone" type="text" placeholder="手机号">
-                  <input id="neteaseAuthCaptcha" type="text" placeholder="短信验证码">
-                  <input id="neteaseAuthUserName" type="text" placeholder="用户昵称（可选）">
-                  <input id="neteaseAuthUserId" type="text" placeholder="用户 ID（可选）">
-                  <input id="neteaseAuthAccessToken" type="text" placeholder="Access Token（可选）">
-                  <input id="neteaseAuthRefreshToken" type="text" placeholder="Refresh Token（可选）">
-                </div>
                 <div class="netease-row">
-                  <button id="neteaseAuthEmailLoginBtn">邮箱登录</button>
-                  <button id="neteaseAuthSendCaptchaBtn">发送验证码</button>
-                  <button id="neteaseAuthPhoneCaptchaLoginBtn">手机号+验证码登录</button>
-                  <button id="neteaseAuthSaveBtn">保存授权信息</button>
+                  <button id="neteaseAuthOpenWindowBtn">打开登录窗口</button>
                   <button id="neteaseAuthVerifyBtn">验证授权</button>
                   <button id="neteaseAuthClearBtn">清空授权</button>
-                </div>
-
-                <div class="netease-qr-box">
-                  <div class="netease-qr-view" id="neteaseQrView">
-                    <img id="neteaseQrImg" alt="二维码登录">
-                    <span id="neteaseQrPlaceholder">点击“生成二维码”开始</span>
-                  </div>
-                  <div class="netease-qr-link" id="neteaseQrLink">二维码登录链接将在这里显示</div>
-                  <div class="netease-row">
-                    <button id="neteaseAuthQrCreateBtn">生成二维码</button>
-                    <button id="neteaseAuthQrOpenBtn">打开二维码链接</button>
-                    <button id="neteaseAuthQrStartPollBtn">开始轮询状态</button>
-                    <button id="neteaseAuthQrStopPollBtn">停止轮询</button>
-                  </div>
                 </div>
 
                 <div class="netease-result" id="neteaseResult">请输入 ID 后点击“查询”。</div>

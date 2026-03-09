@@ -127,6 +127,21 @@ body {
   transition: transform 0.2s ease, background 0.2s ease;
 }
 .shortcut-btn:hover { transform: translateY(-1px); background: var(--panel-strong); }
+.home-login-btn {
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: linear-gradient(145deg, var(--accent), var(--accent-2));
+  color: #fff;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  transition: transform 0.2s ease, filter 0.2s ease;
+}
+.home-login-btn:hover {
+  transform: translateY(-1px);
+  filter: saturate(1.12) brightness(1.03);
+}
 .theme-toggle {
   padding: 8px 12px;
   border-radius: 999px;
