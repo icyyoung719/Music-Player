@@ -490,6 +490,22 @@ function buildApicFrame(imageBuffer, mimeType) {
   return buildId3v23Frame('APIC', payload)
 }
 
+function buildUsltFrame(lyrics, language = 'XXX') {
+  const text = String(lyrics || '').trim()
+  if (!text) return Buffer.alloc(0)
+  
+  // Empty content descriptor: UTF-16 BOM plus null terminator (2 zero bytes)
+  const contentDesc = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from([0x00, 0x00])])
+  
+  const payload = Buffer.concat([
+    Buffer.from([0x01]), // Target text encoding: UTF-16 with BOM
+    Buffer.from(language.padEnd(3, ' ').substring(0, 3), 'ascii'),
+    contentDesc,
+    encodeUtf16Text(text)
+  ])
+  return buildId3v23Frame('USLT', payload)
+}
+
 function stripLeadingId3Tag(audioBuffer) {
   if (!Buffer.isBuffer(audioBuffer) || audioBuffer.length < 10) return audioBuffer
   if (audioBuffer[0] !== 0x49 || audioBuffer[1] !== 0x44 || audioBuffer[2] !== 0x33) return audioBuffer
@@ -511,12 +527,14 @@ async function writeId3TagsToMp3(filePath, metadata, coverBuffer, coverMime) {
   const artist = String(metadata?.artist || '').trim()
   const album = String(metadata?.album || '').trim()
   const year = metadata?.year != null ? String(metadata.year).trim() : ''
+  const lyrics = String(metadata?.lyrics || '').trim()
 
   const frames = [
     buildTextFrame('TIT2', title),
     buildTextFrame('TPE1', artist),
     buildTextFrame('TALB', album),
     buildTextFrame('TYER', year),
+    buildUsltFrame(lyrics),
     buildApicFrame(coverBuffer, coverMime)
   ].filter((frame) => frame.length > 0)
 
@@ -572,6 +590,18 @@ async function fetchSongMetadataById(songId) {
   }
 }
 
+async function fetchSongLyricsById(songId) {
+  try {
+    const url = `https://music.163.com/api/song/lyric?id=${songId}&lv=-1&tv=-1`
+    const data = await requestJson(url)
+    const lrc = data?.lrc?.lyric || ''
+    return lrc.trim()
+  } catch (err) {
+    console.warn('Failed to fetch song lyrics:', err?.message || err)
+    return ''
+  }
+}
+
 async function persistTrackMetadataForTask(task) {
   if (!task || !task.filePath || task.status !== 'succeeded') return
 
@@ -582,13 +612,21 @@ async function persistTrackMetadataForTask(task) {
 
   const entry = {
     songId: sourceMetadata.songId || task.songId || '',
-    title: sourceMetadata.title || task.title || path.basename(task.filePath),
+    title: sourceMetadata.title || task.title || path.basename(task.filePath),  
     artist: sourceMetadata.artist || '',
     album: sourceMetadata.album || '',
     year: Number.isFinite(Number(sourceMetadata.year)) ? Number(sourceMetadata.year) : null,
     coverPath: '',
     coverUrl: sourceMetadata.coverUrl || '',
     updatedAt: Date.now()
+  }
+
+  // Fetch lyrics
+  if (entry.songId) {
+    const lyrics = await fetchSongLyricsById(entry.songId)
+    if (lyrics) {
+      entry.lyrics = lyrics
+    }
   }
 
   let coverBuffer = null
