@@ -18,7 +18,6 @@ const homeRecommendViewEl = document.getElementById('homeRecommendView')
 const homeDownloadViewEl = document.getElementById('homeDownloadView')
 const windowMinimizeBtn = document.getElementById('windowMinimizeBtn')
 const homeLoginBtn = document.getElementById('homeLoginBtn')
-const neteaseAuthOpenWindowBtn = document.getElementById('neteaseAuthOpenWindowBtn')
 const homeUserNameEl = document.getElementById('homeUserName')
 const homeUserDetailEl = document.getElementById('homeUserDetail')
 const homeUserAvatarEl = document.getElementById('homeUserAvatar')
@@ -334,12 +333,6 @@ function openNeteaseAuthWindow(page = 'email') {
   window.electronAPI.neteaseAuthOpenWindow({ page })
 }
 
-function setupNeteaseAuthWindowEntrances() {
-  if (neteaseAuthOpenWindowBtn) {
-    neteaseAuthOpenWindowBtn.addEventListener('click', () => openNeteaseAuthWindow('email'))
-  }
-}
-
 function setupAccountManager() {
   accountManager = createAccountManager({
     electronAPI: window.electronAPI,
@@ -547,7 +540,6 @@ function setupPlayerControlListener() {
 function initRenderer() {
   setupWindowEvents()
   setupToastManager()
-  setupNeteaseAuthWindowEntrances()
   setupPlaybackController()
   setupSavedPlaylistManager()
   setupNeteaseManager()

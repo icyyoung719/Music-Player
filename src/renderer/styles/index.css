@@ -205,6 +205,18 @@ body {
 }
 .theme-toggle:hover { transform: translateY(-1px); background: var(--panel-strong); }
 
+.home-search-result {
+  margin: 8px 14px 0;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text-sub);
+  font-size: 12px;
+  line-height: 1.4;
+  min-height: 36px;
+}
+
 .home-body {
   display: grid;
   grid-template-columns: 232px 1fr;
@@ -1285,6 +1297,7 @@ button.btn-active {
 }
 @media (max-width: 1080px) {
   .home-topbar { grid-template-columns: 1fr; padding: 10px; }
+  .home-search-result { margin: 8px 10px 0; }
   .home-user {
     justify-content: flex-start;
     flex-wrap: wrap;
