@@ -184,6 +184,12 @@ function showHomeView(view) {
 function showSongPage() {
   if (homePageEl) homePageEl.classList.add('page-hidden')
   if (songPageEl) songPageEl.classList.remove('page-hidden')
+  if (playbackController) {
+    // Wait for display block to take effect
+    requestAnimationFrame(() => {
+      playbackController.refreshLyricsScroll()
+    })
+  }
 }
 
 function showHomePage() {

@@ -228,7 +228,7 @@ body {
 .home-content,
 .home-player,
 .panel-card,
-.lyrics-placeholder,
+.lyrics-container,
 .playlist,
 .saved-tracks,
 .bottombar,
@@ -694,16 +694,41 @@ body {
   grid-template-rows: .8fr 1.2fr;
   gap: 10px;
 }
-.lyrics-placeholder,
+.lyrics-container,
 .panel-card {
   border-radius: 14px;
   padding: 12px;
   overflow: auto;
 }
-.lyrics-placeholder {
+.lyrics-container {
+  overflow: hidden;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+.lyrics-wrapper {
+  transition: transform 0.3s ease-out;
+  text-align: center;
+  width: 100%;
+}
+.lyric-line {
+  line-height: 2;
+  font-size: 14px;
   color: var(--text-sub);
-  line-height: 1.85;
-  font-size: 13px;
+  transition: all 0.3s ease;
+  min-height: 28px;
+  opacity: 0.6;
+}
+.lyric-line.active {
+  color: var(--text);
+  font-size: 16px;
+  opacity: 1;
+  font-weight: 500;
+}
+.lyric-line.no-lyrics {
+  color: var(--text-sub);
+  margin-top: 50px;
 }
 .float-tools {
   display: flex;

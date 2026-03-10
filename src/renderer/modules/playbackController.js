@@ -6,6 +6,7 @@
   getTrackUniqueKey,
   getCurrentTrackPath
 } from './trackUtils.js'
+import { createLyricManager } from './lyricManager.js'
 
 export function createPlaybackController(options) {
   const {
@@ -22,6 +23,7 @@ export function createPlaybackController(options) {
   let isLooping = false
   let isSeeking = false
   let previewSeekRatio = null
+  let lyricManager = null
 
   function setPlayButtonState(isPlaying) {
     if (!dom.playBtn) return
@@ -138,6 +140,10 @@ export function createPlaybackController(options) {
     dom.coverPlaceholder.style.display = 'flex'
     resetProgress()
 
+    if (lyricManager) {
+      lyricManager.setLyrics(null)
+    }
+
     audio.pause()
 
     if (track.file) {
@@ -168,6 +174,22 @@ export function createPlaybackController(options) {
           onSetHomeNowCover(meta.coverDataUrl)
         } else {
           onSetHomeNowCover(null)
+        }
+
+        // Set Lyrics
+        if (lyricManager) {
+          let lyricData = ''
+          if (Array.isArray(meta.lyrics) && meta.lyrics.length > 0) {
+            const first = meta.lyrics[0]
+            lyricData = (first && typeof first === 'object' && typeof first.text === 'string')
+              ? first.text
+              : (typeof first === 'string' ? first : '')
+          } else if (typeof meta.lyrics === 'string') {
+            lyricData = meta.lyrics
+          } else if (meta.lyrics) {
+            lyricData = String(meta.lyrics)
+          }
+          lyricManager.setLyrics(lyricData)
         }
 
         track.metadataCache = {
@@ -432,6 +454,9 @@ export function createPlaybackController(options) {
     audio.addEventListener('timeupdate', () => {
       if (!audio.duration || isSeeking) return
       updateProgressUIByRatio(audio.currentTime / audio.duration, audio.currentTime)
+      if (lyricManager) {
+        lyricManager.updateTime(audio.currentTime)
+      }
     })
 
     audio.addEventListener('loadedmetadata', () => {
@@ -464,6 +489,8 @@ export function createPlaybackController(options) {
   }
 
   function init() {
+    lyricManager = createLyricManager('lyricsContainer', 'lyricsWrapper')
+    
     bindControlEvents()
     bindAudioEvents()
     updatePlaylistUI()
@@ -483,6 +510,9 @@ export function createPlaybackController(options) {
     collectCurrentQueueAsTrackInputs,
     replaceCurrentQueueWithTracks,
     handleExternalPlayerControl,
-    hasQueue: () => playlist.length > 0
+    hasQueue: () => playlist.length > 0,
+    refreshLyricsScroll: () => {
+      if (lyricManager) lyricManager.refreshScroll()
+    }
   }
 }

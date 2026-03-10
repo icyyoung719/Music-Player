@@ -311,6 +311,7 @@ function registerPlaylistHandlers() {
         artist: common.artist || null,
         album: common.album || null,
         year: common.year || null,
+        lyrics: common.lyrics || null,
         duration: format.duration || null,
         coverDataUrl
       }
@@ -326,6 +327,7 @@ function registerPlaylistHandlers() {
       artist: parsedMeta?.artist || fallback?.artist || null,
       album: parsedMeta?.album || fallback?.album || null,
       year: parsedMeta?.year || fallback?.year || null,
+      lyrics: parsedMeta?.lyrics || null,
       duration: parsedMeta?.duration || null,
       coverDataUrl: parsedMeta?.coverDataUrl || fallbackCoverDataUrl || null
     }
