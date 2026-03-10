@@ -191,6 +191,8 @@
 当前版本为基础可运行版本，后续可围绕 TODO 逐步演进为完整播放器。
 
 ## 网易云接入
+API参考：`ref\netease-cloud-music-api-binaryify\module`，下有各种需要的API
+
 **参考**：
 https://github.com/TartaricAcid/NetMusic   这是MC的一个网易云播放器mod，可以参考其API如何调用网易云的接口获取歌曲信息和下载链接等
 https://github.com/FengLiuFeseliud/CloudMusic-Mod  另一个API参考，包含登录API等
