@@ -708,7 +708,8 @@ body {
   align-items: center;
 }
 .lyrics-wrapper {
-  transition: transform 0.3s ease-out;
+  /* Duration matches ADVANCE_OFFSET in lyricManager.js — scroll completes on the beat */
+  transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94);
   text-align: center;
   width: 100%;
 }
@@ -716,7 +717,8 @@ body {
   line-height: 2;
   font-size: 14px;
   color: var(--text-sub);
-  transition: all 0.3s ease;
+  /* Explicit properties only — avoids animating layout props unexpectedly */
+  transition: color 0.3s ease, opacity 0.3s ease, font-size 0.3s ease, font-weight 0.3s ease;
   min-height: 28px;
   opacity: 0.6;
 }

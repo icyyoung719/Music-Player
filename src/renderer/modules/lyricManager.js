@@ -1,7 +1,11 @@
+// Advance the lyric lookup by this many seconds so the scroll animation
+// completes right on the beat rather than finishing after it.
+const ADVANCE_OFFSET = 0.3
+
 export function createLyricManager(containerId, wrapperId) {
   const container = document.getElementById(containerId)
   const wrapper = document.getElementById(wrapperId)
-  
+
   let currentLyrics = [] // Array of { time, text }
   let activeIndex = -1
 
@@ -48,10 +52,21 @@ export function createLyricManager(containerId, wrapperId) {
     renderLyrics()
   }
   
+  function setWrapperTransform(value, instant = false) {
+    if (instant) {
+      wrapper.style.transition = 'none'
+      wrapper.style.transform = value
+      // Re-enable CSS transition on the next frame after the browser has painted
+      requestAnimationFrame(() => { wrapper.style.transition = '' })
+    } else {
+      wrapper.style.transform = value
+    }
+  }
+
   function renderLyrics() {
     if (!wrapper) return
     activeIndex = -1
-    wrapper.style.transform = `translateY(0px)`
+    setWrapperTransform('translateY(0px)', true)
     wrapper.style.paddingTop = '0px'
     wrapper.style.paddingBottom = '0px'
     wrapper.innerHTML = ''
@@ -88,7 +103,8 @@ export function createLyricManager(containerId, wrapperId) {
         const activeOffsetTop = activeEl.offsetTop
         const activeHeight = activeEl.offsetHeight
         const scrollY = activeOffsetTop - (containerHeight / 2) + (activeHeight / 2)
-        wrapper.style.transform = `translateY(-${scrollY}px)`
+        // Snap instantly — no slide animation when the user switches page or seeks
+        setWrapperTransform(`translateY(-${scrollY}px)`, true)
       }
     }
   }
@@ -96,7 +112,9 @@ export function createLyricManager(containerId, wrapperId) {
   function updateTime(currentTime) {
     if (currentLyrics.length === 0 || !wrapper) return
 
-    let nextActiveIndex = currentLyrics.findIndex(l => l.time > currentTime)
+    // Look ahead by ADVANCE_OFFSET so the scroll animation finishes on the beat
+    const lookupTime = currentTime + ADVANCE_OFFSET
+    let nextActiveIndex = currentLyrics.findIndex(l => l.time > lookupTime)
     if (nextActiveIndex === -1) {
       nextActiveIndex = currentLyrics.length - 1
     } else if (nextActiveIndex === 0) {
@@ -108,26 +126,24 @@ export function createLyricManager(containerId, wrapperId) {
     if (nextActiveIndex !== activeIndex) {
       const oldActive = wrapper.querySelector('.lyric-line.active')
       if (oldActive) oldActive.classList.remove('active')
-      
+
       if (nextActiveIndex !== -1) {
         const newActive = wrapper.querySelector(`.lyric-line[data-index="${nextActiveIndex}"]`)
         if (newActive) {
           newActive.classList.add('active')
-          
-          // Calculate scroll
+
           const containerHeight = container.clientHeight
           if (containerHeight > 0) {
             const activeOffsetTop = newActive.offsetTop
             const activeHeight = newActive.offsetHeight
-            
             const scrollY = activeOffsetTop - (containerHeight / 2) + (activeHeight / 2)
-            wrapper.style.transform = `translateY(-${scrollY}px)`
+            setWrapperTransform(`translateY(-${scrollY}px)`)
           }
         }
       } else {
-        wrapper.style.transform = `translateY(0px)`
+        setWrapperTransform('translateY(0px)')
       }
-      
+
       activeIndex = nextActiveIndex
     }
   }
