@@ -14,6 +14,8 @@ export function createSavedPlaylistManager(options) {
   let savedState = { playlists: [], trackLibrary: {} }
   let selectedSavedPlaylistId = null
   let activeView = 'recommend'
+  const trackCoverCache = new Map()
+  let detailRenderToken = 0
 
   function getSelectedSavedPlaylist() {
     return savedState.playlists.find((item) => item.id === selectedSavedPlaylistId) || null
@@ -48,8 +50,44 @@ export function createSavedPlaylistManager(options) {
     if (dom.detailPlayAllBtn) dom.detailPlayAllBtn.disabled = !hasPlaylist
     if (dom.detailAppendBtn) dom.detailAppendBtn.disabled = !hasPlaylist
     if (dom.detailAddCurrentBtn) dom.detailAddCurrentBtn.disabled = !hasPlaylist
-    if (dom.detailRenameBtn) dom.detailRenameBtn.disabled = !hasPlaylist
+    if (dom.detailTitleEditBtn) dom.detailTitleEditBtn.disabled = !hasPlaylist
     if (dom.detailDeleteBtn) dom.detailDeleteBtn.disabled = !hasPlaylist
+  }
+
+  function applyDetailCover(coverDataUrl, fallbackText = '♪') {
+    if (!dom.detailCoverEl || !dom.detailCoverTextEl) return
+
+    if (coverDataUrl) {
+      dom.detailCoverEl.style.backgroundImage = `url(${coverDataUrl})`
+      dom.detailCoverEl.classList.add('has-image')
+      dom.detailCoverTextEl.style.display = 'none'
+      return
+    }
+
+    dom.detailCoverEl.style.backgroundImage = ''
+    dom.detailCoverEl.classList.remove('has-image')
+    dom.detailCoverTextEl.style.display = 'inline'
+    dom.detailCoverTextEl.textContent = fallbackText
+  }
+
+  async function getTrackCoverDataUrl(trackId, filePath) {
+    if (!filePath || !electronAPI || !electronAPI.getMetadata) {
+      return null
+    }
+
+    if (trackCoverCache.has(trackId)) {
+      return trackCoverCache.get(trackId)
+    }
+
+    try {
+      const meta = await electronAPI.getMetadata(filePath)
+      const coverDataUrl = meta?.coverDataUrl || null
+      trackCoverCache.set(trackId, coverDataUrl)
+      return coverDataUrl
+    } catch {
+      trackCoverCache.set(trackId, null)
+      return null
+    }
   }
 
   function renderSidebarPlaylists() {
@@ -90,6 +128,8 @@ export function createSavedPlaylistManager(options) {
 
   function renderPlaylistDetail() {
     const selected = getSelectedSavedPlaylist()
+    const renderToken = ++detailRenderToken
+    const currentPlaylistId = selected?.id || null
     updateActionButtons(selected)
 
     if (dom.detailTitleEl) {
@@ -106,11 +146,10 @@ export function createSavedPlaylistManager(options) {
       dom.detailMetaEl.textContent = selected ? `${selected.trackIds.length} 首歌曲` : '0 首歌曲'
     }
 
-    if (dom.detailCoverTextEl) {
-      dom.detailCoverTextEl.textContent = selected
-        ? (selected.name || '♪').trim().charAt(0).toUpperCase() || '♪'
-        : '♪'
-    }
+    const fallbackCoverText = selected
+      ? (selected.name || '♪').trim().charAt(0).toUpperCase() || '♪'
+      : '♪'
+    applyDetailCover(null, fallbackCoverText)
 
     if (!dom.detailTrackListEl) {
       return
@@ -134,6 +173,17 @@ export function createSavedPlaylistManager(options) {
       return
     }
 
+    const firstTrackId = selected.trackIds[0]
+    const firstTrack = firstTrackId ? savedState.trackLibrary[firstTrackId] : null
+    if (firstTrack?.path) {
+      getTrackCoverDataUrl(firstTrackId, firstTrack.path).then((coverDataUrl) => {
+        if (renderToken !== detailRenderToken) return
+        if (selectedSavedPlaylistId !== currentPlaylistId) return
+        if (!dom.detailCoverEl || !dom.detailCoverEl.isConnected) return
+        applyDetailCover(coverDataUrl, fallbackCoverText)
+      })
+    }
+
     selected.trackIds.forEach((trackId, index) => {
       const track = savedState.trackLibrary[trackId]
       if (!track || !track.path) return
@@ -150,6 +200,15 @@ export function createSavedPlaylistManager(options) {
       const indexEl = document.createElement('span')
       indexEl.className = 'playlist-col-index'
       indexEl.textContent = String(index + 1).padStart(2, '0')
+
+      const coverEl = document.createElement('span')
+      coverEl.className = 'playlist-col-cover'
+      coverEl.textContent = '♪'
+
+      const coverImg = document.createElement('img')
+      coverImg.alt = '歌曲封面'
+      coverImg.loading = 'lazy'
+      coverEl.appendChild(coverImg)
 
       const titleEl = document.createElement('span')
       titleEl.className = 'playlist-col-title'
@@ -184,11 +243,27 @@ export function createSavedPlaylistManager(options) {
       actionWrap.appendChild(removeBtn)
 
       row.appendChild(indexEl)
+      row.appendChild(coverEl)
       row.appendChild(titleEl)
       row.appendChild(artistEl)
       row.appendChild(albumEl)
       row.appendChild(durationEl)
       row.appendChild(actionWrap)
+
+      getTrackCoverDataUrl(trackId, track.path).then((coverDataUrl) => {
+        if (!coverEl.isConnected) return
+        if (!coverDataUrl) {
+          coverEl.classList.remove('has-image')
+          coverEl.textContent = '♪'
+          coverEl.appendChild(coverImg)
+          return
+        }
+
+        coverImg.src = coverDataUrl
+        coverEl.classList.add('has-image')
+        coverEl.textContent = ''
+        coverEl.appendChild(coverImg)
+      })
 
       row.addEventListener('click', () => {
         replaceQueueWithTracks(getQueueTracksForPlaylist(selected), index)
@@ -370,12 +445,8 @@ export function createSavedPlaylistManager(options) {
       dom.sidebarCreateBtn.addEventListener('click', createSavedPlaylist)
     }
 
-    if (dom.detailCreateBtn) {
-      dom.detailCreateBtn.addEventListener('click', createSavedPlaylist)
-    }
-
-    if (dom.detailRenameBtn) {
-      dom.detailRenameBtn.addEventListener('click', renameSavedPlaylist)
+    if (dom.detailTitleEditBtn) {
+      dom.detailTitleEditBtn.addEventListener('click', renameSavedPlaylist)
     }
 
     if (dom.detailDeleteBtn) {

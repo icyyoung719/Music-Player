@@ -170,7 +170,10 @@
 
             <div class="playlist-detail-summary">
               <div class="playlist-detail-type">本地歌单</div>
-              <h2 class="playlist-detail-title" id="homePlaylistDetailTitle">还没有本地歌单</h2>
+              <div class="playlist-detail-title-row">
+                <button class="playlist-title-edit-btn" id="homePlaylistTitleEditBtn" title="编辑歌单名称" aria-label="编辑歌单名称">✎</button>
+                <h2 class="playlist-detail-title" id="homePlaylistDetailTitle">还没有本地歌单</h2>
+              </div>
               <div class="playlist-detail-subtitle" id="homePlaylistDetailSubtitle">创建后就能在这里查看歌单详情与曲目。</div>
               <div class="playlist-detail-meta" id="homePlaylistDetailMeta">0 首歌曲</div>
 
@@ -178,8 +181,6 @@
                 <button id="homePlaylistPlayAllBtn">播放全部</button>
                 <button id="homePlaylistAppendBtn">添加到当前播放列表</button>
                 <button id="homePlaylistAddCurrentBtn">收纳当前播放列表</button>
-                <button id="homePlaylistCreateBtn">新建歌单</button>
-                <button id="homePlaylistRenameBtn">重命名</button>
                 <button id="homePlaylistDeleteBtn">删除歌单</button>
               </div>
             </div>
@@ -193,6 +194,7 @@
 
             <div class="playlist-detail-table-head" aria-hidden="true">
               <span class="playlist-col-index">#</span>
+              <span class="playlist-col-cover">封面</span>
               <span class="playlist-col-title">标题</span>
               <span class="playlist-col-artist">歌手</span>
               <span class="playlist-col-album">专辑</span>
