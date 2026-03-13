@@ -22,6 +22,7 @@ When adding a new capability involving privileged APIs:
 - Avoid patterns that can cause audible artifacts or decode thrashing.
 
 ## Persistence Notes
+- Netease API references: `ref\netease-cloud-music-api-binaryify`
 - Playlist data is persisted under user data path.
 - Keep compatibility with current shape:
   - `playlists: [{ id, name, trackIds }]`

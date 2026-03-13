@@ -341,6 +341,134 @@ body {
   line-height: 1.45;
   word-break: break-all;
 }
+.download-preview.is-error {
+  color: #cf3f3f;
+}
+.download-preview-message {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+}
+.download-preview-rich {
+  padding: 10px 12px;
+}
+.download-preview-rich-inner {
+  display: grid;
+  grid-template-columns: 92px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+.download-preview-cover {
+  width: 92px;
+  aspect-ratio: 1 / 1;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background:
+    radial-gradient(circle at 72% 22%, rgba(255,255,255,0.58), transparent 44%),
+    linear-gradient(145deg, rgba(220, 93, 63, 0.78), rgba(242, 169, 59, 0.78));
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  color: rgba(255,255,255,0.92);
+  font-size: 28px;
+  font-weight: 700;
+}
+.download-preview-cover img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.download-preview-content {
+  min-width: 0;
+  display: grid;
+  gap: 6px;
+}
+.download-preview-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+  line-height: 1.35;
+  word-break: break-word;
+}
+.download-preview-subtitle {
+  color: var(--text-sub);
+  font-size: 12px;
+}
+.download-preview-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.download-preview-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.18);
+  color: var(--text-sub);
+  font-size: 11px;
+}
+.download-preview-details {
+  display: grid;
+  gap: 4px;
+}
+.download-preview-detail-row {
+  display: grid;
+  grid-template-columns: 56px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+}
+.download-preview-detail-label {
+  color: var(--text-sub);
+  font-size: 11px;
+}
+.download-preview-detail-value {
+  color: var(--text-main);
+  font-size: 12px;
+  word-break: break-word;
+}
+.download-preview-track-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 4px;
+}
+.download-preview-track-item {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  gap: 8px;
+  align-items: start;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.14);
+}
+.download-preview-track-index {
+  color: var(--text-sub);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.6;
+}
+.download-preview-track-main {
+  min-width: 0;
+}
+.download-preview-track-title {
+  color: var(--text-main);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.download-preview-track-meta {
+  color: var(--text-sub);
+  font-size: 11px;
+  line-height: 1.35;
+  word-break: break-word;
+}
+.download-preview-footnote {
+  color: var(--text-sub);
+  font-size: 11px;
+  line-height: 1.4;
+}
 .download-queue-card {
   margin-top: 6px;
 }
@@ -1381,4 +1509,6 @@ button.btn-active {
   .hero-cards,
   .playlist-grid,
   .home-banner-row { grid-template-columns: repeat(2, minmax(120px, 1fr)); }
+  .download-preview-rich-inner { grid-template-columns: 1fr; }
+  .download-preview-cover { width: 84px; }
 }

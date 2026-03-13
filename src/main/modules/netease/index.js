@@ -33,6 +33,7 @@ const {
   getSongPageUrl,
   getPlaylistPageUrl,
   resolveSongUrlWithLevelFallback,
+  fetchSongMetadataById,
   fetchPlaylistTracksById,
   isNeteaseAudioHost
 } = require('./neteaseApi')
@@ -98,9 +99,7 @@ function registerNeteaseHandlers() {
 
     try {
       if (type === 'song') {
-        const url = `https://music.163.com/api/song/detail/?ids=[${id}]`
-        const data = await requestJson(url)
-        const song = Array.isArray(data?.songs) ? data.songs[0] : null
+        const song = await fetchSongMetadataById(id)
         if (!song) return { ok: false, error: 'NOT_FOUND' }
 
         return {
@@ -108,31 +107,19 @@ function registerNeteaseHandlers() {
           type,
           item: {
             id,
-            name: song.name || `歌曲 ${id}`,
-            artist: Array.isArray(song.artists)
-              ? song.artists.map((a) => a?.name).filter(Boolean).join(' / ')
-              : '',
-            album: song.album?.name || '',
-            durationMs: Number(song.duration) || 0,
+            name: song.title || `歌曲 ${id}`,
+            artist: song.artist || '',
+            album: song.album || '',
+            durationMs: Number(song.durationMs || 0),
+            year: song.year,
+            coverUrl: song.coverUrl || '',
             pageUrl: getSongPageUrl(id)
           }
         }
       }
 
-      const url = `https://music.163.com/api/v6/playlist/detail?id=${id}`
-      const data = await requestJson(url)
-      const playlist = data?.playlist
+      const playlist = await fetchPlaylistTracksById(id)
       if (!playlist) return { ok: false, error: 'NOT_FOUND' }
-
-      const tracks = Array.isArray(playlist.tracks)
-        ? playlist.tracks.slice(0, 20).map((track) => ({
-            id: String(track?.id || ''),
-            name: track?.name || '未知歌曲',
-            artist: Array.isArray(track?.ar)
-              ? track.ar.map((a) => a?.name).filter(Boolean).join(' / ')
-              : ''
-          }))
-        : []
 
       return {
         ok: true,
@@ -140,10 +127,23 @@ function registerNeteaseHandlers() {
         item: {
           id,
           name: playlist.name || `歌单 ${id}`,
-          trackCount: Number(playlist.trackCount) || tracks.length,
-          creator: playlist.creator?.nickname || '',
+          trackCount: Number(playlist.trackCount) || playlist.tracks.length,
+          creator: playlist.creator || '',
+          description: playlist.description || '',
+          coverUrl: playlist.coverUrl || '',
+          tags: Array.isArray(playlist.tags) ? playlist.tags : [],
+          playCount: Number(playlist.playCount || 0),
           pageUrl: getPlaylistPageUrl(id),
-          tracks
+          tracks: Array.isArray(playlist.tracks)
+            ? playlist.tracks.map((track) => ({
+                id: String(track?.songId || ''),
+                name: track?.title || '未知歌曲',
+                artist: track?.artist || '',
+                album: track?.album || '',
+                durationMs: Number(track?.durationMs || 0),
+                coverUrl: track?.coverUrl || ''
+              }))
+            : []
         }
       }
     } catch (err) {

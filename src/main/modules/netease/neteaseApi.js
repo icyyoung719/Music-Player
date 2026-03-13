@@ -3,6 +3,8 @@ const { requestJson } = require('./httpClient')
 const { buildAuthHeaders, requestNeteaseApi, extractApiErrorMessage } = require('./authManager')
 const { logProgramEvent } = require('../logger')
 
+const PLAYLIST_TRACK_BATCH_SIZE = 200
+
 // ---------------------------------------------------------------------------
 // Audio / cover extension helpers
 // ---------------------------------------------------------------------------
@@ -73,6 +75,38 @@ function getPlaylistPageUrl(playlistId) {
   return `https://music.163.com/#/playlist?id=${playlistId}`
 }
 
+function normalizeSongArtists(song) {
+  if (Array.isArray(song?.ar)) {
+    return song.ar.map((item) => item?.name).filter(Boolean).join(' / ')
+  }
+
+  if (Array.isArray(song?.artists)) {
+    return song.artists.map((item) => item?.name).filter(Boolean).join(' / ')
+  }
+
+  return ''
+}
+
+function toSafeInteger(value) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+function chunkArray(items, size) {
+  const chunkSize = Math.max(1, Number(size) || 1)
+  const result = []
+  for (let index = 0; index < items.length; index += chunkSize) {
+    result.push(items.slice(index, index + chunkSize))
+  }
+  return result
+}
+
+function encodeFormData(data) {
+  return Object.entries(data || {})
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value == null ? '' : String(value))}`)
+    .join('&')
+}
+
 // ---------------------------------------------------------------------------
 // Song / playlist metadata API
 // ---------------------------------------------------------------------------
@@ -80,11 +114,7 @@ function getPlaylistPageUrl(playlistId) {
 function extractSongMetadata(song, fallbackSongId) {
   if (!song || typeof song !== 'object') return null
 
-  const artist = Array.isArray(song.ar)
-    ? song.ar.map((item) => item?.name).filter(Boolean).join(' / ')
-    : Array.isArray(song.artists)
-      ? song.artists.map((item) => item?.name).filter(Boolean).join(' / ')
-      : ''
+  const artist = normalizeSongArtists(song)
 
   const album = song.al || song.album || null
   const publishTime = Number(album?.publishTime || 0)
@@ -95,6 +125,7 @@ function extractSongMetadata(song, fallbackSongId) {
     title: String(song.name || '').trim(),
     artist: String(artist || '').trim(),
     album: String(album?.name || '').trim(),
+    durationMs: toSafeInteger(song.dt || song.duration),
     year: Number.isFinite(year) ? year : null,
     coverUrl: String(album?.picUrl || '').trim()
   }
@@ -144,27 +175,54 @@ async function fetchPlaylistTracksById(playlistId) {
 
   const name = String(playlist.name || `歌单 ${playlistId}`).trim()
   const creator = String(playlist?.creator?.nickname || '').trim()
-  const trackList = Array.isArray(playlist.tracks) ? playlist.tracks : []
+  const trackIds = Array.isArray(playlist.trackIds)
+    ? playlist.trackIds.map((item) => sanitizeSongId(item?.id)).filter(Boolean)
+    : []
+
+  let trackList = Array.isArray(playlist.tracks) ? playlist.tracks : []
+  const hasCompleteTrackList = trackIds.length > 0 && trackList.length >= trackIds.length
+
+  if (trackIds.length > 0 && !hasCompleteTrackList) {
+    const songMap = new Map()
+    const batches = chunkArray(trackIds, PLAYLIST_TRACK_BATCH_SIZE)
+
+    for (const batch of batches) {
+      const body = encodeFormData({
+        c: JSON.stringify(batch.map((id) => ({ id: Number(id) })))
+      })
+
+      const response = await requestJson('https://music.163.com/api/v3/song/detail', {
+        method: 'POST',
+        headers: buildAuthHeaders({
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(body)
+        }),
+        body,
+        timeout: 20000
+      })
+
+      const songs = Array.isArray(response?.songs) ? response.songs : []
+      for (const song of songs) {
+        const id = sanitizeSongId(song?.id)
+        if (id) songMap.set(id, song)
+      }
+    }
+
+    trackList = trackIds.map((id) => songMap.get(id)).filter(Boolean)
+  }
 
   const tracks = trackList
-    .map((track) => {
-      const id = sanitizeSongId(track?.id)
-      if (!id) return null
-      const artist = Array.isArray(track?.ar)
-        ? track.ar.map((item) => item?.name).filter(Boolean).join(' / ')
-        : ''
-      return {
-        songId: id,
-        title: String(track?.name || `歌曲 ${id}`).trim(),
-        artist
-      }
-    })
+    .map((track) => extractSongMetadata(track, track?.id))
     .filter(Boolean)
 
   return {
     id: String(playlistId),
     name,
     creator,
+    description: String(playlist.description || '').trim(),
+    coverUrl: String(playlist.coverImgUrl || '').trim(),
+    tags: Array.isArray(playlist.tags) ? playlist.tags.map((item) => String(item || '').trim()).filter(Boolean) : [],
+    playCount: toSafeInteger(playlist.playCount),
     trackCount: Number(playlist.trackCount || tracks.length),
     tracks
   }

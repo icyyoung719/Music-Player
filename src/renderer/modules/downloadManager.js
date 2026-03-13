@@ -44,16 +44,162 @@ export function createDownloadManager(options) {
   let resolvedSong = null
   let resolvedPlaylist = null
 
+  function escapeHtml(value) {
+    return String(value || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;')
+  }
+
+  function formatDuration(durationMs) {
+    const totalSeconds = Math.max(0, Math.floor(Number(durationMs || 0) / 1000))
+    const minutes = Math.floor(totalSeconds / 60)
+    const seconds = totalSeconds % 60
+    return totalSeconds > 0 ? `${minutes}:${String(seconds).padStart(2, '0')}` : '--:--'
+  }
+
+  function formatCount(value) {
+    const numeric = Number(value || 0)
+    if (!Number.isFinite(numeric) || numeric <= 0) return '0'
+    return new Intl.NumberFormat('zh-CN').format(numeric)
+  }
+
+  function renderPreviewMessage(container, text, isError = false) {
+    if (!container) return
+    container.classList.remove('download-preview-rich')
+    container.classList.toggle('is-error', isError)
+    container.innerHTML = `<div class="download-preview-message">${escapeHtml(text)}</div>`
+  }
+
+  function buildMetaChips(values) {
+    return values
+      .filter((value) => String(value || '').trim())
+      .map((value) => `<span class="download-preview-chip">${escapeHtml(value)}</span>`)
+      .join('')
+  }
+
+  function buildDetailRows(rows) {
+    return rows
+      .filter((row) => row && String(row.value || '').trim())
+      .map((row) => `
+        <div class="download-preview-detail-row">
+          <span class="download-preview-detail-label">${escapeHtml(row.label)}</span>
+          <span class="download-preview-detail-value">${escapeHtml(row.value)}</span>
+        </div>
+      `)
+      .join('')
+  }
+
+  function buildTrackRows(tracks, maxItems = 8) {
+    const items = Array.isArray(tracks) ? tracks.slice(0, maxItems) : []
+    if (!items.length) return ''
+
+    return `
+      <div class="download-preview-track-list">
+        ${items.map((track, index) => {
+          const meta = [track.artist || '未知歌手', track.album || '未知专辑', formatDuration(track.durationMs)]
+            .filter((value) => String(value || '').trim())
+            .join(' · ')
+
+          return `
+            <div class="download-preview-track-item">
+              <div class="download-preview-track-index">${index + 1}</div>
+              <div class="download-preview-track-main">
+                <div class="download-preview-track-title">${escapeHtml(track.name || '未知歌曲')}</div>
+                <div class="download-preview-track-meta">${escapeHtml(meta)}</div>
+              </div>
+            </div>
+          `
+        }).join('')}
+      </div>
+    `
+  }
+
+  function renderRichPreview(container, payload) {
+    if (!container) return
+
+    const {
+      title,
+      subtitle,
+      coverUrl,
+      chips = [],
+      rows = [],
+      tracks = [],
+      footnote = ''
+    } = payload || {}
+
+    const safeTitle = escapeHtml(title || '未命名')
+    const safeSubtitle = String(subtitle || '').trim()
+    const safeCoverUrl = String(coverUrl || '').trim()
+
+    container.classList.add('download-preview-rich')
+    container.classList.remove('is-error')
+    container.innerHTML = `
+      <div class="download-preview-rich-inner">
+        <div class="download-preview-cover${safeCoverUrl ? ' has-image' : ''}">
+          ${safeCoverUrl
+            ? `<img src="${escapeHtml(safeCoverUrl)}" alt="${safeTitle} 封面">`
+            : '<span>♪</span>'}
+        </div>
+        <div class="download-preview-content">
+          <div class="download-preview-title">${safeTitle}</div>
+          ${safeSubtitle ? `<div class="download-preview-subtitle">${escapeHtml(safeSubtitle)}</div>` : ''}
+          ${chips.length ? `<div class="download-preview-chips">${buildMetaChips(chips)}</div>` : ''}
+          ${rows.length ? `<div class="download-preview-details">${buildDetailRows(rows)}</div>` : ''}
+          ${tracks.length ? buildTrackRows(tracks) : ''}
+          ${footnote ? `<div class="download-preview-footnote">${escapeHtml(footnote)}</div>` : ''}
+        </div>
+      </div>
+    `
+  }
+
+  function renderSongPreviewCard(item) {
+    renderRichPreview(dom.songPreview, {
+      title: item.name || `歌曲 ${item.id || ''}`,
+      subtitle: item.artist || '未知歌手',
+      coverUrl: item.coverUrl || '',
+      chips: [item.album || '', item.year ? `${item.year} 年` : '', formatDuration(item.durationMs)],
+      rows: [
+        { label: '歌曲 ID', value: item.id || '' },
+        { label: '专辑', value: item.album || '未知专辑' },
+        { label: '时长', value: formatDuration(item.durationMs) },
+        { label: '来源', value: '网易云单曲查询' }
+      ]
+    })
+  }
+
+  function renderPlaylistPreviewCard(item) {
+    const remainingCount = Math.max(0, Number(item.trackCount || 0) - Math.min(Array.isArray(item.tracks) ? item.tracks.length : 0, 8))
+    const tagText = Array.isArray(item.tags) ? item.tags.join(' / ') : ''
+
+    renderRichPreview(dom.playlistPreview, {
+      title: item.name || `歌单 ${item.id || ''}`,
+      subtitle: item.creator ? `创建者: ${item.creator}` : '创建者未知',
+      coverUrl: item.coverUrl || '',
+      chips: [
+        `${formatCount(item.trackCount)} 首`,
+        item.playCount ? `${formatCount(item.playCount)} 次播放` : '',
+        tagText
+      ],
+      rows: [
+        { label: '歌单 ID', value: item.id || '' },
+        { label: '创建者', value: item.creator || '未知' },
+        { label: '标签', value: tagText || '未提供' },
+        { label: '简介', value: item.description || '暂无简介' }
+      ],
+      tracks: Array.isArray(item.tracks) ? item.tracks : [],
+      footnote: remainingCount > 0 ? `当前展示前 8 首，剩余 ${remainingCount} 首会在下载时一并处理。` : ''
+    })
+  }
+
   function setSongPreview(text, isError = false) {
-    if (!dom.songPreview) return
-    dom.songPreview.textContent = text
-    dom.songPreview.style.color = isError ? '#cf3f3f' : ''
+    renderPreviewMessage(dom.songPreview, text, isError)
   }
 
   function setPlaylistPreview(text, isError = false) {
-    if (!dom.playlistPreview) return
-    dom.playlistPreview.textContent = text
-    dom.playlistPreview.style.color = isError ? '#cf3f3f' : ''
+    renderPreviewMessage(dom.playlistPreview, text, isError)
   }
 
   function getCurrentQuality() {
@@ -89,9 +235,7 @@ export function createDownloadManager(options) {
     }
 
     resolvedSong = res.item
-    setSongPreview(
-      `歌曲: ${res.item.name} | 歌手: ${res.item.artist || '未知'} | 专辑: ${res.item.album || '未知'}`
-    )
+    renderSongPreviewCard(res.item)
   }
 
   async function resolvePlaylist() {
@@ -110,13 +254,7 @@ export function createDownloadManager(options) {
     }
 
     resolvedPlaylist = res.item
-    const preview = Array.isArray(res.item.tracks)
-      ? res.item.tracks.slice(0, 4).map((track, index) => `${index + 1}. ${track.name}`).join(' | ')
-      : ''
-
-    setPlaylistPreview(
-      `歌单: ${res.item.name} | 创建者: ${res.item.creator || '未知'} | 曲目数: ${res.item.trackCount || 0}${preview ? ` | 预览: ${preview}` : ''}`
-    )
+    renderPlaylistPreviewCard(res.item)
   }
 
   function updateTask(task) {
