@@ -3,6 +3,7 @@ const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
 const { parseFile } = require('music-metadata')
+const { logProgramEvent } = require('./logger')
 
 const NETEASE_TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
 
@@ -135,7 +136,12 @@ async function initializePlaylistState() {
     playlistState = ensureStateShape(parsed)
   } catch (err) {
     if (err.code !== 'ENOENT') {
-      console.error('Failed to load playlists.json, reset to default:', err)
+      logProgramEvent({
+        source: 'playlistHandlers',
+        event: 'load-playlist-store-failed',
+        message: 'Failed to load playlists.json, reset to default',
+        error: err
+      })
     }
     playlistState = ensureStateShape({ playlists: [], trackLibrary: {} })
     await savePlaylistState()
@@ -270,7 +276,12 @@ function registerPlaylistHandlers() {
   handlersRegistered = true
 
   ipcMain.handle('play-audio', (event, filePath) => {
-    console.log('Playing:', filePath)
+    logProgramEvent({
+      source: 'playlistHandlers',
+      event: 'play-audio',
+      message: 'Play audio event received',
+      data: { filePath: String(filePath || '') }
+    })
   })
 
   ipcMain.handle('select-folder', async () => {
@@ -288,7 +299,13 @@ function registerPlaylistHandlers() {
         .sort()
         .map(file => path.join(folderPath, file))
     } catch (err) {
-      console.error('Failed to read folder:', err)
+      logProgramEvent({
+        source: 'playlistHandlers',
+        event: 'read-folder-failed',
+        message: 'Failed to read selected folder',
+        error: err,
+        data: { folderPath }
+      })
       return []
     }
   })
@@ -316,7 +333,13 @@ function registerPlaylistHandlers() {
         coverDataUrl
       }
     } catch (err) {
-      console.error('Failed to parse metadata:', err)
+      logProgramEvent({
+        source: 'playlistHandlers',
+        event: 'parse-metadata-failed',
+        message: 'Failed to parse audio metadata',
+        error: err,
+        data: { filePath: String(filePath || '') }
+      })
     }
 
     const fallback = await readNeteaseTrackMetadataByPath(filePath)
@@ -464,7 +487,12 @@ function registerPlaylistHandlers() {
       const importResult = await importPlaylistsFromObject(parsed)
       return { ok: true, ...importResult }
     } catch (err) {
-      console.error('Failed to import playlist JSON:', err)
+      logProgramEvent({
+        source: 'playlistHandlers',
+        event: 'import-playlist-failed',
+        message: 'Failed to import playlist JSON',
+        error: err
+      })
       return { ok: false, error: 'IMPORT_FAILED' }
     }
   })

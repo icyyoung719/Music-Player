@@ -3,9 +3,11 @@ const path = require('path')
 const crypto = require('crypto')
 const { BrowserWindow, app } = require('electron')
 const { requestJson, requestJsonWithMeta, requestBuffer } = require('./httpClient')
+const { logProgramEvent } = require('../logger')
 
 const AUTH_STORE_NAME = 'netease-auth.json'
-const NETEASE_BASE_COOKIE = 'appver=2.7.1.198277; os=pc'
+const NETEASE_PC_COOKIE = 'appver=2.7.1.198277; os=pc'
+const NETEASE_IOS_COOKIE = 'appver=8.10.90; os=ios'
 
 const DEFAULT_AUTH_STATE = {
   apiBaseUrl: 'https://music.163.com',
@@ -113,7 +115,9 @@ function encodeFormData(data) {
 // Headers
 // ---------------------------------------------------------------------------
 
-function buildAuthHeaders(extraHeaders = {}) {
+function buildAuthHeaders(extraHeaders = {}, options = {}) {
+  const cookieProfile = String(options?.cookieProfile || '').toLowerCase()
+  const profileCookie = cookieProfile === 'ios' ? NETEASE_IOS_COOKIE : NETEASE_PC_COOKIE
   const headers = {
     Accept: '*/*',
     'Accept-Language': 'zh-CN,zh;q=0.9',
@@ -125,8 +129,8 @@ function buildAuthHeaders(extraHeaders = {}) {
 
   const runtimeCookie = String(authState.cookie || '').trim()
   headers.Cookie = runtimeCookie
-    ? `${NETEASE_BASE_COOKIE}; ${runtimeCookie}`
-    : NETEASE_BASE_COOKIE
+    ? `${profileCookie}; ${runtimeCookie}`
+    : profileCookie
 
   if (authState.accessToken) {
     headers.Authorization = `Bearer ${authState.accessToken}`
@@ -156,7 +160,7 @@ async function requestNeteaseApi(pathname, data = {}, options = {}) {
   })
 }
 
-async function postFormWithFallback(paths, data, timeout = 12000) {
+async function postFormWithFallback(paths, data, timeout = 12000, options = {}) {
   const attempted = []
   let lastError = null
 
@@ -171,7 +175,7 @@ async function postFormWithFallback(paths, data, timeout = 12000) {
         headers: buildAuthHeaders({
           'Content-Type': 'application/x-www-form-urlencoded',
           'Content-Length': Buffer.byteLength(body)
-        }),
+        }, options),
         body,
         timeout
       })
@@ -211,7 +215,12 @@ async function ensureAuthStateLoaded() {
     }
   } catch (err) {
     if (err.code !== 'ENOENT') {
-      console.error('Failed to read netease auth state:', err)
+      logProgramEvent({
+        source: 'netease.authManager',
+        event: 'read-auth-state-failed',
+        message: 'Failed to read netease auth state',
+        error: err
+      })
     }
   }
 }
@@ -322,8 +331,25 @@ async function enrichAuthStateProfileByUserId(userId) {
 
 async function refreshProfileFromAuth() {
   try {
-    const data = await requestNeteaseApi('/api/w/nuser/account/get', {}, { method: 'POST' })
-    const profile = data?.profile || null
+    let profile = null
+
+    const profileResult = await postFormWithFallback(
+      ['/api/w/nuser/account/get', '/weapi/w/nuser/account/get', '/login/status'],
+      {},
+      12000,
+      { cookieProfile: 'ios' }
+    )
+
+    if (profileResult.ok && profileResult.result?.data) {
+      const data = profileResult.result.data
+      profile = data?.profile || data?.data?.profile || null
+    }
+
+    if (!profile) {
+      const data = await requestNeteaseApi('/api/w/nuser/account/get', {}, { method: 'POST' })
+      profile = data?.profile || null
+    }
+
     if (!profile) return null
 
     applyProfileToAuthState(profile)

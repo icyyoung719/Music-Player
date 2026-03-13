@@ -1,6 +1,7 @@
 const path = require('path')
 const { requestJson } = require('./httpClient')
 const { buildAuthHeaders, requestNeteaseApi, extractApiErrorMessage } = require('./authManager')
+const { logProgramEvent } = require('../logger')
 
 // ---------------------------------------------------------------------------
 // Audio / cover extension helpers
@@ -106,7 +107,13 @@ async function fetchSongMetadataById(songId) {
     const song = Array.isArray(data?.songs) ? data.songs[0] : null
     return extractSongMetadata(song, songId)
   } catch (err) {
-    console.warn('Failed to fetch song detail metadata:', err?.message || err)
+    logProgramEvent({
+      source: 'netease.api',
+      event: 'fetch-song-metadata-failed',
+      message: 'Failed to fetch song detail metadata',
+      error: err,
+      data: { songId }
+    })
     return null
   }
 }
@@ -118,7 +125,13 @@ async function fetchSongLyricsById(songId) {
     const lrc = data?.lrc?.lyric || ''
     return lrc.trim()
   } catch (err) {
-    console.warn('Failed to fetch song lyrics:', err?.message || err)
+    logProgramEvent({
+      source: 'netease.api',
+      event: 'fetch-song-lyrics-failed',
+      message: 'Failed to fetch song lyrics',
+      error: err,
+      data: { songId }
+    })
     return ''
   }
 }

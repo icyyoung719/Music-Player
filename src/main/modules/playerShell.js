@@ -1,6 +1,7 @@
 ﻿const { BrowserWindow, Tray, Menu, nativeImage, globalShortcut, ipcMain, app } = require('electron')
 const path = require('path')
 const fs = require('fs')
+const { logProgramEvent } = require('./logger')
 
 let mainWindow = null
 let authWindow = null
@@ -32,7 +33,12 @@ function loadShellPreferences() {
       minimizeToTrayOnClose = parsed.minimizeToTrayOnClose
     }
   } catch (err) {
-    console.error('Failed to load shell preferences:', err)
+    logProgramEvent({
+      source: 'playerShell',
+      event: 'load-shell-preferences-failed',
+      message: 'Failed to load shell preferences',
+      error: err
+    })
   }
 }
 
@@ -46,7 +52,12 @@ function saveShellPreferences() {
     .mkdir(path.dirname(storePath), { recursive: true })
     .then(() => fs.promises.writeFile(storePath, JSON.stringify(payload, null, 2), 'utf8'))
     .catch((err) => {
-      console.error('Failed to save shell preferences:', err)
+      logProgramEvent({
+        source: 'playerShell',
+        event: 'save-shell-preferences-failed',
+        message: 'Failed to save shell preferences',
+        error: err
+      })
     })
 }
 
@@ -237,10 +248,21 @@ function registerMediaShortcuts() {
     try {
       const ok = globalShortcut.register(accelerator, () => sendPlayerControl(action))
       if (!ok) {
-        console.warn(`Failed to register media shortcut: ${accelerator}`)
+        logProgramEvent({
+          source: 'playerShell',
+          event: 'register-media-shortcut-failed',
+          message: `Failed to register media shortcut: ${accelerator}`,
+          data: { accelerator }
+        })
       }
     } catch (err) {
-      console.warn(`Failed to register media shortcut: ${accelerator}`, err)
+      logProgramEvent({
+        source: 'playerShell',
+        event: 'register-media-shortcut-exception',
+        message: `Failed to register media shortcut: ${accelerator}`,
+        data: { accelerator },
+        error: err
+      })
     }
   }
 }
@@ -359,7 +381,12 @@ function initializeShell() {
       try {
         return openNeteaseAuthWindow(payload)
       } catch (err) {
-        console.error('Failed to open NetEase auth window:', err)
+        logProgramEvent({
+          source: 'playerShell',
+          event: 'open-auth-window-failed',
+          message: 'Failed to open NetEase auth window',
+          error: err
+        })
         return { ok: false, error: 'OPEN_AUTH_WINDOW_FAILED' }
       }
     })

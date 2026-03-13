@@ -5,6 +5,7 @@ const { requestBuffer } = require('./httpClient')
 const { buildAuthHeaders, md5 } = require('./authManager')
 const { fetchSongLyricsById, resolveCoverExtByUrl, resolveCoverMimeByExt } = require('./neteaseApi')
 const { writeId3TagsToMp3 } = require('./id3Writer')
+const { logProgramEvent } = require('../logger')
 
 const TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
 const TRACK_COVER_DIR_NAME = 'netease-track-covers'
@@ -38,7 +39,12 @@ async function ensureTrackMetadataLoaded() {
     }
   } catch (err) {
     if (err.code !== 'ENOENT') {
-      console.error('Failed to read netease track metadata store:', err)
+      logProgramEvent({
+        source: 'netease.trackMetadata',
+        event: 'read-track-metadata-store-failed',
+        message: 'Failed to read netease track metadata store',
+        error: err
+      })
     }
   }
 }
@@ -93,14 +99,26 @@ async function persistTrackMetadataForTask(task) {
         entry.coverPath = coverPath
       }
     } catch (err) {
-      console.warn('Failed to cache NetEase cover image:', err?.message || err)
+      logProgramEvent({
+        source: 'netease.trackMetadata',
+        event: 'cache-cover-image-failed',
+        message: 'Failed to cache NetEase cover image',
+        error: err,
+        data: { songId: entry.songId }
+      })
     }
   }
 
   try {
     await writeId3TagsToMp3(task.filePath, entry, coverBuffer, coverMime)
   } catch (err) {
-    console.warn('Failed to write ID3 tag for mp3:', err?.message || err)
+    logProgramEvent({
+      source: 'netease.trackMetadata',
+      event: 'write-id3-failed',
+      message: 'Failed to write ID3 tag for mp3',
+      error: err,
+      data: { filePath: task.filePath }
+    })
   }
 
   await ensureTrackMetadataLoaded()

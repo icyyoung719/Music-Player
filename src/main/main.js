@@ -11,15 +11,29 @@ const {
   registerPlaylistHandlers
 } = require('./modules/playlistHandlers')
 const { registerNeteaseHandlers } = require('./modules/neteaseHandlers')
+const { initializeLogger, logProgramEvent } = require('./modules/logger')
+
+initializeLogger()
 
 registerPlaylistHandlers()
 registerNeteaseHandlers()
 
 app.whenReady().then(async () => {
+  logProgramEvent({
+    source: 'main',
+    event: 'app-ready',
+    message: 'Electron app is ready'
+  })
+
   try {
     await initializePlaylistState()
   } catch (err) {
-    console.error('Failed to initialize playlist state:', err)
+    logProgramEvent({
+      source: 'main',
+      event: 'playlist-init-failed',
+      message: 'Failed to initialize playlist state',
+      error: err
+    })
   }
 
   createMainWindow()
@@ -29,6 +43,12 @@ app.whenReady().then(async () => {
 })
 
 app.on('window-all-closed', () => {
+  logProgramEvent({
+    source: 'main',
+    event: 'window-all-closed',
+    message: 'All windows are closed'
+  })
+
   if (process.platform !== 'darwin') {
     if (shouldKeepAliveOnWindowAllClosed()) return
     app.quit()

@@ -1,7 +1,8 @@
 const { ipcMain, shell } = require('electron')
 const fs = require('fs')
+const { logProgramEvent } = require('../logger')
 
-const { requestJson, requestJsonWithMeta } = require('./httpClient')
+const { requestJson } = require('./httpClient')
 const {
   authState,
   ensureAuthStateLoaded,
@@ -10,10 +11,8 @@ const {
   getPublicAuthState,
   getPublicAccountSummary,
   emitAuthStateUpdate,
-  buildAuthHeaders,
   postFormWithFallback,
   requestNeteaseApi,
-  encodeFormData,
   refreshProfileFromAuth,
   applyProfileToAuthState,
   enrichAuthStateProfileByUserId,
@@ -21,7 +20,6 @@ const {
   normalizeCookieHeader,
   extractApiErrorMessage,
   isRiskControlMessage,
-  getCandidateApiPaths,
   sanitizeEmail,
   sanitizePhone,
   sanitizeCountryCode,
@@ -54,12 +52,40 @@ const {
 
 let handlersRegistered = false
 
+const AUTH_PATHS = {
+  emailLogin: ['/api/login', '/weapi/login', '/login'],
+  captchaSend: [
+    '/api/sms/captcha/sent',
+    '/weapi/sms/captcha/sent',
+    '/sms/captcha/sent',
+    '/captcha/sent'
+  ],
+  phoneCaptchaLogin: ['/api/login/cellphone', '/weapi/login/cellphone', '/login/cellphone'],
+  qrKey: [
+    '/api/login/qrcode/unikey',
+    '/weapi/login/qrcode/unikey',
+    '/login/qr/key',
+    '/login/qrcode/unikey'
+  ],
+  qrCheck: [
+    '/api/login/qrcode/client/login',
+    '/weapi/login/qrcode/client/login',
+    '/login/qr/check',
+    '/login/qrcode/client/login'
+  ]
+}
+
 function registerNeteaseHandlers() {
   if (handlersRegistered) return
   handlersRegistered = true
 
   ensureAuthStateLoaded().catch((err) => {
-    console.error('Failed to initialize NetEase auth state:', err)
+    logProgramEvent({
+      source: 'netease.index',
+      event: 'init-auth-state-failed',
+      message: 'Failed to initialize NetEase auth state',
+      error: err
+    })
   })
 
   ipcMain.handle('netease:resolve-id', async (_event, payload) => {
@@ -121,7 +147,13 @@ function registerNeteaseHandlers() {
         }
       }
     } catch (err) {
-      console.error('Failed to resolve NetEase id:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'resolve-id-failed',
+        message: 'Failed to resolve NetEase id',
+        error: err,
+        data: { id, type }
+      })
       return { ok: false, error: 'REQUEST_FAILED' }
     }
   })
@@ -151,7 +183,12 @@ function registerNeteaseHandlers() {
       const dirs = await ensureDownloadBaseDirs()
       return { ok: true, dir: dirs.songs }
     } catch (err) {
-      console.error('Failed to prepare download dir:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'prepare-download-dir-failed',
+        message: 'Failed to prepare download dir',
+        error: err
+      })
       return { ok: false, error: 'MKDIR_FAILED' }
     }
   })
@@ -161,7 +198,12 @@ function registerNeteaseHandlers() {
       const dirs = await ensureDownloadBaseDirs()
       return { ok: true, dirs }
     } catch (err) {
-      console.error('Failed to prepare download dirs:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'prepare-download-dirs-failed',
+        message: 'Failed to prepare download dirs',
+        error: err
+      })
       return { ok: false, error: 'MKDIR_FAILED' }
     }
   })
@@ -217,7 +259,13 @@ function registerNeteaseHandlers() {
         title: fileName
       })
     } catch (err) {
-      console.error('Failed to download direct URL:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'download-direct-failed',
+        message: 'Failed to download direct URL',
+        error: err,
+        data: { url: rawUrl }
+      })
       return { ok: false, error: 'DOWNLOAD_FAILED' }
     }
   })
@@ -275,23 +323,28 @@ function registerNeteaseHandlers() {
     authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
 
     try {
-      const base = String(authState.apiBaseUrl).replace(/\/+$/, '')
-      const url = `${base}/api/login`
-      const body = encodeFormData({
+      const bodyData = {
         username: email,
         password: md5(password),
         rememberLogin: true
-      })
+      }
 
-      const result = await requestJsonWithMeta(url, {
-        method: 'POST',
-        headers: buildAuthHeaders({
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Content-Length': Buffer.byteLength(body)
-        }),
-        body,
-        timeout: 12000
-      })
+      const loginResult = await postFormWithFallback(
+        AUTH_PATHS.emailLogin,
+        bodyData,
+        12000,
+        { cookieProfile: 'ios' }
+      )
+
+      if (!loginResult.ok || !loginResult.result) {
+        return {
+          ok: false,
+          error: 'LOGIN_REQUEST_FAILED',
+          message: loginResult.error || 'LOGIN_REQUEST_FAILED'
+        }
+      }
+
+      const result = loginResult.result
 
       if (result.statusCode !== 200 || !result.data) {
         return { ok: false, error: 'LOGIN_REQUEST_FAILED', statusCode: result.statusCode }
@@ -324,7 +377,12 @@ function registerNeteaseHandlers() {
         profile: getPublicAccountSummary()
       }
     } catch (err) {
-      console.error('Failed to login with email:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'login-email-failed',
+        message: 'Failed to login with email',
+        error: err
+      })
       return { ok: false, error: 'LOGIN_EXCEPTION', message: err?.message || '' }
     }
   })
@@ -344,11 +402,13 @@ function registerNeteaseHandlers() {
 
     try {
       const sendResult = await postFormWithFallback(
-        getCandidateApiPaths('/api/sms/captcha/sent'),
+        AUTH_PATHS.captchaSend,
         {
           ctcode: countryCode,
           cellphone: phone
-        }
+        },
+        12000,
+        { cookieProfile: 'ios' }
       )
 
       if (!sendResult.ok || !sendResult.result?.data) {
@@ -382,7 +442,13 @@ function registerNeteaseHandlers() {
 
       return { ok: true, code }
     } catch (err) {
-      console.error('Failed to send phone captcha:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'send-captcha-failed',
+        message: 'Failed to send phone captcha',
+        error: err,
+        data: { phone }
+      })
       return { ok: false, error: 'SEND_CAPTCHA_EXCEPTION', message: err?.message || '' }
     }
   })
@@ -411,34 +477,11 @@ function registerNeteaseHandlers() {
         rememberLogin: true
       }
 
-      // Validate captcha first; this avoids some gateway variants rejecting direct login-captcha flow.
-      const verifyResult = await postFormWithFallback(
-        getCandidateApiPaths('/api/sms/captcha/verify'),
-        {
-          cellphone: phone,
-          captcha,
-          ctcode: countryCode
-        }
-      )
-
-      if (verifyResult.ok && verifyResult.result?.data) {
-        const verifyCode = Number(verifyResult.result.data?.code || 0)
-        if (verifyCode !== 200) {
-          const verifyMessage = extractApiErrorMessage(verifyResult.result.data)
-          if (isRiskControlMessage(verifyMessage)) {
-            return {
-              ok: false,
-              error: 'LOGIN_RISK_BLOCKED',
-              code: verifyCode,
-              message: verifyMessage || '当前登录存在安全风险，请稍后再试'
-            }
-          }
-        }
-      }
-
       const loginResult = await postFormWithFallback(
-        getCandidateApiPaths('/api/login/cellphone'),
-        payloadData
+        AUTH_PATHS.phoneCaptchaLogin,
+        payloadData,
+        12000,
+        { cookieProfile: 'ios' }
       )
 
       if (!loginResult.ok || !loginResult.result?.data) {
@@ -492,7 +535,13 @@ function registerNeteaseHandlers() {
         profile: getPublicAccountSummary()
       }
     } catch (err) {
-      console.error('Failed to login with phone captcha:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'login-phone-captcha-failed',
+        message: 'Failed to login with phone captcha',
+        error: err,
+        data: { phone }
+      })
       return { ok: false, error: 'LOGIN_EXCEPTION', message: err?.message || '' }
     }
   })
@@ -505,8 +554,10 @@ function registerNeteaseHandlers() {
 
     try {
       const keyResult = await postFormWithFallback(
-        getCandidateApiPaths('/api/login/qrcode/unikey'),
-        { type: 1 }
+        AUTH_PATHS.qrKey,
+        { type: 1 },
+        12000,
+        { cookieProfile: 'ios' }
       )
 
       if (!keyResult.ok || !keyResult.result?.data) {
@@ -538,7 +589,12 @@ function registerNeteaseHandlers() {
       try {
         qrDataUrl = await buildQrCodeDataUrl(qrLoginUrl)
       } catch (err) {
-        console.warn('Failed to build QR image data URL:', err)
+        logProgramEvent({
+          source: 'netease.index',
+          event: 'build-qr-image-failed',
+          message: 'Failed to build QR image data URL',
+          error: err
+        })
       }
 
       return {
@@ -548,7 +604,12 @@ function registerNeteaseHandlers() {
         qrDataUrl
       }
     } catch (err) {
-      console.error('Failed to create QR login:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'create-qr-login-failed',
+        message: 'Failed to create QR login',
+        error: err
+      })
       return { ok: false, error: 'QR_CREATE_EXCEPTION', message: err?.message || '' }
     }
   })
@@ -567,11 +628,13 @@ function registerNeteaseHandlers() {
 
     try {
       const checkResult = await postFormWithFallback(
-        getCandidateApiPaths('/api/login/qrcode/client/login'),
+        AUTH_PATHS.qrCheck,
         {
           key: qrKey,
           type: 1
-        }
+        },
+        12000,
+        { cookieProfile: 'ios' }
       )
 
       if (!checkResult.ok || !checkResult.result?.data) {
@@ -631,7 +694,12 @@ function registerNeteaseHandlers() {
         message: message || 'QR_CHECK_FAILED'
       }
     } catch (err) {
-      console.error('Failed to check QR login status:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'check-qr-login-failed',
+        message: 'Failed to check QR login status',
+        error: err
+      })
       return { ok: false, error: 'QR_CHECK_EXCEPTION', message: err?.message || '' }
     }
   })
@@ -671,7 +739,12 @@ function registerNeteaseHandlers() {
         code: Number(data?.code || 0)
       }
     } catch (err) {
-      console.error('Failed to verify NetEase auth:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'verify-auth-failed',
+        message: 'Failed to verify NetEase auth',
+        error: err
+      })
       return { ok: false, error: 'VERIFY_FAILED', message: err?.message || '' }
     }
   })
@@ -691,7 +764,13 @@ function registerNeteaseHandlers() {
       })
       return { ok: true, data }
     } catch (err) {
-      console.error('Failed to call authenticated NetEase API:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'auth-request-failed',
+        message: 'Failed to call authenticated NetEase API',
+        error: err,
+        data: { path: pathValue }
+      })
       return { ok: false, error: 'REQUEST_FAILED', message: err?.message || '' }
     }
   })
@@ -733,7 +812,13 @@ function registerNeteaseHandlers() {
         attempts: resolveResult.attempts
       }
     } catch (err) {
-      console.error('Failed to resolve song download URL:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'resolve-song-download-url-failed',
+        message: 'Failed to resolve song download URL',
+        error: err,
+        data: { songId }
+      })
       return { ok: false, error: 'RESOLVE_URL_FAILED', message: err?.message || '' }
     }
   })
@@ -750,7 +835,12 @@ function registerNeteaseHandlers() {
         savePlaylistName: payload?.savePlaylistName || ''
       })
     } catch (err) {
-      console.error('Failed to create song-id download task:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'create-song-download-task-failed',
+        message: 'Failed to create song-id download task',
+        error: err
+      })
       return { ok: false, error: 'DOWNLOAD_CREATE_FAILED', message: err?.message || '' }
     }
   })
@@ -864,7 +954,12 @@ function registerNeteaseHandlers() {
         failedItems
       }
     } catch (err) {
-      console.error('Failed to create playlist download tasks:', err)
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'create-playlist-download-tasks-failed',
+        message: 'Failed to create playlist download tasks',
+        error: err
+      })
       return { ok: false, error: 'PLAYLIST_DOWNLOAD_CREATE_FAILED', message: err?.message || '' }
     }
   })
