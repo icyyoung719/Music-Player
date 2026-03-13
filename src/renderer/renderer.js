@@ -14,8 +14,10 @@ const homeNowCoverPlaceholderEl = document.getElementById('homeNowCoverPlacehold
 const homeFeaturedCoverEl = document.getElementById('homeFeaturedCover')
 const homeMenuRecommendEl = document.getElementById('homeMenuRecommend')
 const homeMenuDownloadEl = document.getElementById('homeMenuDownload')
+const homeCreatedPlaylistListEl = document.getElementById('homeCreatedPlaylistList')
 const homeRecommendViewEl = document.getElementById('homeRecommendView')
 const homeDownloadViewEl = document.getElementById('homeDownloadView')
+const homePlaylistDetailViewEl = document.getElementById('homePlaylistDetailView')
 const windowMinimizeBtn = document.getElementById('windowMinimizeBtn')
 const homeLoginBtn = document.getElementById('homeLoginBtn')
 const homeUserNameEl = document.getElementById('homeUserName')
@@ -33,16 +35,21 @@ const shortcutDom = {
 }
 
 const savedPlaylistDom = {
-  savedPlaylistSelect: document.getElementById('savedPlaylistSelect'),
-  savedCreateBtn: document.getElementById('savedCreateBtn'),
-  savedRenameBtn: document.getElementById('savedRenameBtn'),
-  savedDeleteBtn: document.getElementById('savedDeleteBtn'),
-  savedAppendToQueueBtn: document.getElementById('savedAppendToQueueBtn'),
-  savedReplaceQueueBtn: document.getElementById('savedReplaceQueueBtn'),
-  savedAddCurrentBtn: document.getElementById('savedAddCurrentBtn'),
-  savedImportBtn: document.getElementById('savedImportBtn'),
-  savedExportBtn: document.getElementById('savedExportBtn'),
-  savedTracksEl: document.getElementById('savedTracks')
+  sidebarListEl: homeCreatedPlaylistListEl,
+  sidebarCreateBtn: document.getElementById('homeCreatePlaylistBtn'),
+  detailViewEl: homePlaylistDetailViewEl,
+  detailTitleEl: document.getElementById('homePlaylistDetailTitle'),
+  detailSubtitleEl: document.getElementById('homePlaylistDetailSubtitle'),
+  detailMetaEl: document.getElementById('homePlaylistDetailMeta'),
+  detailCoverEl: document.getElementById('homePlaylistDetailCover'),
+  detailCoverTextEl: document.getElementById('homePlaylistDetailCoverText'),
+  detailTrackListEl: document.getElementById('homePlaylistTrackList'),
+  detailCreateBtn: document.getElementById('homePlaylistCreateBtn'),
+  detailRenameBtn: document.getElementById('homePlaylistRenameBtn'),
+  detailDeleteBtn: document.getElementById('homePlaylistDeleteBtn'),
+  detailPlayAllBtn: document.getElementById('homePlaylistPlayAllBtn'),
+  detailAppendBtn: document.getElementById('homePlaylistAppendBtn'),
+  detailAddCurrentBtn: document.getElementById('homePlaylistAddCurrentBtn')
 }
 
 const playbackDom = {
@@ -162,7 +169,9 @@ const createdSavedPlaylistIdsByName = new Map()
 const pendingSavedPlaylistPromises = new Map()
 
 function showHomeView(view) {
-  currentHomeView = view === 'download' ? 'download' : 'recommend'
+  currentHomeView = ['recommend', 'download', 'playlist-detail'].includes(view)
+    ? view
+    : 'recommend'
 
   if (homeRecommendViewEl) {
     homeRecommendViewEl.classList.toggle('page-hidden', currentHomeView !== 'recommend')
@@ -172,6 +181,10 @@ function showHomeView(view) {
     homeDownloadViewEl.classList.toggle('page-hidden', currentHomeView !== 'download')
   }
 
+  if (homePlaylistDetailViewEl) {
+    homePlaylistDetailViewEl.classList.toggle('page-hidden', currentHomeView !== 'playlist-detail')
+  }
+
   if (homeMenuRecommendEl) {
     homeMenuRecommendEl.classList.toggle('active', currentHomeView === 'recommend')
   }
@@ -179,6 +192,25 @@ function showHomeView(view) {
   if (homeMenuDownloadEl) {
     homeMenuDownloadEl.classList.toggle('active', currentHomeView === 'download')
   }
+
+  if (savedPlaylistManager && savedPlaylistManager.setActiveView) {
+    savedPlaylistManager.setActiveView(currentHomeView)
+  }
+}
+
+function showHomeShell() {
+  if (songPageEl) songPageEl.classList.add('page-hidden')
+  if (homePageEl) homePageEl.classList.remove('page-hidden')
+}
+
+function openSavedPlaylistDetail(playlistId) {
+  showHomeShell()
+
+  if (savedPlaylistManager && savedPlaylistManager.openPlaylist) {
+    savedPlaylistManager.openPlaylist(playlistId)
+  }
+
+  showHomeView('playlist-detail')
 }
 
 function showSongPage() {
@@ -193,8 +225,7 @@ function showSongPage() {
 }
 
 function showHomePage() {
-  if (songPageEl) songPageEl.classList.add('page-hidden')
-  if (homePageEl) homePageEl.classList.remove('page-hidden')
+  showHomeShell()
   showHomeView(currentHomeView)
 }
 
@@ -332,6 +363,14 @@ function setupWindowEvents() {
       showHomeView('download')
     })
   }
+
+  if (homeCreatedPlaylistListEl) {
+    homeCreatedPlaylistListEl.addEventListener('click', (event) => {
+      const playlistItem = event.target.closest('[data-playlist-id]')
+      if (!playlistItem) return
+      openSavedPlaylistDetail(playlistItem.dataset.playlistId || '')
+    })
+  }
 }
 
 function openNeteaseAuthWindow(page = 'email') {
@@ -373,7 +412,9 @@ function setupSavedPlaylistManager() {
     promptForPlaylistName: requestPlaylistName,
     getCurrentQueueTrackInputs: () => playbackController.collectCurrentQueueAsTrackInputs(),
     appendTracksToQueue: (tracks) => playbackController.appendToPlaylist(tracks),
-    replaceQueueWithTracks: (tracks) => playbackController.replaceCurrentQueueWithTracks(tracks)
+    replaceQueueWithTracks: (tracks, startIndex = 0, options = {}) =>
+      playbackController.replaceCurrentQueueWithTracks(tracks, startIndex, options),
+    onRequestOpenPlaylist: (playlistId) => openSavedPlaylistDetail(playlistId)
   })
 
   savedPlaylistManager.init()

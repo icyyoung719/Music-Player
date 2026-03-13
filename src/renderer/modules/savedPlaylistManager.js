@@ -1,4 +1,4 @@
-﻿import { getFileNameFromPath } from './trackUtils.js'
+﻿import { formatTime, getFileNameFromPath } from './trackUtils.js'
 
 export function createSavedPlaylistManager(options) {
   const {
@@ -7,88 +7,194 @@ export function createSavedPlaylistManager(options) {
     promptForPlaylistName,
     getCurrentQueueTrackInputs,
     appendTracksToQueue,
-    replaceQueueWithTracks
+    replaceQueueWithTracks,
+    onRequestOpenPlaylist
   } = options
 
   let savedState = { playlists: [], trackLibrary: {} }
   let selectedSavedPlaylistId = null
+  let activeView = 'recommend'
 
   function getSelectedSavedPlaylist() {
     return savedState.playlists.find((item) => item.id === selectedSavedPlaylistId) || null
   }
 
-  function renderSavedPlaylistSelect() {
-    dom.savedPlaylistSelect.innerHTML = ''
+  function getQueueTracksForPlaylist(playlist = getSelectedSavedPlaylist()) {
+    if (!playlist) {
+      return []
+    }
+
+    const tracks = []
+
+    for (const trackId of playlist.trackIds) {
+      const savedTrack = savedState.trackLibrary[trackId]
+      if (!savedTrack || !savedTrack.path) continue
+
+      const title = savedTrack.metadataCache?.title || getFileNameFromPath(savedTrack.path)
+      tracks.push({
+        name: title,
+        path: savedTrack.path,
+        file: null,
+        metadataCache: savedTrack.metadataCache || { title }
+      })
+    }
+
+    return tracks
+  }
+
+  function updateActionButtons(selected) {
+    const hasPlaylist = Boolean(selected)
+
+    if (dom.detailPlayAllBtn) dom.detailPlayAllBtn.disabled = !hasPlaylist
+    if (dom.detailAppendBtn) dom.detailAppendBtn.disabled = !hasPlaylist
+    if (dom.detailAddCurrentBtn) dom.detailAddCurrentBtn.disabled = !hasPlaylist
+    if (dom.detailRenameBtn) dom.detailRenameBtn.disabled = !hasPlaylist
+    if (dom.detailDeleteBtn) dom.detailDeleteBtn.disabled = !hasPlaylist
+  }
+
+  function renderSidebarPlaylists() {
+    if (!dom.sidebarListEl) return
+
+    dom.sidebarListEl.innerHTML = ''
 
     if (!savedState.playlists.length) {
-      const opt = document.createElement('option')
-      opt.value = ''
-      opt.textContent = '暂无歌单'
-      dom.savedPlaylistSelect.appendChild(opt)
-      dom.savedPlaylistSelect.disabled = true
+      const empty = document.createElement('div')
+      empty.className = 'menu-item menu-item-empty'
+      empty.textContent = '还没有本地歌单'
+      dom.sidebarListEl.appendChild(empty)
       return
     }
 
-    dom.savedPlaylistSelect.disabled = false
-    savedState.playlists.forEach((item) => {
-      const opt = document.createElement('option')
-      opt.value = item.id
-      opt.textContent = `${item.name} (${item.trackIds.length})`
-      if (item.id === selectedSavedPlaylistId) {
-        opt.selected = true
+    savedState.playlists.forEach((playlist) => {
+      const item = document.createElement('div')
+      item.className = 'menu-item created-playlist-item'
+      if (activeView === 'playlist-detail' && playlist.id === selectedSavedPlaylistId) {
+        item.classList.add('active')
       }
-      dom.savedPlaylistSelect.appendChild(opt)
+      item.dataset.playlistId = playlist.id
+      item.title = playlist.name
+
+      const name = document.createElement('span')
+      name.className = 'created-playlist-name'
+      name.textContent = playlist.name
+
+      const count = document.createElement('span')
+      count.className = 'created-playlist-count'
+      count.textContent = playlist.trackIds.length
+
+      item.appendChild(name)
+      item.appendChild(count)
+      dom.sidebarListEl.appendChild(item)
     })
   }
 
-  function renderSavedTracks() {
-    dom.savedTracksEl.innerHTML = ''
+  function renderPlaylistDetail() {
     const selected = getSelectedSavedPlaylist()
+    updateActionButtons(selected)
+
+    if (dom.detailTitleEl) {
+      dom.detailTitleEl.textContent = selected ? selected.name : '还没有本地歌单'
+    }
+
+    if (dom.detailSubtitleEl) {
+      dom.detailSubtitleEl.textContent = selected
+        ? '本地歌单 · 点击歌曲可直接播放'
+        : '点击“新建歌单”后，就能在这里查看歌单详情与曲目。'
+    }
+
+    if (dom.detailMetaEl) {
+      dom.detailMetaEl.textContent = selected ? `${selected.trackIds.length} 首歌曲` : '0 首歌曲'
+    }
+
+    if (dom.detailCoverTextEl) {
+      dom.detailCoverTextEl.textContent = selected
+        ? (selected.name || '♪').trim().charAt(0).toUpperCase() || '♪'
+        : '♪'
+    }
+
+    if (!dom.detailTrackListEl) {
+      return
+    }
+
+    dom.detailTrackListEl.innerHTML = ''
 
     if (!selected) {
       const empty = document.createElement('div')
-      empty.className = 'saved-empty'
-      empty.textContent = '请先创建或选择一个歌单'
-      dom.savedTracksEl.appendChild(empty)
+      empty.className = 'playlist-detail-empty'
+      empty.textContent = '先创建一个本地歌单，再从左侧进入查看详情。'
+      dom.detailTrackListEl.appendChild(empty)
       return
     }
 
     if (!selected.trackIds.length) {
       const empty = document.createElement('div')
-      empty.className = 'saved-empty'
-      empty.textContent = '歌单为空，可将“当前列表”添加进来'
-      dom.savedTracksEl.appendChild(empty)
+      empty.className = 'playlist-detail-empty'
+      empty.textContent = '歌单还是空的，可通过下载并加入本地歌单来补充曲目。'
+      dom.detailTrackListEl.appendChild(empty)
       return
     }
 
     selected.trackIds.forEach((trackId, index) => {
       const track = savedState.trackLibrary[trackId]
-      const title = track?.metadataCache?.title || getFileNameFromPath(track?.path)
-      const item = document.createElement('div')
-      item.className = 'saved-track-item'
+      if (!track || !track.path) return
 
-      const idx = document.createElement('span')
-      idx.className = 'playlist-index'
-      idx.textContent = index + 1
+      const row = document.createElement('div')
+      row.className = 'playlist-detail-track-row'
+      row.title = '点击播放这首歌'
+
+      const title = track.metadataCache?.title || getFileNameFromPath(track.path)
+      const artist = track.metadataCache?.artist || '未知歌手'
+      const album = track.metadataCache?.album || '未知专辑'
+      const duration = Number(track.metadataCache?.duration)
+
+      const indexEl = document.createElement('span')
+      indexEl.className = 'playlist-col-index'
+      indexEl.textContent = String(index + 1).padStart(2, '0')
 
       const titleEl = document.createElement('span')
-      titleEl.className = 'saved-track-title'
+      titleEl.className = 'playlist-col-title'
       titleEl.textContent = title
 
+      const artistEl = document.createElement('span')
+      artistEl.className = 'playlist-col-artist'
+      artistEl.textContent = artist
+
+      const albumEl = document.createElement('span')
+      albumEl.className = 'playlist-col-album'
+      albumEl.textContent = album
+
+      const durationEl = document.createElement('span')
+      durationEl.className = 'playlist-col-duration'
+      durationEl.textContent = Number.isFinite(duration) ? formatTime(duration) : '--:--'
+
+      const actionWrap = document.createElement('span')
+      actionWrap.className = 'playlist-col-action'
+
       const removeBtn = document.createElement('button')
-      removeBtn.className = 'saved-track-remove'
-      removeBtn.textContent = '✕'
+      removeBtn.className = 'playlist-track-remove-btn'
+      removeBtn.textContent = '移除'
       removeBtn.title = '从歌单移除'
-      removeBtn.addEventListener('click', async () => {
+      removeBtn.addEventListener('click', async (event) => {
+        event.stopPropagation()
         if (!electronAPI || !electronAPI.playlistRemoveTrack) return
         await electronAPI.playlistRemoveTrack(selected.id, trackId)
         await refreshSavedPlaylists(selected.id)
       })
 
-      item.appendChild(idx)
-      item.appendChild(titleEl)
-      item.appendChild(removeBtn)
-      dom.savedTracksEl.appendChild(item)
+      actionWrap.appendChild(removeBtn)
+
+      row.appendChild(indexEl)
+      row.appendChild(titleEl)
+      row.appendChild(artistEl)
+      row.appendChild(albumEl)
+      row.appendChild(durationEl)
+      row.appendChild(actionWrap)
+
+      row.addEventListener('click', () => {
+        replaceQueueWithTracks(getQueueTracksForPlaylist(selected), index)
+      })
+
+      dom.detailTrackListEl.appendChild(row)
     })
   }
 
@@ -110,38 +216,8 @@ export function createSavedPlaylistManager(options) {
       selectedSavedPlaylistId = savedState.playlists[0]?.id || null
     }
 
-    renderSavedPlaylistSelect()
-    renderSavedTracks()
-  }
-
-  function collectSelectedSavedPlaylistTracksForQueue() {
-    const selected = getSelectedSavedPlaylist()
-    if (!selected) {
-      return { ok: false, reason: 'NO_PLAYLIST', tracks: [] }
-    }
-
-    if (!selected.trackIds.length) {
-      return { ok: false, reason: 'EMPTY_PLAYLIST', tracks: [] }
-    }
-
-    const tracks = []
-    for (const trackId of selected.trackIds) {
-      const savedTrack = savedState.trackLibrary[trackId]
-      if (!savedTrack || !savedTrack.path) continue
-      const title = savedTrack.metadataCache?.title || getFileNameFromPath(savedTrack.path)
-      tracks.push({
-        name: title,
-        path: savedTrack.path,
-        file: null,
-        metadataCache: savedTrack.metadataCache || { title }
-      })
-    }
-
-    if (!tracks.length) {
-      return { ok: false, reason: 'NO_VALID_TRACKS', tracks: [] }
-    }
-
-    return { ok: true, tracks, playlist: selected }
+    renderSidebarPlaylists()
+    renderPlaylistDetail()
   }
 
   async function createSavedPlaylist() {
@@ -152,15 +228,20 @@ export function createSavedPlaylistManager(options) {
 
     const input = await promptForPlaylistName('输入新歌单名称：', '我的歌单')
     if (input === null) return
+
     const name = input || '我的歌单'
 
     try {
       const result = await electronAPI.playlistCreate(name)
-      if (!result?.ok) {
+      if (!result?.ok || !result.playlist?.id) {
         alert('创建歌单失败')
         return
       }
+
       await refreshSavedPlaylists(result.playlist.id)
+      if (typeof onRequestOpenPlaylist === 'function') {
+        onRequestOpenPlaylist(result.playlist.id)
+      }
     } catch {
       alert('创建歌单失败，请查看控制台日志')
     }
@@ -175,9 +256,8 @@ export function createSavedPlaylistManager(options) {
 
     const input = await promptForPlaylistName('输入新的歌单名称：', selected.name)
     if (input === null) return
-    const name = input || selected.name
 
-    const result = await electronAPI.playlistRename(selected.id, name)
+    const result = await electronAPI.playlistRename(selected.id, input || selected.name)
     if (!result?.ok) {
       alert('重命名失败')
       return
@@ -205,6 +285,38 @@ export function createSavedPlaylistManager(options) {
     await refreshSavedPlaylists()
   }
 
+  function appendSelectedPlaylistToCurrentQueue() {
+    const selected = getSelectedSavedPlaylist()
+    if (!selected) {
+      alert('请先选择歌单')
+      return
+    }
+
+    const tracks = getQueueTracksForPlaylist(selected)
+    if (!tracks.length) {
+      alert('该歌单没有可用歌曲')
+      return
+    }
+
+    appendTracksToQueue(tracks)
+  }
+
+  function playSelectedPlaylist() {
+    const selected = getSelectedSavedPlaylist()
+    if (!selected) {
+      alert('请先选择歌单')
+      return
+    }
+
+    const tracks = getQueueTracksForPlaylist(selected)
+    if (!tracks.length) {
+      alert('该歌单没有可用歌曲')
+      return
+    }
+
+    replaceQueueWithTracks(tracks, 0)
+  }
+
   async function addCurrentQueueToSavedPlaylist() {
     const selected = getSelectedSavedPlaylist()
     if (!selected) {
@@ -212,7 +324,10 @@ export function createSavedPlaylistManager(options) {
       return
     }
 
-    const tracks = getCurrentQueueTrackInputs()
+    const tracks = typeof getCurrentQueueTrackInputs === 'function'
+      ? getCurrentQueueTrackInputs()
+      : []
+
     if (!tracks.length) {
       alert('当前播放列表没有可添加的本地歌曲')
       return
@@ -228,80 +343,56 @@ export function createSavedPlaylistManager(options) {
     alert(`已添加 ${result.addedCount} 首到歌单`)
   }
 
-  function appendSavedPlaylistToCurrentQueue() {
-    const result = collectSelectedSavedPlaylistTracksForQueue()
-    if (!result.ok) {
-      if (result.reason === 'NO_PLAYLIST') {
-        alert('请先选择歌单')
-      } else {
-        alert('该歌单没有可用歌曲')
+  function openPlaylist(playlistId) {
+    if (playlistId) {
+      const target = savedState.playlists.find((item) => item.id === playlistId)
+      if (target) {
+        selectedSavedPlaylistId = target.id
       }
-      return
     }
 
-    appendTracksToQueue(result.tracks)
+    if (!selectedSavedPlaylistId && savedState.playlists.length) {
+      selectedSavedPlaylistId = savedState.playlists[0].id
+    }
+
+    renderSidebarPlaylists()
+    renderPlaylistDetail()
+    return Boolean(getSelectedSavedPlaylist())
   }
 
-  function replaceCurrentQueueWithSavedPlaylist() {
-    const result = collectSelectedSavedPlaylistTracksForQueue()
-    if (!result.ok) {
-      if (result.reason === 'NO_PLAYLIST') {
-        alert('请先选择歌单')
-      } else {
-        alert('该歌单没有可用歌曲')
-      }
-      return
-    }
-
-    replaceQueueWithTracks(result.tracks)
-  }
-
-  async function importSavedPlaylist() {
-    if (!electronAPI || !electronAPI.playlistImport) return
-    const result = await electronAPI.playlistImport()
-    if (!result || result.canceled) return
-    if (!result.ok) {
-      alert('导入失败，请检查 JSON 格式')
-      return
-    }
-
-    await refreshSavedPlaylists()
-    alert(`导入完成：${result.importedPlaylistCount} 个歌单`)
-  }
-
-  async function exportSavedPlaylist() {
-    const selected = getSelectedSavedPlaylist()
-    if (!selected) {
-      alert('请先选择歌单')
-      return
-    }
-
-    const result = await electronAPI.playlistExport(selected.id)
-    if (!result || result.canceled) return
-    if (!result.ok) {
-      alert('导出失败')
-      return
-    }
-
-    alert('导出成功')
+  function setActiveView(view) {
+    activeView = view
+    renderSidebarPlaylists()
   }
 
   function bindEvents() {
-    if (dom.savedPlaylistSelect) {
-      dom.savedPlaylistSelect.addEventListener('change', () => {
-        selectedSavedPlaylistId = dom.savedPlaylistSelect.value || null
-        renderSavedTracks()
-      })
+    if (dom.sidebarCreateBtn) {
+      dom.sidebarCreateBtn.addEventListener('click', createSavedPlaylist)
     }
 
-    if (dom.savedCreateBtn) dom.savedCreateBtn.addEventListener('click', createSavedPlaylist)
-    if (dom.savedRenameBtn) dom.savedRenameBtn.addEventListener('click', renameSavedPlaylist)
-    if (dom.savedDeleteBtn) dom.savedDeleteBtn.addEventListener('click', deleteSavedPlaylist)
-    if (dom.savedAppendToQueueBtn) dom.savedAppendToQueueBtn.addEventListener('click', appendSavedPlaylistToCurrentQueue)
-    if (dom.savedReplaceQueueBtn) dom.savedReplaceQueueBtn.addEventListener('click', replaceCurrentQueueWithSavedPlaylist)
-    if (dom.savedAddCurrentBtn) dom.savedAddCurrentBtn.addEventListener('click', addCurrentQueueToSavedPlaylist)
-    if (dom.savedImportBtn) dom.savedImportBtn.addEventListener('click', importSavedPlaylist)
-    if (dom.savedExportBtn) dom.savedExportBtn.addEventListener('click', exportSavedPlaylist)
+    if (dom.detailCreateBtn) {
+      dom.detailCreateBtn.addEventListener('click', createSavedPlaylist)
+    }
+
+    if (dom.detailRenameBtn) {
+      dom.detailRenameBtn.addEventListener('click', renameSavedPlaylist)
+    }
+
+    if (dom.detailDeleteBtn) {
+      dom.detailDeleteBtn.addEventListener('click', deleteSavedPlaylist)
+    }
+
+    if (dom.detailAppendBtn) {
+      dom.detailAppendBtn.addEventListener('click', appendSelectedPlaylistToCurrentQueue)
+    }
+
+    if (dom.detailAddCurrentBtn) {
+      dom.detailAddCurrentBtn.addEventListener('click', addCurrentQueueToSavedPlaylist)
+    }
+
+    if (dom.detailPlayAllBtn) {
+      dom.detailPlayAllBtn.addEventListener('click', playSelectedPlaylist)
+    }
   }
 
   async function init() {
@@ -311,6 +402,8 @@ export function createSavedPlaylistManager(options) {
 
   return {
     init,
-    refreshSavedPlaylists
+    openPlaylist,
+    refreshSavedPlaylists,
+    setActiveView
   }
 }

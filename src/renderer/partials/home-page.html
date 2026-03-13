@@ -39,9 +39,13 @@
       <div class="menu-item">🕒 最近播放</div>
       <div class="menu-item">🎙 我的播客</div>
 
-      <div class="menu-title">创建的歌单</div>
-      <div class="menu-item">Anime</div>
-      <div class="menu-item">1</div>
+      <div class="menu-title menu-title-with-action">
+        <span>创建的歌单</span>
+        <button class="menu-title-action" id="homeCreatePlaylistBtn" title="新建歌单">＋</button>
+      </div>
+      <div class="created-playlist-list" id="homeCreatedPlaylistList">
+        <div class="menu-item menu-item-empty">还没有本地歌单</div>
+      </div>
     </aside>
 
     <main class="home-content">
@@ -155,6 +159,52 @@
             <div class="netease-task-empty">暂无下载任务</div>
           </div>
         </section>
+      </section>
+
+      <section id="homePlaylistDetailView" class="home-content-view page-hidden">
+        <div class="playlist-detail-shell">
+          <section class="playlist-detail-hero">
+            <div class="playlist-detail-cover" id="homePlaylistDetailCover" aria-hidden="true">
+              <span id="homePlaylistDetailCoverText">♪</span>
+            </div>
+
+            <div class="playlist-detail-summary">
+              <div class="playlist-detail-type">本地歌单</div>
+              <h2 class="playlist-detail-title" id="homePlaylistDetailTitle">还没有本地歌单</h2>
+              <div class="playlist-detail-subtitle" id="homePlaylistDetailSubtitle">创建后就能在这里查看歌单详情与曲目。</div>
+              <div class="playlist-detail-meta" id="homePlaylistDetailMeta">0 首歌曲</div>
+
+              <div class="playlist-detail-actions">
+                <button id="homePlaylistPlayAllBtn">播放全部</button>
+                <button id="homePlaylistAppendBtn">添加到当前播放列表</button>
+                <button id="homePlaylistAddCurrentBtn">收纳当前播放列表</button>
+                <button id="homePlaylistCreateBtn">新建歌单</button>
+                <button id="homePlaylistRenameBtn">重命名</button>
+                <button id="homePlaylistDeleteBtn">删除歌单</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="playlist-detail-panel">
+            <div class="playlist-detail-panel-head">
+              <div class="playlist-detail-panel-title">歌曲列表</div>
+              <div class="playlist-detail-panel-tip">点击歌曲可直接播放，右侧可从歌单移除。</div>
+            </div>
+
+            <div class="playlist-detail-table-head" aria-hidden="true">
+              <span class="playlist-col-index">#</span>
+              <span class="playlist-col-title">标题</span>
+              <span class="playlist-col-artist">歌手</span>
+              <span class="playlist-col-album">专辑</span>
+              <span class="playlist-col-duration">时长</span>
+              <span class="playlist-col-action">操作</span>
+            </div>
+
+            <div class="playlist-detail-track-list" id="homePlaylistTrackList">
+              <div class="playlist-detail-empty">还没有可显示的歌曲</div>
+            </div>
+          </section>
+        </div>
       </section>
     </main>
   </div>

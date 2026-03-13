@@ -234,6 +234,25 @@ export function createPlaybackController(options) {
     if (wasEmpty) loadTrack(0)
   }
 
+  function setQueueTracks(nextTracks, startIndex = 0) {
+    playlist = Array.isArray(nextTracks) ? nextTracks.slice() : []
+    currentIndex = -1
+    audio.pause()
+    audio.src = ''
+    setPlayButtonState(false)
+    resetProgress()
+    resetTrackMeta()
+    updatePlaylistUI()
+    reportPlayerState()
+
+    if (!playlist.length) {
+      return
+    }
+
+    const safeIndex = Math.max(0, Math.min(startIndex, playlist.length - 1))
+    loadTrack(safeIndex)
+  }
+
   function removeTrack(index) {
     if (index === currentIndex) {
       audio.pause()
@@ -343,14 +362,15 @@ export function createPlaybackController(options) {
     return trackInputs
   }
 
-  function replaceCurrentQueueWithTracks(tracks) {
-    if (playlist.length > 0) {
+  function replaceCurrentQueueWithTracks(tracks, startIndex = 0, options = {}) {
+    const { skipConfirm = false } = options
+
+    if (!skipConfirm && playlist.length > 0) {
       const confirmed = confirm('确认使用所选歌单替换当前播放列表吗？')
       if (!confirmed) return
     }
 
-    clearPlaylist()
-    appendToPlaylist(tracks)
+    setQueueTracks(tracks, startIndex)
   }
 
   function handleExternalPlayerControl(action) {
