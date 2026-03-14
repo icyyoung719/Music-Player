@@ -362,14 +362,7 @@ export function createPlaybackController(options) {
     return trackInputs
   }
 
-  function replaceCurrentQueueWithTracks(tracks, startIndex = 0, options = {}) {
-    const { skipConfirm = false } = options
-
-    if (!skipConfirm && playlist.length > 0) {
-      const confirmed = confirm('确认使用所选歌单替换当前播放列表吗？')
-      if (!confirmed) return
-    }
-
+  function replaceCurrentQueueWithTracks(tracks, startIndex = 0, _options = {}) {
     setQueueTracks(tracks, startIndex)
   }
 
