@@ -16,6 +16,7 @@ export function createSavedPlaylistManager(options) {
   let activeView = 'recommend'
   const trackCoverCache = new Map()
   let detailRenderToken = 0
+  let lastRenderedPlaylistId = undefined
 
   function getSelectedSavedPlaylist() {
     return savedState.playlists.find((item) => item.id === selectedSavedPlaylistId) || null
@@ -126,10 +127,14 @@ export function createSavedPlaylistManager(options) {
     })
   }
 
-  function renderPlaylistDetail() {
+  function renderPlaylistDetail(force = false) {
     const selected = getSelectedSavedPlaylist()
-    const renderToken = ++detailRenderToken
     const currentPlaylistId = selected?.id || null
+    if (!force && currentPlaylistId === lastRenderedPlaylistId) {
+      return
+    }
+    lastRenderedPlaylistId = currentPlaylistId
+    const renderToken = ++detailRenderToken
     updateActionButtons(selected)
 
     if (dom.detailTitleEl) {
@@ -184,6 +189,8 @@ export function createSavedPlaylistManager(options) {
       })
     }
 
+    const fragment = document.createDocumentFragment()
+
     selected.trackIds.forEach((trackId, index) => {
       const track = savedState.trackLibrary[trackId]
       if (!track || !track.path) return
@@ -237,6 +244,7 @@ export function createSavedPlaylistManager(options) {
         event.stopPropagation()
         if (!electronAPI || !electronAPI.playlistRemoveTrack) return
         await electronAPI.playlistRemoveTrack(selected.id, trackId)
+        lastRenderedPlaylistId = undefined
         await refreshSavedPlaylists(selected.id)
       })
 
@@ -269,8 +277,10 @@ export function createSavedPlaylistManager(options) {
         replaceQueueWithTracks(getQueueTracksForPlaylist(selected), index)
       })
 
-      dom.detailTrackListEl.appendChild(row)
+      fragment.appendChild(row)
     })
+
+    dom.detailTrackListEl.appendChild(fragment)
   }
 
   async function refreshSavedPlaylists(preferredId = null) {
@@ -292,7 +302,7 @@ export function createSavedPlaylistManager(options) {
     }
 
     renderSidebarPlaylists()
-    renderPlaylistDetail()
+    renderPlaylistDetail(true)
   }
 
   async function createSavedPlaylist() {
@@ -431,7 +441,7 @@ export function createSavedPlaylistManager(options) {
     }
 
     renderSidebarPlaylists()
-    renderPlaylistDetail()
+    renderPlaylistDetail(true)
     return Boolean(getSelectedSavedPlaylist())
   }
 
