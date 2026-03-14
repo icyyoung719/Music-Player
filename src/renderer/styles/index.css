@@ -445,7 +445,7 @@ body {
 }
 .playlist-detail-panel {
   padding: 16px 18px 18px;
-  --playlist-detail-columns: 56px 44px minmax(0, 2.2fr) minmax(110px, 1.1fr) minmax(120px, 1.2fr) 76px 88px;
+  --playlist-detail-columns: 56px auto minmax(0, 2.2fr) minmax(110px, 1.1fr) minmax(120px, 1.2fr) 76px 88px;
 }
 .playlist-detail-panel-head {
   display: flex;
@@ -468,7 +468,8 @@ body {
 .playlist-detail-track-row {
   display: grid;
   grid-template-columns: var(--playlist-detail-columns);
-  gap: 12px;
+  column-gap: 8px;
+  row-gap: 0;
   align-items: center;
 }
 .playlist-detail-table-head {
@@ -480,11 +481,11 @@ body {
 }
 .playlist-detail-track-list {
   display: grid;
-  gap: 8px;
+  gap: 4px;
   margin-top: 10px;
 }
 .playlist-detail-track-row {
-  min-height: 58px;
+  min-height: 72px;
   padding: 0 12px;
   border: 1px solid rgba(255,255,255,0.1);
   border-radius: 14px;
@@ -506,8 +507,8 @@ body {
   font-size: 12px;
 }
 .playlist-col-cover {
-  width: 34px;
-  height: 34px;
+  width: 64px;
+  height: 64px;
   border-radius: 8px;
   border: 1px solid rgba(255,255,255,0.16);
   background: rgba(255,255,255,0.1);
@@ -1772,7 +1773,7 @@ button.btn-active {
     gap: 18px;
   }
   .playlist-detail-panel {
-    --playlist-detail-columns: 48px 40px minmax(0, 2fr) minmax(96px, 1fr) minmax(96px, 1fr) 68px 78px;
+    --playlist-detail-columns: 48px auto minmax(0, 2fr) minmax(96px, 1fr) minmax(96px, 1fr) 68px 78px;
   }
   .main { grid-template-columns: 1fr; }
   .left-panel { min-height: 240px; }
@@ -1822,7 +1823,7 @@ button.btn-active {
     display: none;
   }
   .playlist-detail-panel {
-    --playlist-detail-columns: 34px 36px minmax(0, 1fr) 78px;
+    --playlist-detail-columns: 34px auto minmax(0, 1fr) 78px;
   }
   .playlist-detail-track-row {
     grid-template-areas:
