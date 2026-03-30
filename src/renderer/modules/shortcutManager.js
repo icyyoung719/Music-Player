@@ -5,7 +5,8 @@
     actionDefinitions,
     onAction,
     isEditableElement = defaultIsEditableElement,
-    confirmDialog = (message) => window.confirm(message)
+    confirmDialog = (message) => window.confirm(message),
+    closeOnConfirm = true
   } = options
 
   const actionOrder = Object.keys(actionDefinitions)
@@ -18,6 +19,7 @@
   let shortcutConfig = { ...defaultShortcuts }
   let draftShortcutConfig = null
   let waitingShortcutAction = null
+  let panelOpen = false
 
   function cloneShortcutConfig(config) {
     return Object.fromEntries(actionOrder.map((action) => [action, config[action] || '']))
@@ -204,16 +206,18 @@
   }
 
   function openPanel() {
-    if (!dom.shortcutOverlay) return
     draftShortcutConfig = cloneShortcutConfig(shortcutConfig)
     waitingShortcutAction = null
+    panelOpen = true
     renderShortcutPanel()
-    dom.shortcutOverlay.classList.add('visible')
-    dom.shortcutOverlay.setAttribute('aria-hidden', 'false')
+    if (dom.shortcutOverlay) {
+      dom.shortcutOverlay.classList.add('visible')
+      dom.shortcutOverlay.setAttribute('aria-hidden', 'false')
+    }
   }
 
   function closePanel(options = {}) {
-    if (!dom.shortcutOverlay) return false
+    if (!panelOpen) return true
     const { force = false } = options
 
     if (!force && hasUnsavedShortcutChanges()) {
@@ -225,13 +229,16 @@
 
     waitingShortcutAction = null
     draftShortcutConfig = null
-    dom.shortcutOverlay.classList.remove('visible')
-    dom.shortcutOverlay.setAttribute('aria-hidden', 'true')
+    panelOpen = false
+    if (dom.shortcutOverlay) {
+      dom.shortcutOverlay.classList.remove('visible')
+      dom.shortcutOverlay.setAttribute('aria-hidden', 'true')
+    }
     return true
   }
 
   function isPanelVisible() {
-    return !!(dom.shortcutOverlay && dom.shortcutOverlay.classList.contains('visible'))
+    return panelOpen
   }
 
   function matchShortcutActionByKey(shortcut) {
@@ -311,7 +318,9 @@
     if (dom.shortcutConfirmBtn) {
       dom.shortcutConfirmBtn.addEventListener('click', () => {
         applyShortcutChanges()
-        closePanel({ force: true })
+        if (closeOnConfirm) {
+          closePanel({ force: true })
+        }
       })
     }
 

@@ -27,12 +27,22 @@ const homeUserAvatarEl = document.getElementById('homeUserAvatar')
 const appToastContainerEl = document.getElementById('appToastContainer')
 
 const shortcutDom = {
-  shortcutBtn: document.getElementById('shortcutBtn'),
-  shortcutOverlay: document.getElementById('shortcutOverlay'),
+  shortcutOverlay: null,
   shortcutList: document.getElementById('shortcutList'),
-  shortcutCloseBtn: document.getElementById('shortcutCloseBtn'),
+  shortcutCloseBtn: null,
   shortcutResetBtn: document.getElementById('shortcutResetBtn'),
   shortcutConfirmBtn: document.getElementById('shortcutConfirmBtn')
+}
+
+const settingsDom = {
+  settingsBtn: document.getElementById('settingsBtn'),
+  settingsOverlay: document.getElementById('settingsOverlay'),
+  settingsCloseBtn: document.getElementById('settingsCloseBtn'),
+  settingsTabs: document.querySelectorAll('[data-settings-tab]'),
+  settingsPanels: document.querySelectorAll('[data-settings-panel]'),
+  fadeInDurationInput: document.getElementById('fadeInDurationInput'),
+  fadeOutDurationInput: document.getElementById('fadeOutDurationInput'),
+  fadeSaveBtn: document.getElementById('fadeSaveBtn')
 }
 
 const savedPlaylistDom = {
@@ -159,7 +169,7 @@ const shortcutActions = {
   showHomePage: { label: '打开主页面', defaultKey: '' },
   showSongPage: { label: '打开歌曲页', defaultKey: '' },
   toggleTheme: { label: '切换明暗主题', defaultKey: '' },
-  openShortcuts: { label: '打开快捷键面板', defaultKey: '' },
+  openShortcuts: { label: '打开设置页面', defaultKey: '' },
   minimizeWindow: { label: '最小化窗口', defaultKey: '' },
   clearPlaylist: { label: '清空当前列表', defaultKey: '' }
 }
@@ -171,6 +181,7 @@ let savedPlaylistManager = null
 let toastManager = null
 let dailyRecommendationManager = null
 let currentHomeView = 'recommend'
+let currentSettingsTab = 'playback'
 const createdSavedPlaylistIdsByName = new Map()
 const pendingSavedPlaylistPromises = new Map()
 
@@ -483,6 +494,7 @@ function setupShortcutManager() {
     dom: shortcutDom,
     storageKey: SHORTCUT_STORAGE_KEY,
     actionDefinitions: shortcutActions,
+    closeOnConfirm: false,
     onAction: (action) => {
       switch (action) {
         case 'togglePlay':
@@ -515,7 +527,7 @@ function setupShortcutManager() {
           break
         }
         case 'openShortcuts':
-          shortcutManager.openPanel()
+          openSettingsPanel('shortcuts')
           break
         case 'minimizeWindow':
           if (window.electronAPI && window.electronAPI.minimizeWindow) {
@@ -534,6 +546,118 @@ function setupShortcutManager() {
   })
 
   shortcutManager.init()
+}
+
+function sanitizeFadeDurationInput(value, fallbackValue) {
+  const parsed = Number.parseInt(String(value || '').trim(), 10)
+  if (!Number.isFinite(parsed)) return fallbackValue
+  return Math.max(0, Math.min(5000, parsed))
+}
+
+function switchSettingsTab(tab) {
+  currentSettingsTab = tab === 'shortcuts' ? 'shortcuts' : 'playback'
+
+  settingsDom.settingsTabs.forEach((tabEl) => {
+    const tabName = tabEl.getAttribute('data-settings-tab')
+    const active = tabName === currentSettingsTab
+    tabEl.classList.toggle('active', active)
+    tabEl.setAttribute('aria-selected', active ? 'true' : 'false')
+  })
+
+  settingsDom.settingsPanels.forEach((panelEl) => {
+    const panelName = panelEl.getAttribute('data-settings-panel')
+    panelEl.classList.toggle('page-hidden', panelName !== currentSettingsTab)
+  })
+}
+
+function syncFadeSettingsInputs() {
+  if (!playbackController) return
+  const settings = playbackController.getFadeSettings()
+  if (settingsDom.fadeInDurationInput) {
+    settingsDom.fadeInDurationInput.value = settings.fadeInMs
+  }
+  if (settingsDom.fadeOutDurationInput) {
+    settingsDom.fadeOutDurationInput.value = settings.fadeOutMs
+  }
+}
+
+function applyFadeSettingsFromInputs() {
+  if (!playbackController) return
+  const current = playbackController.getFadeSettings()
+  const fadeInMs = sanitizeFadeDurationInput(settingsDom.fadeInDurationInput?.value, current.fadeInMs)
+  const fadeOutMs = sanitizeFadeDurationInput(settingsDom.fadeOutDurationInput?.value, current.fadeOutMs)
+  const next = playbackController.updateFadeSettings({ fadeInMs, fadeOutMs })
+  if (settingsDom.fadeInDurationInput) settingsDom.fadeInDurationInput.value = next.fadeInMs
+  if (settingsDom.fadeOutDurationInput) settingsDom.fadeOutDurationInput.value = next.fadeOutMs
+}
+
+function openSettingsPanel(tab = 'playback') {
+  if (!settingsDom.settingsOverlay) return
+  settingsDom.settingsOverlay.classList.add('visible')
+  settingsDom.settingsOverlay.setAttribute('aria-hidden', 'false')
+  switchSettingsTab(tab)
+  if (shortcutManager) {
+    shortcutManager.openPanel()
+  }
+  syncFadeSettingsInputs()
+}
+
+function closeSettingsPanel() {
+  if (!settingsDom.settingsOverlay) return false
+  if (shortcutManager && !shortcutManager.closePanel()) {
+    return false
+  }
+  settingsDom.settingsOverlay.classList.remove('visible')
+  settingsDom.settingsOverlay.setAttribute('aria-hidden', 'true')
+  return true
+}
+
+function setupSettingsPanel() {
+  if (settingsDom.settingsBtn) {
+    settingsDom.settingsBtn.addEventListener('click', () => {
+      openSettingsPanel('playback')
+    })
+  }
+
+  if (settingsDom.settingsCloseBtn) {
+    settingsDom.settingsCloseBtn.addEventListener('click', () => {
+      closeSettingsPanel()
+    })
+  }
+
+  if (settingsDom.settingsOverlay) {
+    settingsDom.settingsOverlay.addEventListener('click', (event) => {
+      if (event.target === settingsDom.settingsOverlay) {
+        closeSettingsPanel()
+      }
+    })
+  }
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape') return
+    if (!settingsDom.settingsOverlay?.classList.contains('visible')) return
+    event.preventDefault()
+    closeSettingsPanel()
+  })
+
+  settingsDom.settingsTabs.forEach((tabEl) => {
+    tabEl.addEventListener('click', () => {
+      switchSettingsTab(tabEl.getAttribute('data-settings-tab') || 'playback')
+    })
+  })
+
+  if (settingsDom.fadeSaveBtn) {
+    settingsDom.fadeSaveBtn.addEventListener('click', () => {
+      applyFadeSettingsFromInputs()
+    })
+  }
+
+  if (settingsDom.fadeInDurationInput) {
+    settingsDom.fadeInDurationInput.addEventListener('change', applyFadeSettingsFromInputs)
+  }
+  if (settingsDom.fadeOutDurationInput) {
+    settingsDom.fadeOutDurationInput.addEventListener('change', applyFadeSettingsFromInputs)
+  }
 }
 
 function setupNeteaseManager() {
@@ -613,6 +737,7 @@ function initRenderer() {
   setupDownloadManager()
   setupAccountManager()
   setupShortcutManager()
+  setupSettingsPanel()
   setupPlayerControlListener()
 
   showHomePage()

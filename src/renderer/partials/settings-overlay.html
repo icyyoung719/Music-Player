@@ -1,0 +1,58 @@
+<div class="settings-overlay" id="settingsOverlay" aria-hidden="true">
+  <div class="settings-panel" role="dialog" aria-modal="true" aria-label="应用设置">
+    <div class="settings-head">
+      <div class="settings-title">应用设置</div>
+      <button id="settingsCloseBtn" title="关闭设置">关闭</button>
+    </div>
+
+    <div class="settings-tab-row" role="tablist" aria-label="设置子页面">
+      <button
+        class="settings-tab active"
+        id="settingsTabPlayback"
+        data-settings-tab="playback"
+        role="tab"
+        aria-selected="true"
+      >播放</button>
+      <button
+        class="settings-tab"
+        id="settingsTabShortcuts"
+        data-settings-tab="shortcuts"
+        role="tab"
+        aria-selected="false"
+      >快捷键</button>
+    </div>
+
+    <div class="settings-content">
+      <section class="settings-section" id="settingsPanelPlayback" data-settings-panel="playback">
+        <div class="settings-section-title">播放淡入淡出</div>
+        <div class="settings-section-tip">设置切歌与暂停时的淡入淡出时长，单位毫秒（ms）。设置为 0 可关闭对应淡入或淡出。</div>
+
+        <div class="settings-form-row">
+          <label for="fadeInDurationInput">淡入时长（ms）</label>
+          <input id="fadeInDurationInput" type="number" min="0" max="5000" step="50" placeholder="例如 250">
+        </div>
+
+        <div class="settings-form-row">
+          <label for="fadeOutDurationInput">淡出时长（ms）</label>
+          <input id="fadeOutDurationInput" type="number" min="0" max="5000" step="50" placeholder="例如 350">
+        </div>
+
+        <div class="settings-form-actions">
+          <button id="fadeSaveBtn" class="settings-save-btn" title="保存播放淡入淡出设置">保存播放设置</button>
+        </div>
+      </section>
+
+      <section class="settings-section page-hidden" id="settingsPanelShortcuts" data-settings-panel="shortcuts">
+        <div class="shortcut-tip">
+          支持单键与组合键（示例：<code>Space</code>、<code>Ctrl+Right</code>、<code>Alt+M</code>）。<br>
+          点击“修改”后按下目标按键可保存，点击“清空”可取消该功能绑定。
+        </div>
+        <div class="shortcut-list" id="shortcutList"></div>
+        <div class="shortcut-actions">
+          <button id="shortcutResetBtn" class="shortcut-reset" title="恢复默认快捷键">恢复默认</button>
+          <button id="shortcutConfirmBtn" class="shortcut-confirm" title="确认快捷键修改">确认</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>

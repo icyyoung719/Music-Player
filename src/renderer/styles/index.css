@@ -165,7 +165,8 @@ body {
   text-overflow: ellipsis;
   max-width: 240px;
 }
-.shortcut-btn {
+.shortcut-btn,
+.settings-btn {
   padding: 8px 12px;
   border-radius: 999px;
   border: 1px solid var(--line);
@@ -176,7 +177,8 @@ body {
   font-weight: 700;
   transition: transform 0.2s ease, background 0.2s ease;
 }
-.shortcut-btn:hover { transform: translateY(-1px); background: var(--panel-strong); }
+.shortcut-btn:hover,
+.settings-btn:hover { transform: translateY(-1px); background: var(--panel-strong); }
 .home-login-btn {
   padding: 8px 14px;
   border-radius: 999px;
@@ -1589,6 +1591,17 @@ button.btn-active {
   padding: 14px;
 }
 .shortcut-overlay.visible { display: flex; }
+.settings-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(12, 8, 5, 0.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  z-index: 50;
+  padding: 14px;
+}
+.settings-overlay.visible { display: flex; }
 .shortcut-panel {
   width: min(560px, 96vw);
   border-radius: 18px;
@@ -1597,6 +1610,93 @@ button.btn-active {
   box-shadow: var(--shadow);
   padding: 16px;
   color: var(--text-main);
+}
+.settings-panel {
+  width: min(680px, 96vw);
+  max-height: min(720px, 92vh);
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: var(--panel-strong);
+  box-shadow: var(--shadow);
+  padding: 16px;
+  color: var(--text-main);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: 12px;
+}
+.settings-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.settings-title {
+  font-size: 20px;
+  font-weight: 700;
+}
+.settings-tab-row {
+  display: flex;
+  gap: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--line);
+}
+.settings-tab {
+  min-width: 84px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: var(--panel);
+  color: var(--text-sub);
+  font-weight: 700;
+}
+.settings-tab.active {
+  background: linear-gradient(145deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border-color: transparent;
+}
+.settings-content {
+  min-height: 0;
+  overflow: auto;
+  padding-right: 2px;
+}
+.settings-section {
+  display: grid;
+  gap: 10px;
+}
+.settings-section-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.settings-section-tip {
+  font-size: 12px;
+  color: var(--text-sub);
+  line-height: 1.6;
+}
+.settings-form-row {
+  display: grid;
+  gap: 6px;
+}
+.settings-form-row label {
+  font-size: 12px;
+  color: var(--text-sub);
+}
+.settings-form-row input {
+  width: min(240px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text-main);
+  padding: 8px 10px;
+}
+.settings-form-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+.settings-save-btn {
+  background: linear-gradient(145deg, var(--accent), var(--accent-2));
+  color: #fff;
+  border-color: transparent;
+  min-width: 120px;
+  font-weight: 700;
 }
 .shortcut-head {
   display: flex;

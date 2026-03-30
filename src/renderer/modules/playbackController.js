@@ -9,6 +9,11 @@
 import { createLyricManager } from './lyricManager.js'
 
 const PREFETCH_BEFORE_SECONDS = 20
+const FADE_SETTINGS_STORAGE_KEY = 'musicPlayer.playbackFade.v1'
+const DEFAULT_FADE_SETTINGS = {
+  fadeInMs: 250,
+  fadeOutMs: 350
+}
 
 export function createPlaybackController(options) {
   const {
@@ -28,6 +33,90 @@ export function createPlaybackController(options) {
   let lyricManager = null
   const lazyTaskIndexMap = new Map()
   const lazyWaitersByIndex = new Map()
+  let fadeSettings = loadFadeSettings()
+  let fadeTimer = null
+  let fadeToken = 0
+  let loadRequestId = 0
+
+  function clampFadeDuration(value, fallbackValue) {
+    if (!Number.isFinite(value)) return fallbackValue
+    return Math.max(0, Math.min(5000, Math.round(value)))
+  }
+
+  function sanitizeFadeSettings(input = {}) {
+    return {
+      fadeInMs: clampFadeDuration(Number(input.fadeInMs), DEFAULT_FADE_SETTINGS.fadeInMs),
+      fadeOutMs: clampFadeDuration(Number(input.fadeOutMs), DEFAULT_FADE_SETTINGS.fadeOutMs)
+    }
+  }
+
+  function loadFadeSettings() {
+    try {
+      const raw = localStorage.getItem(FADE_SETTINGS_STORAGE_KEY)
+      if (!raw) return { ...DEFAULT_FADE_SETTINGS }
+      const parsed = JSON.parse(raw)
+      return sanitizeFadeSettings(parsed || {})
+    } catch (err) {
+      console.warn('Failed to load fade settings:', err)
+      return { ...DEFAULT_FADE_SETTINGS }
+    }
+  }
+
+  function persistFadeSettings() {
+    try {
+      localStorage.setItem(FADE_SETTINGS_STORAGE_KEY, JSON.stringify(fadeSettings))
+    } catch (err) {
+      console.warn('Failed to save fade settings:', err)
+    }
+  }
+
+  function stopFade(options = {}) {
+    const { resetVolume = false } = options
+    if (fadeTimer) {
+      clearInterval(fadeTimer)
+      fadeTimer = null
+    }
+    fadeToken += 1
+    if (resetVolume) {
+      audio.volume = 1
+    }
+  }
+
+  function runFadeTo(targetVolume, durationMs) {
+    const safeTarget = Math.max(0, Math.min(1, Number(targetVolume) || 0))
+    const safeDuration = Math.max(0, Number(durationMs) || 0)
+
+    stopFade()
+
+    if (safeDuration <= 0 || Math.abs(audio.volume - safeTarget) < 0.001) {
+      audio.volume = safeTarget
+      return Promise.resolve(true)
+    }
+
+    const localToken = fadeToken
+    const startVolume = audio.volume
+    const delta = safeTarget - startVolume
+    const startAt = Date.now()
+
+    return new Promise((resolve) => {
+      fadeTimer = setInterval(() => {
+        if (localToken !== fadeToken) {
+          resolve(false)
+          return
+        }
+
+        const elapsed = Date.now() - startAt
+        const progress = Math.max(0, Math.min(1, elapsed / safeDuration))
+        audio.volume = Math.max(0, Math.min(1, startVolume + delta * progress))
+
+        if (progress >= 1) {
+          clearInterval(fadeTimer)
+          fadeTimer = null
+          resolve(true)
+        }
+      }, 20)
+    })
+  }
 
   function setPlayButtonState(isPlaying) {
     if (!dom.playBtn) return
@@ -312,6 +401,7 @@ export function createPlaybackController(options) {
 
   async function loadTrack(index) {
     if (index < 0 || index >= playlist.length) return
+    const requestId = ++loadRequestId
     currentIndex = index
     let track = playlist[index]
 
@@ -328,6 +418,14 @@ export function createPlaybackController(options) {
       lyricManager.setLyrics(null)
     }
 
+    const shouldFadeOutCurrent = !audio.paused && audio.src && fadeSettings.fadeOutMs > 0
+    if (shouldFadeOutCurrent) {
+      await runFadeTo(0, fadeSettings.fadeOutMs)
+      if (requestId !== loadRequestId) return
+    } else {
+      stopFade()
+    }
+
     audio.pause()
 
     if (isLazyNeteaseTrack(track) && track.lazyNetease?.coverUrl) {
@@ -335,6 +433,7 @@ export function createPlaybackController(options) {
     }
 
     const ready = await ensureTrackReadyForPlayback(index, { waitForReady: true })
+    if (requestId !== loadRequestId) return
     if (!ready) {
       setPlayButtonState(false)
       updatePlaylistUI()
@@ -363,6 +462,7 @@ export function createPlaybackController(options) {
     if (filePath && electronAPI) {
       electronAPI.playAudio(filePath)
       const meta = await electronAPI.getMetadata(filePath)
+      if (requestId !== loadRequestId) return
       if (meta) {
         dom.trackTitle.textContent = meta.title || track.name
         dom.trackArtist.textContent = meta.artist || ''
@@ -405,7 +505,13 @@ export function createPlaybackController(options) {
     }
 
     try {
+      audio.volume = fadeSettings.fadeInMs > 0 ? 0 : 1
       await audio.play()
+      if (requestId !== loadRequestId) return
+      if (fadeSettings.fadeInMs > 0) {
+        await runFadeTo(1, fadeSettings.fadeInMs)
+        if (requestId !== loadRequestId) return
+      }
       setPlayButtonState(true)
     } catch (err) {
       console.warn('Failed to play audio:', err)
@@ -438,10 +544,12 @@ export function createPlaybackController(options) {
   }
 
   function setQueueTracks(nextTracks, startIndex = 0) {
+    loadRequestId += 1
     playlist = Array.isArray(nextTracks) ? nextTracks.slice() : []
     lazyTaskIndexMap.clear()
     lazyWaitersByIndex.clear()
     currentIndex = -1
+    stopFade({ resetVolume: true })
     audio.pause()
     audio.src = ''
     setPlayButtonState(false)
@@ -462,6 +570,8 @@ export function createPlaybackController(options) {
     resolveLazyWaiters(index, false)
 
     if (index === currentIndex) {
+      loadRequestId += 1
+      stopFade({ resetVolume: true })
       audio.pause()
       audio.src = ''
       setPlayButtonState(false)
@@ -487,12 +597,14 @@ export function createPlaybackController(options) {
   }
 
   function clearPlaylist() {
+    loadRequestId += 1
     for (const index of Array.from(lazyWaitersByIndex.keys())) {
       resolveLazyWaiters(index, false)
     }
     lazyTaskIndexMap.clear()
     playlist = []
     currentIndex = -1
+    stopFade({ resetVolume: true })
     audio.pause()
     audio.src = ''
     setPlayButtonState(false)
@@ -527,16 +639,25 @@ export function createPlaybackController(options) {
     }
 
     if (audio.paused) {
+      stopFade()
+      audio.volume = fadeSettings.fadeInMs > 0 ? 0 : 1
       audio.play().then(() => {
+        if (fadeSettings.fadeInMs > 0) {
+          runFadeTo(1, fadeSettings.fadeInMs)
+        }
         setPlayButtonState(true)
         reportPlayerState()
       }).catch((err) => {
         console.warn('Failed to resume audio:', err)
       })
     } else {
-      audio.pause()
-      setPlayButtonState(false)
-      reportPlayerState()
+      runFadeTo(0, fadeSettings.fadeOutMs).then((completed) => {
+        if (!completed) return
+        if (audio.paused) return
+        audio.pause()
+        setPlayButtonState(false)
+        reportPlayerState()
+      })
     }
   }
 
@@ -730,7 +851,18 @@ export function createPlaybackController(options) {
     bindAudioEvents()
     updatePlaylistUI()
     setPlayButtonState(false)
+    audio.volume = 1
     reportPlayerState()
+  }
+
+  function updateFadeSettings(nextSettings = {}) {
+    fadeSettings = sanitizeFadeSettings({ ...fadeSettings, ...nextSettings })
+    persistFadeSettings()
+    return { ...fadeSettings }
+  }
+
+  function getFadeSettings() {
+    return { ...fadeSettings }
   }
 
   return {
@@ -745,6 +877,8 @@ export function createPlaybackController(options) {
     collectCurrentQueueAsTrackInputs,
     replaceCurrentQueueWithTracks,
     handleExternalPlayerControl,
+    updateFadeSettings,
+    getFadeSettings,
     hasQueue: () => playlist.length > 0,
     refreshLyricsScroll: () => {
       if (lyricManager) lyricManager.refreshScroll()
