@@ -836,34 +836,6 @@ body {
   font-size: 13px;
   line-height: 1.42;
 }
-.hero-actions {
-  display: flex;
-  gap: 6px;
-  padding: 0 10px 8px;
-}
-.hero-actions button {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.2);
-  color: var(--text-main);
-  padding: 4px 8px;
-  font-size: 11px;
-  line-height: 1;
-  cursor: pointer;
-}
-.hero-actions button:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
-}
-.hero-status {
-  padding: 0 10px 10px;
-  color: var(--text-sub);
-  font-size: 11px;
-  line-height: 1.35;
-}
-.hero-status.is-error {
-  color: #cf3f3f;
-}
 .section-title {
   font-size: clamp(28px, 2.8vw, 40px);
   color: var(--text-main);

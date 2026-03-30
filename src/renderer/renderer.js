@@ -144,11 +144,7 @@ const downloadDom = {
 
 const dailyRecommendationDom = {
   coverEl: document.getElementById('dailyRecommendCover'),
-  metaEl: document.getElementById('dailyRecommendMeta'),
-  statusEl: document.getElementById('dailyRecommendStatus'),
-  playBtn: document.getElementById('dailyRecommendPlayBtn'),
-  appendBtn: document.getElementById('dailyRecommendAppendBtn'),
-  refreshBtn: document.getElementById('dailyRecommendRefreshBtn')
+  metaEl: document.getElementById('dailyRecommendMeta')
 }
 
 const SHORTCUT_STORAGE_KEY = 'musicPlayer.shortcuts.v1'
@@ -592,7 +588,6 @@ function setupDailyRecommendationManager() {
     dom: dailyRecommendationDom,
     onReplaceQueueWithTracks: (tracks, startIndex = 0, options = {}) =>
       playbackController.replaceCurrentQueueWithTracks(tracks, startIndex, options),
-    onAppendTracksToQueue: (tracks) => playbackController.appendToPlaylist(tracks),
     onShowSongPage: showSongPage
   })
 

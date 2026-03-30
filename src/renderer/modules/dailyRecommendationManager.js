@@ -30,11 +30,10 @@ export function createDailyRecommendationManager(options) {
     electronAPI,
     dom,
     onReplaceQueueWithTracks,
-    onAppendTracksToQueue,
     onShowSongPage
   } = options
 
-  if (!dom?.coverEl || !dom?.metaEl || !dom?.statusEl || !dom?.playBtn || !dom?.appendBtn) {
+  if (!dom?.coverEl || !dom?.metaEl) {
     return { init() {} }
   }
 
@@ -49,15 +48,18 @@ export function createDailyRecommendationManager(options) {
   const queueTaskState = new Map()
   const handledTaskIds = new Set()
 
-  function setStatus(text, isError = false) {
-    dom.statusEl.textContent = text
-    dom.statusEl.classList.toggle('is-error', isError)
+  function normalizeCoverUrl(url) {
+    const text = safeText(url)
+    if (!text) return ''
+    return text.replace(/^http:\/\//i, 'https://')
   }
 
-  function setActionDisabled(disabled) {
-    dom.playBtn.disabled = disabled
-    dom.appendBtn.disabled = disabled
-    if (dom.refreshBtn) dom.refreshBtn.disabled = disabled
+  function resolvePreferredCover(tracks) {
+    for (const track of tracks) {
+      const url = normalizeCoverUrl(track?.coverUrl)
+      if (url) return url
+    }
+    return ''
   }
 
   function renderCover(url) {
@@ -73,28 +75,22 @@ export function createDailyRecommendationManager(options) {
 
   function renderState() {
     if (!state.isLoggedIn) {
-      setActionDisabled(true)
-      setStatus('请先登录网易云账号后加载每日推荐。', true)
       dom.metaEl.textContent = '每日推荐 | 登录后可同步今日歌曲'
       renderCover('')
       return
     }
 
     if (state.loading) {
-      setActionDisabled(true)
-      setStatus('正在拉取今日推荐...')
+      dom.metaEl.textContent = '每日推荐 | 正在更新今日歌曲'
       return
     }
 
     if (state.lastError) {
-      setActionDisabled(false)
-      setStatus(`日推加载失败: ${state.lastError}`, true)
+      dom.metaEl.textContent = '每日推荐 | 加载失败，稍后自动重试'
       return
     }
 
     if (!state.tracks.length) {
-      setActionDisabled(true)
-      setStatus('今日暂无推荐歌曲。')
       dom.metaEl.textContent = '每日推荐 | 暂无可展示内容'
       renderCover('')
       return
@@ -103,9 +99,7 @@ export function createDailyRecommendationManager(options) {
     const first = state.tracks[0]
     const artistText = first.artist ? ` - ${first.artist}` : ''
     dom.metaEl.textContent = `每日推荐 | 从「${truncate(first.name, 14)}」听起${artistText}`
-    renderCover(first.coverUrl)
-    setStatus(`已加载 ${state.tracks.length} 首今日推荐歌曲`) 
-    setActionDisabled(false)
+    renderCover(resolvePreferredCover(state.tracks))
   }
 
   async function refreshDailyRecommendation() {
@@ -165,29 +159,16 @@ export function createDailyRecommendationManager(options) {
     }
   }
 
-  async function enqueueTracks(tracks, mode) {
-    if (!electronAPI?.neteaseDownloadSongTask || !Array.isArray(tracks) || !tracks.length) return
+  async function enqueueTrack(track) {
+    if (!electronAPI?.neteaseDownloadSongTask || !track) return
 
-    let created = 0
-    let failed = 0
+    const taskRes = await electronAPI.neteaseDownloadSongTask(buildTaskPayload(track))
+    if (!taskRes?.ok || !taskRes?.task?.id) return
 
-    for (let index = 0; index < tracks.length; index += 1) {
-      const track = tracks[index]
-      const taskRes = await electronAPI.neteaseDownloadSongTask(buildTaskPayload(track))
-      if (!taskRes?.ok || !taskRes?.task?.id) {
-        failed += 1
-        continue
-      }
-
-      created += 1
-      queueTaskState.set(taskRes.task.id, {
-        track,
-        replaceQueueOnDone: mode === 'replace-play-first' && index === 0,
-        appendOnDone: mode === 'append-all' || (mode === 'replace-play-first' && index > 0)
-      })
-    }
-
-    setStatus(`已创建 ${created} 个任务${failed ? `，失败 ${failed} 个` : ''}`)
+    queueTaskState.set(taskRes.task.id, {
+      track,
+      replaceQueueOnDone: true
+    })
   }
 
   function handleDownloadTaskUpdate(task) {
@@ -210,8 +191,6 @@ export function createDailyRecommendationManager(options) {
       if (typeof onShowSongPage === 'function') {
         onShowSongPage()
       }
-    } else if (mapped.appendOnDone && typeof onAppendTracksToQueue === 'function') {
-      onAppendTracksToQueue([localTrack])
     }
 
     queueTaskState.delete(task.id)
@@ -219,29 +198,13 @@ export function createDailyRecommendationManager(options) {
 
   async function playFirst() {
     if (!state.tracks.length) {
-      setStatus('当前没有可播放的日推歌曲。', true)
       return
     }
 
-    await enqueueTracks(state.tracks, 'replace-play-first')
-  }
-
-  async function appendAll() {
-    if (!state.tracks.length) {
-      setStatus('当前没有可加入队列的日推歌曲。', true)
-      return
-    }
-
-    await enqueueTracks(state.tracks, 'append-all')
+    await enqueueTrack(state.tracks[0])
   }
 
   function bindEvents() {
-    dom.playBtn.addEventListener('click', playFirst)
-    dom.appendBtn.addEventListener('click', appendAll)
-    if (dom.refreshBtn) {
-      dom.refreshBtn.addEventListener('click', () => refreshDailyRecommendation())
-    }
-
     dom.coverEl.addEventListener('click', playFirst)
 
     if (electronAPI?.onNeteaseDownloadTaskUpdate) {
