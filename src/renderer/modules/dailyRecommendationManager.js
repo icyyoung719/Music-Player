@@ -30,7 +30,6 @@ export function createDailyRecommendationManager(options) {
     electronAPI,
     dom,
     onReplaceQueueWithTracks,
-    onAppendTracksToQueue,
     onShowSongPage
   } = options
 
@@ -45,11 +44,6 @@ export function createDailyRecommendationManager(options) {
     playlist: null,
     lastError: ''
   }
-
-  const queueTaskState = new Map()
-  const handledTaskIds = new Set()
-  const playSessionState = new Map()
-  let activePlaySessionId = 0
 
   function normalizeCoverUrl(url) {
     const text = safeText(url)
@@ -152,143 +146,54 @@ export function createDailyRecommendationManager(options) {
   }
 
   function buildTaskPayload(track) {
-    const safeName = safeText(track.name).replace(/[\\/:*?"<>|]/g, '_')
     return {
-      songId: track.id,
-      level: 'exhigh',
-      mode: 'song-temp-queue-only',
-      silentToast: true,
-      title: track.name,
-      fileName: `${safeName || track.id}-exhigh.mp3`
+      songId: String(track.id),
+      title: safeText(track.name) || `歌曲 ${track.id}`,
+      artist: safeText(track.artist),
+      album: safeText(track.album),
+      coverUrl: normalizeCoverUrl(track.coverUrl),
+      durationMs: Number(track.durationMs || 0)
     }
   }
 
-  function isReadyQueueTask(task) {
-    if (!task || !task.filePath) return false
-    return task.status === 'succeeded' || task.status === 'skipped'
-  }
-
-  function getLocalTrackFromTask(task, mapped) {
+  function createLazyQueueTrack(item) {
+    const base = buildTaskPayload(item)
     return {
-      name: safeText(task.songMetadata?.title || task.title || mapped?.track?.name || '网易云下载'),
-      path: task.filePath,
-      file: null
-    }
-  }
-
-  async function enqueueTrack(track) {
-    if (!electronAPI?.neteaseDownloadSongTask || !track) return
-
-    const taskRes = await electronAPI.neteaseDownloadSongTask(buildTaskPayload(track))
-    if (!taskRes?.ok || !taskRes?.task?.id) return
-
-    queueTaskState.set(taskRes.task.id, {
-      track,
-      replaceQueueOnDone: true
-    })
-
-    // Skip duplicates immediately if cached file already exists.
-    if (isReadyQueueTask(taskRes.task)) {
-      handleDownloadTaskUpdate(taskRes.task)
-    }
-  }
-
-  async function enqueueTrackWithSession(track, index, playSessionId) {
-    if (!electronAPI?.neteaseDownloadSongTask || !track) return
-
-    const taskRes = await electronAPI.neteaseDownloadSongTask(buildTaskPayload(track))
-    if (!taskRes?.ok || !taskRes?.task?.id) return
-
-    queueTaskState.set(taskRes.task.id, {
-      track,
-      index,
-      playSessionId,
-      replaceQueueOnDone: index === 0,
-      appendOnDone: index > 0
-    })
-
-    if (isReadyQueueTask(taskRes.task)) {
-      handleDownloadTaskUpdate(taskRes.task)
-    }
-  }
-
-  function handleDownloadTaskUpdate(task) {
-    if (!task?.id || !isReadyQueueTask(task)) return
-    if (handledTaskIds.has(task.id)) return
-
-    const mapped = queueTaskState.get(task.id)
-    if (!mapped) return
-
-    handledTaskIds.add(task.id)
-
-    const localTrack = getLocalTrackFromTask(task, mapped)
-
-    const isSessionTask = Number.isInteger(mapped.playSessionId) && mapped.playSessionId > 0
-    const sessionId = isSessionTask ? mapped.playSessionId : 0
-    const session = sessionId ? playSessionState.get(sessionId) : null
-
-    if (sessionId && sessionId !== activePlaySessionId) {
-      queueTaskState.delete(task.id)
-      return
-    }
-
-    if (session && mapped.appendOnDone && !session.started) {
-      session.pendingTracks.push(localTrack)
-      queueTaskState.delete(task.id)
-      return
-    }
-
-    if (mapped.replaceQueueOnDone && typeof onReplaceQueueWithTracks === 'function') {
-      const seedTracks = session
-        ? [localTrack].concat(session.pendingTracks)
-        : [localTrack]
-      onReplaceQueueWithTracks(seedTracks, 0, { source: 'daily-recommendation' })
-      if (session) {
-        session.started = true
-        session.pendingTracks = []
+      name: base.title,
+      path: null,
+      file: null,
+      metadataCache: {
+        title: base.title,
+        artist: base.artist || null,
+        album: base.album || null,
+        duration: Number(base.durationMs || 0) > 0 ? Number(base.durationMs || 0) / 1000 : null
+      },
+      lazyNetease: {
+        songId: base.songId,
+        title: base.title,
+        artist: base.artist,
+        album: base.album,
+        coverUrl: base.coverUrl,
+        durationMs: base.durationMs,
+        level: 'exhigh',
+        state: 'idle',
+        taskId: ''
       }
-      if (typeof onShowSongPage === 'function') {
-        onShowSongPage()
-      }
-    } else if (mapped.appendOnDone && typeof onAppendTracksToQueue === 'function') {
-      onAppendTracksToQueue([localTrack])
     }
-
-    queueTaskState.delete(task.id)
   }
 
   async function playFirst() {
-    if (!state.tracks.length) {
-      return
-    }
+    if (!state.tracks.length || typeof onReplaceQueueWithTracks !== 'function') return
 
-    activePlaySessionId += 1
-    const playSessionId = activePlaySessionId
-    playSessionState.set(playSessionId, {
-      started: false,
-      pendingTracks: []
-    })
-
-    for (let index = 0; index < state.tracks.length; index += 1) {
-      await enqueueTrackWithSession(state.tracks[index], index, playSessionId)
-    }
-
-    // Keep only active session state to avoid stale accumulation.
-    for (const existingId of Array.from(playSessionState.keys())) {
-      if (existingId !== playSessionId) {
-        playSessionState.delete(existingId)
-      }
+    const queueTracks = state.tracks.map(createLazyQueueTrack)
+    onReplaceQueueWithTracks(queueTracks, 0, { source: 'daily-recommendation-lazy' })
+    if (typeof onShowSongPage === 'function') {
+      onShowSongPage()
     }
   }
 
   function bindEvents() {
     dom.coverEl.addEventListener('click', playFirst)
-
-    if (electronAPI?.onNeteaseDownloadTaskUpdate) {
-      electronAPI.onNeteaseDownloadTaskUpdate((task) => {
-        handleDownloadTaskUpdate(task)
-      })
-    }
 
     if (electronAPI?.onNeteaseAuthStateUpdate) {
       electronAPI.onNeteaseAuthStateUpdate((payload) => {

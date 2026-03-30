@@ -8,6 +8,8 @@
 } from './trackUtils.js'
 import { createLyricManager } from './lyricManager.js'
 
+const PREFETCH_BEFORE_SECONDS = 20
+
 export function createPlaybackController(options) {
   const {
     electronAPI,
@@ -24,6 +26,8 @@ export function createPlaybackController(options) {
   let isSeeking = false
   let previewSeekRatio = null
   let lyricManager = null
+  const lazyTaskIndexMap = new Map()
+  const lazyWaitersByIndex = new Map()
 
   function setPlayButtonState(isPlaying) {
     if (!dom.playBtn) return
@@ -103,7 +107,11 @@ export function createPlaybackController(options) {
 
       const titleSpan = document.createElement('span')
       titleSpan.className = 'playlist-item-title'
-      titleSpan.textContent = track.name
+      if (track?.lazyNetease?.songId && !track.path && !track.file) {
+        titleSpan.textContent = `${track.name} · 云端`
+      } else {
+        titleSpan.textContent = track.name
+      }
 
       const delBtn = document.createElement('button')
       delBtn.className = 'playlist-delete-btn'
@@ -126,15 +134,190 @@ export function createPlaybackController(options) {
     reportPlayerState()
   }
 
+  function isLazyNeteaseTrack(track) {
+    return Boolean(track?.lazyNetease?.songId)
+  }
+
+  function markLazyTrackState(index, nextState, taskId = '') {
+    const track = playlist[index]
+    if (!isLazyNeteaseTrack(track)) return
+
+    track.lazyNetease.state = String(nextState || track.lazyNetease.state || 'idle')
+    track.lazyNetease.taskId = taskId ? String(taskId) : String(track.lazyNetease.taskId || '')
+  }
+
+  function resolveLazyWaiters(index, ok) {
+    const waiters = lazyWaitersByIndex.get(index)
+    if (!waiters || !waiters.length) {
+      lazyWaitersByIndex.delete(index)
+      return
+    }
+
+    for (const waiter of waiters) {
+      try {
+        waiter(Boolean(ok))
+      } catch {
+        // Ignore waiter errors.
+      }
+    }
+
+    lazyWaitersByIndex.delete(index)
+  }
+
+  function waitForLazyTrackReady(index, timeoutMs = 60000) {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        resolve(false)
+      }, timeoutMs)
+
+      const wrappedResolve = (ok) => {
+        clearTimeout(timer)
+        resolve(Boolean(ok))
+      }
+
+      const waiters = lazyWaitersByIndex.get(index) || []
+      waiters.push(wrappedResolve)
+      lazyWaitersByIndex.set(index, waiters)
+    })
+  }
+
+  function buildLazySongTaskPayload(track) {
+    const source = track?.lazyNetease || {}
+    const safeName = String(source.title || track?.name || source.songId || 'netease-track')
+      .replace(/[\\/:*?"<>|]/g, '_')
+
+    return {
+      songId: String(source.songId || ''),
+      level: String(source.level || 'exhigh'),
+      mode: 'song-temp-queue-only',
+      silentToast: true,
+      title: String(source.title || track?.name || ''),
+      fileName: `${safeName || source.songId}-exhigh.mp3`
+    }
+  }
+
+  function applyLazyResolvedTask(index, task) {
+    const track = playlist[index]
+    if (!track || !isLazyNeteaseTrack(track)) return false
+    if (!task?.filePath) return false
+
+    track.path = task.filePath
+    track.file = null
+    markLazyTrackState(index, 'succeeded', task.id || '')
+
+    if (task.songMetadata && typeof task.songMetadata === 'object') {
+      track.metadataCache = {
+        title: task.songMetadata.title || track.name,
+        artist: task.songMetadata.artist || track.metadataCache?.artist || null,
+        album: task.songMetadata.album || track.metadataCache?.album || null,
+        duration: track.metadataCache?.duration || null
+      }
+    }
+
+    return true
+  }
+
+  async function ensureTrackReadyForPlayback(index, options = {}) {
+    const track = playlist[index]
+    if (!track) return false
+    if (!isLazyNeteaseTrack(track)) {
+      return Boolean(track.path || track.file)
+    }
+
+    if (track.path || track.file) {
+      markLazyTrackState(index, 'succeeded', track.lazyNetease.taskId || '')
+      return true
+    }
+
+    if (!electronAPI?.neteaseDownloadSongTask) return false
+
+    const waitForReady = options.waitForReady !== false
+    if (track.lazyNetease.state === 'downloading') {
+      if (!waitForReady) return false
+      return waitForLazyTrackReady(index)
+    }
+
+    if (track.lazyNetease.state === 'failed' && !waitForReady) {
+      return false
+    }
+
+    markLazyTrackState(index, 'downloading')
+    const taskRes = await electronAPI.neteaseDownloadSongTask(buildLazySongTaskPayload(track))
+    if (!taskRes?.ok || !taskRes?.task?.id) {
+      markLazyTrackState(index, 'failed')
+      resolveLazyWaiters(index, false)
+      return false
+    }
+
+    const task = taskRes.task
+    markLazyTrackState(index, task.status === 'failed' ? 'failed' : 'downloading', task.id)
+    lazyTaskIndexMap.set(task.id, index)
+
+    if (task.status === 'succeeded' || task.status === 'skipped') {
+      const ok = applyLazyResolvedTask(index, task)
+      lazyTaskIndexMap.delete(task.id)
+      resolveLazyWaiters(index, ok)
+      return ok
+    }
+
+    if (!waitForReady) {
+      return false
+    }
+
+    return waitForLazyTrackReady(index)
+  }
+
+  function maybePrefetchNextLazyTrack() {
+    const nextIndex = currentIndex + 1
+    if (nextIndex < 0 || nextIndex >= playlist.length) return
+    const nextTrack = playlist[nextIndex]
+    if (!isLazyNeteaseTrack(nextTrack)) return
+    if (nextTrack.path || nextTrack.file) return
+    if (nextTrack.lazyNetease.state === 'downloading' || nextTrack.lazyNetease.state === 'succeeded') return
+
+    ensureTrackReadyForPlayback(nextIndex, { waitForReady: false })
+      .catch(() => {})
+  }
+
+  function handleLazyDownloadTaskUpdate(task) {
+    const taskId = String(task?.id || '')
+    if (!taskId) return
+    if (!lazyTaskIndexMap.has(taskId)) return
+
+    const index = lazyTaskIndexMap.get(taskId)
+    const track = playlist[index]
+    if (!track || !isLazyNeteaseTrack(track)) {
+      lazyTaskIndexMap.delete(taskId)
+      resolveLazyWaiters(index, false)
+      return
+    }
+
+    if (task.status === 'succeeded' || task.status === 'skipped') {
+      const ok = applyLazyResolvedTask(index, task)
+      lazyTaskIndexMap.delete(taskId)
+      resolveLazyWaiters(index, ok)
+      if (index === currentIndex) {
+        updatePlaylistUI()
+      }
+      return
+    }
+
+    if (task.status === 'failed' || task.status === 'canceled') {
+      markLazyTrackState(index, 'failed', taskId)
+      lazyTaskIndexMap.delete(taskId)
+      resolveLazyWaiters(index, false)
+    }
+  }
+
   async function loadTrack(index) {
     if (index < 0 || index >= playlist.length) return
     currentIndex = index
-    const track = playlist[index]
+    let track = playlist[index]
 
     dom.trackTitle.textContent = track.name
-    dom.trackArtist.textContent = ''
-    dom.trackAlbum.textContent = ''
-    setBottomNowPlaying(track.name, '')
+    dom.trackArtist.textContent = track.metadataCache?.artist || ''
+    dom.trackAlbum.textContent = track.metadataCache?.album || ''
+    setBottomNowPlaying(track.name, track.metadataCache?.artist || '')
     dom.coverImg.style.display = 'none'
     dom.coverImg.src = ''
     dom.coverPlaceholder.style.display = 'flex'
@@ -146,10 +329,29 @@ export function createPlaybackController(options) {
 
     audio.pause()
 
+    if (isLazyNeteaseTrack(track) && track.lazyNetease?.coverUrl) {
+      onSetHomeNowCover(track.lazyNetease.coverUrl)
+    }
+
+    const ready = await ensureTrackReadyForPlayback(index, { waitForReady: true })
+    if (!ready) {
+      setPlayButtonState(false)
+      updatePlaylistUI()
+      reportPlayerState()
+      return
+    }
+
+    track = playlist[index]
+
     if (track.file) {
       audio.src = URL.createObjectURL(track.file)
-    } else {
+    } else if (track.path) {
       audio.src = filePathToURL(track.path)
+    } else {
+      setPlayButtonState(false)
+      updatePlaylistUI()
+      reportPlayerState()
+      return
     }
 
     let filePath = track.path
@@ -236,6 +438,8 @@ export function createPlaybackController(options) {
 
   function setQueueTracks(nextTracks, startIndex = 0) {
     playlist = Array.isArray(nextTracks) ? nextTracks.slice() : []
+    lazyTaskIndexMap.clear()
+    lazyWaitersByIndex.clear()
     currentIndex = -1
     audio.pause()
     audio.src = ''
@@ -254,6 +458,8 @@ export function createPlaybackController(options) {
   }
 
   function removeTrack(index) {
+    resolveLazyWaiters(index, false)
+
     if (index === currentIndex) {
       audio.pause()
       audio.src = ''
@@ -280,6 +486,10 @@ export function createPlaybackController(options) {
   }
 
   function clearPlaylist() {
+    for (const index of Array.from(lazyWaitersByIndex.keys())) {
+      resolveLazyWaiters(index, false)
+    }
+    lazyTaskIndexMap.clear()
     playlist = []
     currentIndex = -1
     audio.pause()
@@ -467,6 +677,11 @@ export function createPlaybackController(options) {
     audio.addEventListener('timeupdate', () => {
       if (!audio.duration || isSeeking) return
       updateProgressUIByRatio(audio.currentTime / audio.duration, audio.currentTime)
+
+      if (audio.duration - audio.currentTime <= PREFETCH_BEFORE_SECONDS) {
+        maybePrefetchNextLazyTrack()
+      }
+
       if (lyricManager) {
         lyricManager.updateTime(audio.currentTime)
       }
@@ -503,6 +718,12 @@ export function createPlaybackController(options) {
 
   function init() {
     lyricManager = createLyricManager('lyricsContainer', 'lyricsWrapper')
+
+    if (electronAPI?.onNeteaseDownloadTaskUpdate) {
+      electronAPI.onNeteaseDownloadTaskUpdate((task) => {
+        handleLazyDownloadTaskUpdate(task)
+      })
+    }
     
     bindControlEvents()
     bindAudioEvents()

@@ -20,6 +20,10 @@ export function normalizePath(filePath) {
 }
 
 export function getTrackUniqueKey(track, electronAPI) {
+  if (track?.lazyNetease?.songId) {
+    return `netease:${String(track.lazyNetease.songId)}`
+  }
+
   if (track.path) return `path:${normalizePath(track.path)}`
 
   if (track.file) {
