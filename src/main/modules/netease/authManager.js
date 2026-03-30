@@ -186,6 +186,14 @@ async function postFormWithFallback(paths, data, timeout = 12000, options = {}) 
         timeout
       })
 
+      // Some endpoints (e.g. weapi without encrypted payload) may reply 200 with empty body.
+      // In that case we should continue trying fallback paths instead of returning early.
+      const hasJsonBody = Boolean(result && result.data && typeof result.data === 'object')
+      if (!hasJsonBody) {
+        attempted.push({ path: pathValue, error: 'EMPTY_OR_INVALID_JSON_RESPONSE' })
+        continue
+      }
+
       return { ok: true, path: pathValue, result, attempted }
     } catch (err) {
       lastError = err

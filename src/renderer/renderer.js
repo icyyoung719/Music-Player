@@ -3,6 +3,7 @@ import { createShortcutManager } from './modules/shortcutManager.js'
 import { createSavedPlaylistManager } from './modules/savedPlaylistManager.js'
 import { createPlaybackController } from './modules/playbackController.js'
 import { createNeteaseManager } from './modules/neteaseManager.js'
+import { createNeteaseSearchManager } from './modules/neteaseSearchManager.js'
 import { createAccountManager } from './modules/accountManager.js'
 import { createDownloadManager } from './modules/downloadManager.js'
 import { createToastManager } from './modules/toastManager.js'
@@ -140,6 +141,18 @@ const neteaseDom = {
   directUrlInput: document.getElementById('neteaseDirectUrlInput'),
   directDownloadBtn: document.getElementById('neteaseDirectDownloadBtn'),
   taskList: document.getElementById('neteaseTaskList')
+}
+
+const neteaseSearchDom = {
+  keywordType: document.getElementById('neteaseKeywordTypeSelect'),
+  keywordInput: document.getElementById('neteaseKeywordInput'),
+  searchBtn: document.getElementById('neteaseKeywordSearchBtn'),
+  suggestList: document.getElementById('neteaseSuggestList'),
+  searchStatus: document.getElementById('neteaseKeywordStatus'),
+  resultList: document.getElementById('neteaseKeywordResultList'),
+  prevBtn: document.getElementById('neteaseKeywordPrevBtn'),
+  nextBtn: document.getElementById('neteaseKeywordNextBtn'),
+  pageInfo: document.getElementById('neteaseKeywordPageInfo')
 }
 
 const downloadDom = {
@@ -708,6 +721,24 @@ function setupNeteaseManager() {
   manager.init()
 }
 
+function setupNeteaseSearchManager() {
+  const manager = createNeteaseSearchManager({
+    electronAPI: window.electronAPI,
+    dom: neteaseSearchDom,
+    onAppendDownloadedTrack: (track) => {
+      if (!playbackController || !track?.path) return
+      playbackController.appendToPlaylist([
+        {
+          name: track.name || track.path.split(/[/\\]/).pop(),
+          path: track.path,
+          file: null
+        }
+      ])
+    }
+  })
+  manager.init()
+}
+
 function setupToastManager() {
   toastManager = createToastManager({
     electronAPI: window.electronAPI,
@@ -764,6 +795,7 @@ function initRenderer() {
   setupSavedPlaylistManager()
   setupDailyRecommendationManager()
   setupNeteaseManager()
+  setupNeteaseSearchManager()
   setupDownloadManager()
   setupAccountManager()
   setupShortcutManager()

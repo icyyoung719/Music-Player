@@ -105,6 +105,29 @@
           </div>
         </div>
 
+        <section class="download-card netease-search-card">
+          <h3>网易云搜索</h3>
+          <div class="download-row">
+            <select id="neteaseKeywordTypeSelect" title="搜索类型">
+              <option value="song">歌曲</option>
+              <option value="artist">歌手</option>
+              <option value="playlist">歌单</option>
+            </select>
+            <input id="neteaseKeywordInput" type="text" placeholder="输入关键词，例如 海阔天空">
+            <button id="neteaseKeywordSearchBtn">搜索</button>
+          </div>
+          <div id="neteaseSuggestList" class="netease-suggest-list page-hidden"></div>
+          <div id="neteaseKeywordStatus" class="netease-search-status">输入关键词可搜索歌曲、歌手、歌单。</div>
+          <div id="neteaseKeywordResultList" class="netease-search-result-list">
+            <div class="netease-search-empty">暂无搜索结果</div>
+          </div>
+          <div class="netease-search-pager">
+            <button id="neteaseKeywordPrevBtn">上一页</button>
+            <span id="neteaseKeywordPageInfo">第 1 / 1 页，共 0 条</span>
+            <button id="neteaseKeywordNextBtn">下一页</button>
+          </div>
+        </section>
+
         <div class="download-grid">
           <section class="download-card">
             <h3>单曲 ID 查询与下载</h3>

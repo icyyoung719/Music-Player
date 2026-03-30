@@ -33,6 +33,13 @@ const {
   getSongPageUrl,
   getPlaylistPageUrl,
   extractSongMetadata,
+  searchNeteaseByKeyword,
+  searchNeteaseSuggest,
+  fetchNeteaseSearchDefaultKeyword,
+  fetchNeteaseSearchHot,
+  fetchNeteaseSearchHotDetail,
+  searchNeteaseMultimatch,
+  sendNeteasePrivateMessage,
   resolveSongUrlWithLevelFallback,
   fetchSongMetadataById,
   fetchPlaylistTracksById,
@@ -929,6 +936,87 @@ function registerNeteaseHandlers() {
       })
       return { ok: false, error: 'REQUEST_FAILED', message: err?.message || '' }
     }
+  })
+
+  ipcMain.handle('netease:search', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+    return searchNeteaseByKeyword(payload)
+  })
+
+  ipcMain.handle('netease:search-suggest', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+    return searchNeteaseSuggest(payload)
+  })
+
+  ipcMain.handle('netease:search-default', async () => {
+    await ensureAuthStateLoaded()
+    return fetchNeteaseSearchDefaultKeyword()
+  })
+
+  ipcMain.handle('netease:search-hot', async () => {
+    await ensureAuthStateLoaded()
+    return fetchNeteaseSearchHot()
+  })
+
+  ipcMain.handle('netease:search-hot-detail', async () => {
+    await ensureAuthStateLoaded()
+    return fetchNeteaseSearchHotDetail()
+  })
+
+  ipcMain.handle('netease:search-multimatch', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+    return searchNeteaseMultimatch(payload)
+  })
+
+  ipcMain.handle('netease:send-text', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+    if (!authState.cookie && !authState.userId) {
+      return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
+    }
+
+    return sendNeteasePrivateMessage({
+      ...payload,
+      sendType: 'text'
+    })
+  })
+
+  ipcMain.handle('netease:send-song', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+    if (!authState.cookie && !authState.userId) {
+      return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
+    }
+
+    return sendNeteasePrivateMessage({
+      ...payload,
+      sendType: 'song',
+      songId: payload?.songId || payload?.id
+    })
+  })
+
+  ipcMain.handle('netease:send-album', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+    if (!authState.cookie && !authState.userId) {
+      return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
+    }
+
+    return sendNeteasePrivateMessage({
+      ...payload,
+      sendType: 'album',
+      albumId: payload?.albumId || payload?.id
+    })
+  })
+
+  ipcMain.handle('netease:send-playlist', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+    if (!authState.cookie && !authState.userId) {
+      return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
+    }
+
+    return sendNeteasePrivateMessage({
+      ...payload,
+      sendType: 'playlist',
+      playlistId: payload?.playlistId || payload?.id
+    })
   })
 
   ipcMain.handle('netease:resolve-song-download-url', async (_event, payload) => {

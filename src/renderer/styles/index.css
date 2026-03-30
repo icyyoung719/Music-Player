@@ -626,6 +626,89 @@ body {
   flex: 1;
   min-width: 220px;
 }
+.netease-search-card {
+  margin-bottom: 12px;
+}
+.netease-suggest-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.netease-suggest-item {
+  padding: 5px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.16);
+  color: var(--text-main);
+  font-size: 12px;
+  cursor: pointer;
+}
+.netease-search-status {
+  min-height: 24px;
+  display: flex;
+  align-items: center;
+  color: var(--text-sub);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.netease-search-status.is-error {
+  color: #cf3f3f;
+}
+.netease-search-result-list {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.netease-search-empty {
+  border: 1px dashed var(--line);
+  border-radius: 10px;
+  padding: 12px;
+  color: var(--text-sub);
+  font-size: 12px;
+  text-align: center;
+}
+.netease-search-item {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--panel-strong);
+}
+.netease-search-item-title {
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+.netease-search-item-meta {
+  color: var(--text-sub);
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+.netease-search-item-actions {
+  display: flex;
+  gap: 8px;
+}
+.netease-search-item-actions button {
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--muted-btn);
+  color: var(--text-main);
+  cursor: pointer;
+  font-size: 12px;
+}
+.netease-search-pager {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.netease-search-pager span {
+  color: var(--text-sub);
+  font-size: 12px;
+}
 .download-preview {
   min-height: 40px;
   border: 1px solid var(--line);
