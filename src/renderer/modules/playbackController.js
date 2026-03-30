@@ -183,6 +183,7 @@ export function createPlaybackController(options) {
 
   function buildLazySongTaskPayload(track) {
     const source = track?.lazyNetease || {}
+    const level = String(source.level || 'exhigh')
     const safeName = String(source.title || track?.name || source.songId || 'netease-track')
       .replace(/[\\/:*?"<>|]/g, '_')
 
@@ -192,7 +193,7 @@ export function createPlaybackController(options) {
       mode: 'song-temp-queue-only',
       silentToast: true,
       title: String(source.title || track?.name || ''),
-      fileName: `${safeName || source.songId}-exhigh.mp3`
+      fileName: `${safeName || source.songId}-${level}`
     }
   }
 

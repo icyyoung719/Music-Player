@@ -59,6 +59,15 @@ function maybeAddFileExt(fileName, url) {
   return fileName
 }
 
+function forceFileExt(fileName, ext) {
+  const normalizedExt = String(ext || '').replace(/^\./, '').trim().toLowerCase()
+  if (!normalizedExt) return fileName
+
+  const parsed = path.parse(String(fileName || '').trim())
+  const safeBase = parsed.name || parsed.base || 'download'
+  return `${safeBase}.${normalizedExt}`
+}
+
 function isAllowedDownloadHost(rawUrl) {
   return isNeteaseAudioHost(rawUrl)
 }
@@ -463,7 +472,8 @@ async function createSongDownloadTaskFromId(payload) {
 
   const defaultExt = resolveAudioExtByResolvedUrl(resolved)
   const defaultTitle = songMetadata?.title || `歌曲 ${songId}`
-  const fileName = safeFileName(payload?.fileName || `${defaultTitle}-${level}.${defaultExt}`)
+  const fileNameRaw = payload?.fileName || `${defaultTitle}-${level}.${defaultExt}`
+  const fileName = forceFileExt(safeFileName(fileNameRaw), defaultExt)
 
   const created = await createDownloadTask({
     source: payload?.source || 'song-id',

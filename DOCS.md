@@ -22,8 +22,6 @@
 		- [3.7 独立日志可视化器实现](#37-独立日志可视化器实现)
 	- [4. 数据与存储](#4-数据与存储)
 	- [5. UI 结构与页面装配](#5-ui-结构与页面装配)
-	- [6. 维护约定（以后改功能时必须同步）](#6-维护约定以后改功能时必须同步)
-	- [7. 当前已知边界与风险（维护者视角）](#7-当前已知边界与风险维护者视角)
 
 
 
@@ -96,7 +94,7 @@
 - 下载任务状态机：pending/downloading/succeeded/failed/skipped/canceled。
 - 任务支持取消、状态过滤、跨页面 Toast 通知。
 - 去重策略支持“目标文件已存在即跳过”。
-- 下载成功后写入歌词与 ID3 信息，并缓存歌曲元数据索引。
+- 下载成功后会按格式写入嵌入标签（MP3: ID3；FLAC: Vorbis Comment + PICTURE），并缓存歌曲元数据索引。
 
 核心实现位置：
 
@@ -234,7 +232,8 @@
 
 - 拉取歌词并写入歌曲元数据记录。
 - 拉取封面并缓存到本地 cover 目录。
-- 对 mp3 写入 ID3 标签，提升第三方播放器可识别度。
+- 对 mp3 写入 ID3 标签。
+- 对 flac 写入 Vorbis Comment 与 PICTURE 元数据块。
 - 将 songId/title/artist/album/coverPath 等持久化到 netease-track-metadata 索引。
 
 关键代码：
@@ -309,30 +308,3 @@ playlistHandlers 负责：
 - [src/renderer/partials/home-page.html](src/renderer/partials/home-page.html)
 - [src/renderer/partials/song-page.html](src/renderer/partials/song-page.html)
 - [src/renderer/auth-window.html](src/renderer/auth-window.html)
-
-## 6. 维护约定（以后改功能时必须同步）
-
-本文件是“当前实现真相文档”，后续提交涉及以下变化时必须更新：
-
-- 功能新增、下线、交互变化。
-- 关键实现改造（登录流、下载流、播放流、队列策略）。
-- 架构调整（模块拆分、跨进程边界、数据结构升级）。
-- 持久化字段/目录/协议变化。
-
-最低更新要求：
-
-1. 更新“功能总览”对应条目。
-2. 更新“关键实现机制”中受影响章节。
-3. 若有数据结构变化，更新“数据与存储”。
-4. 仅添加必要代码引用，避免把本文变成逐行注释。
-
-## 7. 当前已知边界与风险（维护者视角）
-
-- 网易云相关接口存在风控与路径兼容差异，登录/鉴权属于高回归区。
-- 下载任务状态目前以进程内内存为核心，不是跨重启恢复型任务系统。
-- 日推目前为 MVP，核心能力是拉取与懒入队，不等同于完整云歌单同步。
-- 渲染层模块较多，新增跨模块动作时要注意 renderer orchestrator 回调链路。
-
----
-
-建议把本文件作为每次中大型改动的必改项，和 README、CHANGELOG 一起维护，但三者职责保持分离。

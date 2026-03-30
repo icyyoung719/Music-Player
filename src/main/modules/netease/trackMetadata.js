@@ -4,7 +4,7 @@ const { app } = require('electron')
 const { requestBuffer } = require('./httpClient')
 const { buildAuthHeaders, md5 } = require('./authManager')
 const { fetchSongLyricsById, resolveCoverExtByUrl, resolveCoverMimeByExt } = require('./neteaseApi')
-const { writeId3TagsToMp3 } = require('./id3Writer')
+const { writeEmbeddedTags } = require('./id3Writer')
 const { logProgramEvent } = require('../logger')
 
 const TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
@@ -110,12 +110,12 @@ async function persistTrackMetadataForTask(task) {
   }
 
   try {
-    await writeId3TagsToMp3(task.filePath, entry, coverBuffer, coverMime)
+    await writeEmbeddedTags(task.filePath, entry, coverBuffer, coverMime)
   } catch (err) {
     logProgramEvent({
       source: 'netease.trackMetadata',
-      event: 'write-id3-failed',
-      message: 'Failed to write ID3 tag for mp3',
+      event: 'write-embedded-tags-failed',
+      message: 'Failed to write embedded tags for downloaded audio',
       error: err,
       data: { filePath: task.filePath }
     })

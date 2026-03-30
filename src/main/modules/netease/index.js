@@ -271,7 +271,7 @@ function registerNeteaseHandlers() {
   // Only supports downloading direct, authorized HTTPS links from music.126.net.
   ipcMain.handle('netease:download-direct', async (_event, payload) => {
     const rawUrl = String(payload?.url || '').trim()
-    const fileName = safeFileName(payload?.fileName || 'netease-download.mp3')
+    const fileName = safeFileName(payload?.fileName || 'netease-download')
 
     if (!isAllowedDownloadHost(rawUrl)) {
       return { ok: false, error: 'URL_NOT_ALLOWED' }
@@ -1070,7 +1070,7 @@ function registerNeteaseHandlers() {
             songId: track.songId,
             level,
             title: track.title,
-            fileName: `${track.title || `歌曲 ${track.songId}`}-${level}.mp3`,
+            fileName: `${track.title || `歌曲 ${track.songId}`}-${level}`,
             targetDirType: selected.targetDirType,
             playlistName: playlist.name,
             duplicateStrategy,

@@ -448,7 +448,7 @@ export function createNeteaseManager(options) {
       songId,
       level,
       title: lastResolved?.item?.name || `歌曲 ${songId}`,
-      fileName: `${songId}-${level}.mp3`
+      fileName: `${songId}-${level}`
     })
 
     if (!res || !res.ok || !res.task) {
@@ -534,8 +534,8 @@ export function createNeteaseManager(options) {
     }
 
     const suggestedName = lastResolved?.item?.name
-      ? `${lastResolved.item.name}.mp3`
-      : 'netease-download.mp3'
+      ? `${lastResolved.item.name}`
+      : 'netease-download'
 
     setResult('正在下载...')
     const res = await electronAPI.neteaseDownloadDirect({

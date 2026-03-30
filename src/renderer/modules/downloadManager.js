@@ -364,7 +364,7 @@ export function createDownloadManager(options) {
       level,
       mode,
       title: resolvedSong?.name || `歌曲 ${songId}`,
-      fileName: `${songId}-${level}.mp3`,
+      fileName: `${songId}-${level}`,
       duplicateStrategy: 'skip'
     })
 

@@ -127,4 +127,184 @@ async function writeId3TagsToMp3(filePath, metadata, coverBuffer, coverMime) {
   return true
 }
 
-module.exports = { writeId3TagsToMp3 }
+function toUInt24BE(value) {
+  const safe = Math.max(0, Number(value) || 0)
+  return Buffer.from([
+    (safe >> 16) & 0xff,
+    (safe >> 8) & 0xff,
+    safe & 0xff
+  ])
+}
+
+function readUInt24BE(buffer, startIndex) {
+  if (!buffer || buffer.length < startIndex + 3) return 0
+  return (
+    ((buffer[startIndex] & 0xff) << 16) |
+    ((buffer[startIndex + 1] & 0xff) << 8) |
+    (buffer[startIndex + 2] & 0xff)
+  )
+}
+
+function toUInt32LE(value) {
+  const buffer = Buffer.alloc(4)
+  buffer.writeUInt32LE(Math.max(0, Number(value) || 0), 0)
+  return buffer
+}
+
+function toUInt32BE(value) {
+  const buffer = Buffer.alloc(4)
+  buffer.writeUInt32BE(Math.max(0, Number(value) || 0), 0)
+  return buffer
+}
+
+function parseFlacBlocks(fileBuffer) {
+  if (!Buffer.isBuffer(fileBuffer) || fileBuffer.length < 8) return null
+  if (fileBuffer.slice(0, 4).toString('ascii') !== 'fLaC') return null
+
+  let offset = 4
+  const blocks = []
+  let reachedLast = false
+
+  while (offset + 4 <= fileBuffer.length) {
+    const header = fileBuffer[offset]
+    const isLast = (header & 0x80) !== 0
+    const type = header & 0x7f
+    const size = readUInt24BE(fileBuffer, offset + 1)
+    const payloadStart = offset + 4
+    const payloadEnd = payloadStart + size
+
+    if (payloadEnd > fileBuffer.length) return null
+
+    blocks.push({
+      type,
+      isLast,
+      payload: fileBuffer.slice(payloadStart, payloadEnd)
+    })
+
+    offset = payloadEnd
+    if (isLast) {
+      reachedLast = true
+      break
+    }
+  }
+
+  if (!reachedLast || blocks.length === 0) return null
+  return { blocks, audioOffset: offset }
+}
+
+function buildFlacBlock(type, payload, isLast) {
+  const data = Buffer.isBuffer(payload) ? payload : Buffer.alloc(0)
+  const header = Buffer.concat([
+    Buffer.from([(isLast ? 0x80 : 0x00) | (Number(type) & 0x7f)]),
+    toUInt24BE(data.length)
+  ])
+  return Buffer.concat([header, data])
+}
+
+function buildVorbisPair(key, value) {
+  const normalizedKey = String(key || '').trim().toUpperCase()
+  const normalizedValue = String(value || '').replace(/\u0000/g, '').trim()
+  if (!normalizedKey || !normalizedValue) return ''
+  return `${normalizedKey}=${normalizedValue}`
+}
+
+function buildFlacVorbisCommentPayload(metadata) {
+  const comments = [
+    buildVorbisPair('TITLE', metadata?.title),
+    buildVorbisPair('ARTIST', metadata?.artist),
+    buildVorbisPair('ALBUM', metadata?.album),
+    buildVorbisPair('DATE', metadata?.year),
+    buildVorbisPair('LYRICS', metadata?.lyrics)
+  ].filter(Boolean)
+
+  if (!comments.length) return Buffer.alloc(0)
+
+  const vendor = Buffer.from('music-player', 'utf8')
+  const parts = [toUInt32LE(vendor.length), vendor, toUInt32LE(comments.length)]
+
+  for (const item of comments) {
+    const buffer = Buffer.from(item, 'utf8')
+    parts.push(toUInt32LE(buffer.length), buffer)
+  }
+
+  return Buffer.concat(parts)
+}
+
+function buildFlacPicturePayload(imageBuffer, mimeType) {
+  if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) return Buffer.alloc(0)
+
+  const mime = Buffer.from(String(mimeType || 'image/jpeg').toLowerCase(), 'ascii')
+  const desc = Buffer.alloc(0)
+
+  return Buffer.concat([
+    toUInt32BE(3),
+    toUInt32BE(mime.length),
+    mime,
+    toUInt32BE(desc.length),
+    desc,
+    toUInt32BE(0),
+    toUInt32BE(0),
+    toUInt32BE(0),
+    toUInt32BE(0),
+    toUInt32BE(imageBuffer.length),
+    imageBuffer
+  ])
+}
+
+async function writeFlacTagsToFlac(filePath, metadata, coverBuffer, coverMime) {
+  const ext = String(path.extname(filePath || '')).toLowerCase()
+  if (ext !== '.flac') return false
+
+  const original = await fs.promises.readFile(filePath)
+  const parsed = parseFlacBlocks(original)
+  if (!parsed) return false
+
+  const streamInfo = parsed.blocks.find((block) => block.type === 0)
+  if (!streamInfo) return false
+
+  const preservedBlocks = [
+    { type: 0, payload: streamInfo.payload },
+    ...parsed.blocks
+      .filter((block) => block.type !== 0 && block.type !== 4 && block.type !== 6)
+      .map((block) => ({ type: block.type, payload: block.payload }))
+  ]
+
+  const commentPayload = buildFlacVorbisCommentPayload(metadata)
+  const picturePayload = buildFlacPicturePayload(coverBuffer, coverMime)
+
+  if (commentPayload.length > 0) {
+    preservedBlocks.push({ type: 4, payload: commentPayload })
+  }
+  if (picturePayload.length > 0) {
+    preservedBlocks.push({ type: 6, payload: picturePayload })
+  }
+
+  if (preservedBlocks.length === 0) return false
+
+  const metadataBytes = preservedBlocks.map((block, index) => {
+    const isLast = index === preservedBlocks.length - 1
+    return buildFlacBlock(block.type, block.payload, isLast)
+  })
+
+  const audioBody = original.slice(parsed.audioOffset)
+  const nextBuffer = Buffer.concat([Buffer.from('fLaC', 'ascii'), ...metadataBytes, audioBody])
+  await fs.promises.writeFile(filePath, nextBuffer)
+  return commentPayload.length > 0 || picturePayload.length > 0
+}
+
+async function writeEmbeddedTags(filePath, metadata, coverBuffer, coverMime) {
+  const ext = String(path.extname(filePath || '')).toLowerCase()
+  if (ext === '.mp3') {
+    return writeId3TagsToMp3(filePath, metadata, coverBuffer, coverMime)
+  }
+  if (ext === '.flac') {
+    return writeFlacTagsToFlac(filePath, metadata, coverBuffer, coverMime)
+  }
+  return false
+}
+
+module.exports = {
+  writeId3TagsToMp3,
+  writeFlacTagsToFlac,
+  writeEmbeddedTags
+}

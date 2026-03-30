@@ -60,6 +60,50 @@ async function readCoverDataUrlByPath(coverPath) {
   }
 }
 
+function normalizeLyricsValue(value) {
+  if (typeof value === 'string') {
+    const text = value.trim()
+    return text || null
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      if (typeof item === 'string') {
+        const text = item.trim()
+        if (text) return text
+        continue
+      }
+
+      if (item && typeof item === 'object' && typeof item.text === 'string') {
+        const text = item.text.trim()
+        if (text) return text
+      }
+    }
+    return null
+  }
+
+  if (value && typeof value === 'object' && typeof value.text === 'string') {
+    const text = value.text.trim()
+    return text || null
+  }
+
+  return null
+}
+
+function hasLrcTimestamp(lyricsText) {
+  const text = String(lyricsText || '')
+  return /\[\d{1,3}:\d{2}(?:\.\d{1,3})?\]/.test(text)
+}
+
+function chooseBestLyrics(primary, fallback) {
+  const first = normalizeLyricsValue(primary)
+  const second = normalizeLyricsValue(fallback)
+
+  if (hasLrcTimestamp(first)) return first
+  if (hasLrcTimestamp(second)) return second
+  return first || second || null
+}
+
 function createId() {
   if (typeof crypto.randomUUID === 'function') {
     return crypto.randomUUID()
@@ -413,7 +457,7 @@ function registerPlaylistHandlers() {
         artist: common.artist || null,
         album: common.album || null,
         year: common.year || null,
-        lyrics: common.lyrics || null,
+        lyrics: normalizeLyricsValue(common.lyrics),
         duration: format.duration || null,
         coverDataUrl
       }
@@ -435,7 +479,7 @@ function registerPlaylistHandlers() {
       artist: parsedMeta?.artist || fallback?.artist || null,
       album: parsedMeta?.album || fallback?.album || null,
       year: parsedMeta?.year || fallback?.year || null,
-      lyrics: parsedMeta?.lyrics || null,
+      lyrics: chooseBestLyrics(parsedMeta?.lyrics, fallback?.lyrics),
       duration: parsedMeta?.duration || null,
       coverDataUrl: parsedMeta?.coverDataUrl || fallbackCoverDataUrl || null
     }
@@ -445,6 +489,7 @@ function registerPlaylistHandlers() {
       Boolean(merged.artist) ||
       Boolean(merged.album) ||
       Boolean(merged.year) ||
+      Boolean(merged.lyrics) ||
       Boolean(merged.duration) ||
       Boolean(merged.coverDataUrl)
 
