@@ -63,6 +63,10 @@ function isAllowedDownloadHost(rawUrl) {
   return isNeteaseAudioHost(rawUrl)
 }
 
+function shouldEmitTaskToast(task) {
+  return !Boolean(task?.silentToast)
+}
+
 // ---------------------------------------------------------------------------
 // Broadcast helpers
 // ---------------------------------------------------------------------------
@@ -201,6 +205,7 @@ function createSkippedTask(payload) {
         ? payload.playlistContext
         : null,
     addToQueue: Boolean(payload.addToQueue),
+    silentToast: Boolean(payload.silentToast),
     savePlaylistName: String(payload.savePlaylistName || '').trim(),
     savePlaylistBatchKey: String(payload.savePlaylistBatchKey || '').trim(),
     createdAt: now,
@@ -300,12 +305,14 @@ async function runSingleTask(taskId) {
     task.updatedAt = Date.now()
     await persistTrackMetadataForTask(task)
     emitDownloadTaskUpdate(task)
-    emitGlobalToast({
-      level: 'success',
-      message: `下载完成: ${task.title || task.songId || path.basename(task.filePath || '')}`,
-      taskId: task.id,
-      taskStatus: task.status
-    })
+    if (shouldEmitTaskToast(task)) {
+      emitGlobalToast({
+        level: 'success',
+        message: `下载完成: ${task.title || task.songId || path.basename(task.filePath || '')}`,
+        taskId: task.id,
+        taskStatus: task.status
+      })
+    }
   } catch (err) {
     const isCanceled = task.status === 'canceled'
     if (!isCanceled) {
@@ -314,13 +321,15 @@ async function runSingleTask(taskId) {
       task.finishedAt = Date.now()
       task.updatedAt = Date.now()
       emitDownloadTaskUpdate(task)
-      emitGlobalToast({
-        level: 'error',
-        message: `下载失败: ${task.title || task.songId || task.id}`,
-        taskId: task.id,
-        taskStatus: task.status,
-        error: task.error
-      })
+      if (shouldEmitTaskToast(task)) {
+        emitGlobalToast({
+          level: 'error',
+          message: `下载失败: ${task.title || task.songId || task.id}`,
+          taskId: task.id,
+          taskStatus: task.status,
+          error: task.error
+        })
+      }
     }
   } finally {
     activeDownloadHandles.delete(taskId)
@@ -365,12 +374,14 @@ async function createDownloadTask(payload) {
 
       downloadTasks.set(skippedTask.id, skippedTask)
       emitDownloadTaskUpdate(skippedTask)
-      emitGlobalToast({
-        level: 'info',
-        message: `已跳过重复下载: ${skippedTask.title || skippedTask.songId || finalFileName}`,
-        taskId: skippedTask.id,
-        taskStatus: skippedTask.status
-      })
+      if (shouldEmitTaskToast(skippedTask)) {
+        emitGlobalToast({
+          level: 'info',
+          message: `已跳过重复下载: ${skippedTask.title || skippedTask.songId || finalFileName}`,
+          taskId: skippedTask.id,
+          taskStatus: skippedTask.status
+        })
+      }
       return { ok: true, task: skippedTask }
     } catch {
       // ignore access errors, continue to create normal task
@@ -404,6 +415,7 @@ async function createDownloadTask(payload) {
         ? payload.playlistContext
         : null,
     addToQueue: Boolean(payload.addToQueue),
+    silentToast: Boolean(payload.silentToast),
     savePlaylistName: String(payload.savePlaylistName || '').trim(),
     savePlaylistBatchKey: String(payload.savePlaylistBatchKey || '').trim(),
     createdAt: now,
@@ -466,6 +478,7 @@ async function createSongDownloadTaskFromId(payload) {
     downloadMode: payload?.downloadMode || 'song-download-only',
     playlistContext: payload?.playlistContext || null,
     addToQueue: Boolean(payload?.addToQueue),
+    silentToast: Boolean(payload?.silentToast),
     savePlaylistName: payload?.savePlaylistName || '',
     savePlaylistBatchKey: payload?.savePlaylistBatchKey || ''
   })

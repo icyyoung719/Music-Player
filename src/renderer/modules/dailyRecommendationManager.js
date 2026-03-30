@@ -30,6 +30,7 @@ export function createDailyRecommendationManager(options) {
     electronAPI,
     dom,
     onReplaceQueueWithTracks,
+    onAppendTracksToQueue,
     onShowSongPage
   } = options
 
@@ -47,6 +48,8 @@ export function createDailyRecommendationManager(options) {
 
   const queueTaskState = new Map()
   const handledTaskIds = new Set()
+  const playSessionState = new Map()
+  let activePlaySessionId = 0
 
   function normalizeCoverUrl(url) {
     const text = safeText(url)
@@ -154,8 +157,22 @@ export function createDailyRecommendationManager(options) {
       songId: track.id,
       level: 'exhigh',
       mode: 'song-temp-queue-only',
+      silentToast: true,
       title: track.name,
       fileName: `${safeName || track.id}-exhigh.mp3`
+    }
+  }
+
+  function isReadyQueueTask(task) {
+    if (!task || !task.filePath) return false
+    return task.status === 'succeeded' || task.status === 'skipped'
+  }
+
+  function getLocalTrackFromTask(task, mapped) {
+    return {
+      name: safeText(task.songMetadata?.title || task.title || mapped?.track?.name || '网易云下载'),
+      path: task.filePath,
+      file: null
     }
   }
 
@@ -169,10 +186,34 @@ export function createDailyRecommendationManager(options) {
       track,
       replaceQueueOnDone: true
     })
+
+    // Skip duplicates immediately if cached file already exists.
+    if (isReadyQueueTask(taskRes.task)) {
+      handleDownloadTaskUpdate(taskRes.task)
+    }
+  }
+
+  async function enqueueTrackWithSession(track, index, playSessionId) {
+    if (!electronAPI?.neteaseDownloadSongTask || !track) return
+
+    const taskRes = await electronAPI.neteaseDownloadSongTask(buildTaskPayload(track))
+    if (!taskRes?.ok || !taskRes?.task?.id) return
+
+    queueTaskState.set(taskRes.task.id, {
+      track,
+      index,
+      playSessionId,
+      replaceQueueOnDone: index === 0,
+      appendOnDone: index > 0
+    })
+
+    if (isReadyQueueTask(taskRes.task)) {
+      handleDownloadTaskUpdate(taskRes.task)
+    }
   }
 
   function handleDownloadTaskUpdate(task) {
-    if (!task?.id || task.status !== 'succeeded') return
+    if (!task?.id || !isReadyQueueTask(task)) return
     if (handledTaskIds.has(task.id)) return
 
     const mapped = queueTaskState.get(task.id)
@@ -180,17 +221,37 @@ export function createDailyRecommendationManager(options) {
 
     handledTaskIds.add(task.id)
 
-    const localTrack = {
-      name: safeText(task.songMetadata?.title || task.title || mapped.track.name || '网易云下载'),
-      path: task.filePath,
-      file: null
+    const localTrack = getLocalTrackFromTask(task, mapped)
+
+    const isSessionTask = Number.isInteger(mapped.playSessionId) && mapped.playSessionId > 0
+    const sessionId = isSessionTask ? mapped.playSessionId : 0
+    const session = sessionId ? playSessionState.get(sessionId) : null
+
+    if (sessionId && sessionId !== activePlaySessionId) {
+      queueTaskState.delete(task.id)
+      return
+    }
+
+    if (session && mapped.appendOnDone && !session.started) {
+      session.pendingTracks.push(localTrack)
+      queueTaskState.delete(task.id)
+      return
     }
 
     if (mapped.replaceQueueOnDone && typeof onReplaceQueueWithTracks === 'function') {
-      onReplaceQueueWithTracks([localTrack], 0, { source: 'daily-recommendation' })
+      const seedTracks = session
+        ? [localTrack].concat(session.pendingTracks)
+        : [localTrack]
+      onReplaceQueueWithTracks(seedTracks, 0, { source: 'daily-recommendation' })
+      if (session) {
+        session.started = true
+        session.pendingTracks = []
+      }
       if (typeof onShowSongPage === 'function') {
         onShowSongPage()
       }
+    } else if (mapped.appendOnDone && typeof onAppendTracksToQueue === 'function') {
+      onAppendTracksToQueue([localTrack])
     }
 
     queueTaskState.delete(task.id)
@@ -201,7 +262,23 @@ export function createDailyRecommendationManager(options) {
       return
     }
 
-    await enqueueTrack(state.tracks[0])
+    activePlaySessionId += 1
+    const playSessionId = activePlaySessionId
+    playSessionState.set(playSessionId, {
+      started: false,
+      pendingTracks: []
+    })
+
+    for (let index = 0; index < state.tracks.length; index += 1) {
+      await enqueueTrackWithSession(state.tracks[index], index, playSessionId)
+    }
+
+    // Keep only active session state to avoid stale accumulation.
+    for (const existingId of Array.from(playSessionState.keys())) {
+      if (existingId !== playSessionId) {
+        playSessionState.delete(existingId)
+      }
+    }
   }
 
   function bindEvents() {

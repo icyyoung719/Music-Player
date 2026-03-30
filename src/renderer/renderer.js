@@ -588,6 +588,7 @@ function setupDailyRecommendationManager() {
     dom: dailyRecommendationDom,
     onReplaceQueueWithTracks: (tracks, startIndex = 0, options = {}) =>
       playbackController.replaceCurrentQueueWithTracks(tracks, startIndex, options),
+    onAppendTracksToQueue: (tracks) => playbackController.appendToPlaylist(tracks),
     onShowSongPage: showSongPage
   })
 
