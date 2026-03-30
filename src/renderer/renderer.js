@@ -19,6 +19,7 @@ const homeCreatedPlaylistListEl = document.getElementById('homeCreatedPlaylistLi
 const homeRecommendViewEl = document.getElementById('homeRecommendView')
 const homeDownloadViewEl = document.getElementById('homeDownloadView')
 const homePlaylistDetailViewEl = document.getElementById('homePlaylistDetailView')
+const globalPlayerBarEl = document.getElementById('globalPlayerBar')
 const windowMinimizeBtn = document.getElementById('windowMinimizeBtn')
 const homeLoginBtn = document.getElementById('homeLoginBtn')
 const homeUserNameEl = document.getElementById('homeUserName')
@@ -64,9 +65,17 @@ const savedPlaylistDom = {
 
 const playbackDom = {
   songPageEl: document.getElementById('songPage'),
+  songAddFileBtn: document.getElementById('songAddFileBtn'),
+  songAddFolderBtn: document.getElementById('songAddFolderBtn'),
+  songOpenQueueBtn: document.getElementById('songOpenQueueBtn'),
   fileInput: document.getElementById('fileInput'),
   folderBtn: document.getElementById('folderBtn'),
   clearBtn: document.getElementById('clearBtn'),
+  queueSaveBtn: document.getElementById('queueSaveBtn'),
+  queueToggleBtn: document.getElementById('queueToggleBtn'),
+  queueCloseBtn: document.getElementById('queueCloseBtn'),
+  queueOverlayEl: document.getElementById('queueOverlay'),
+  queueOverlayBackdropEl: document.getElementById('queueOverlayBackdrop'),
   playBtn: document.getElementById('playBtn'),
   prevBtn: document.getElementById('prevBtn'),
   nextBtn: document.getElementById('nextBtn'),
@@ -83,6 +92,8 @@ const playbackDom = {
   totalTimeEl: document.getElementById('totalTime'),
   bottomTrackTitleEl: document.getElementById('bottomTrackTitle'),
   bottomTrackArtistEl: document.getElementById('bottomTrackArtist'),
+  bottomTrackCoverImgEl: document.getElementById('bottomTrackCoverImg'),
+  bottomTrackCoverPlaceholderEl: document.getElementById('bottomTrackCoverPlaceholder'),
   homeNowTitleEl: document.getElementById('homeNowTitle'),
   homeNowArtistEl: document.getElementById('homeNowArtist'),
   homeFeaturedTitleEl: document.getElementById('homeFeaturedTitle'),
@@ -248,25 +259,26 @@ function showHomePage() {
 }
 
 function setHomeNowCover(dataUrl) {
-  if (!homeNowCoverImgEl || !homeNowCoverPlaceholderEl) return
+  if (homeNowCoverImgEl && homeNowCoverPlaceholderEl) {
+    if (dataUrl) {
+      homeNowCoverImgEl.src = dataUrl
+      homeNowCoverImgEl.style.display = 'block'
+      homeNowCoverPlaceholderEl.style.display = 'none'
+    } else {
+      homeNowCoverImgEl.src = ''
+      homeNowCoverImgEl.style.display = 'none'
+      homeNowCoverPlaceholderEl.style.display = 'inline'
+    }
+  }
 
-  if (dataUrl) {
-    homeNowCoverImgEl.src = dataUrl
-    homeNowCoverImgEl.style.display = 'block'
-    homeNowCoverPlaceholderEl.style.display = 'none'
-    if (homeFeaturedCoverEl) {
+  if (homeFeaturedCoverEl) {
+    if (dataUrl) {
       homeFeaturedCoverEl.style.backgroundImage = `url(${dataUrl})`
       homeFeaturedCoverEl.style.backgroundSize = 'cover'
       homeFeaturedCoverEl.style.backgroundPosition = 'center'
+    } else {
+      homeFeaturedCoverEl.style.backgroundImage = ''
     }
-    return
-  }
-
-  homeNowCoverImgEl.src = ''
-  homeNowCoverImgEl.style.display = 'none'
-  homeNowCoverPlaceholderEl.style.display = 'inline'
-  if (homeFeaturedCoverEl) {
-    homeFeaturedCoverEl.style.backgroundImage = ''
   }
 }
 
@@ -389,6 +401,18 @@ function setupWindowEvents() {
       openSavedPlaylistDetail(playlistItem.dataset.playlistId || '')
     })
   }
+
+  if (globalPlayerBarEl) {
+    globalPlayerBarEl.addEventListener('click', (event) => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+
+      // Preserve native behavior for actionable controls.
+      if (target.closest('button, .progress-container, input, label, select, a')) return
+
+      showSongPage()
+    })
+  }
 }
 
 function openNeteaseAuthWindow(page = 'email') {
@@ -417,7 +441,12 @@ function setupPlaybackController() {
     dom: playbackDom,
     onShowHomePage: showHomePage,
     onShowSongPage: showSongPage,
-    onSetHomeNowCover: setHomeNowCover
+    onSetHomeNowCover: setHomeNowCover,
+    onSavedPlaylistChanged: (playlistId) => {
+      if (savedPlaylistManager && savedPlaylistManager.refreshSavedPlaylists) {
+        savedPlaylistManager.refreshSavedPlaylists(playlistId)
+      }
+    }
   })
 
   playbackController.init()

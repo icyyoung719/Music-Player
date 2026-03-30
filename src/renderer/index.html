@@ -10,6 +10,62 @@
 </head>
 <body>
   <div id="appRoot"></div>
+  <div class="queue-overlay" id="queueOverlay" aria-hidden="true">
+    <div class="queue-overlay-backdrop" id="queueOverlayBackdrop"></div>
+    <div class="queue-panel" role="dialog" aria-modal="true" aria-label="当前播放列表">
+      <div class="queue-panel-head">
+        <div class="queue-panel-title">当前播放列表</div>
+        <div class="queue-panel-actions">
+          <label for="fileInput" class="file-label">🎵 添加文件</label>
+          <input type="file" id="fileInput" accept="audio/*" multiple>
+          <button id="folderBtn">📂 添加文件夹</button>
+          <button id="clearBtn">🗑 清空</button>
+          <button id="queueSaveBtn">💾 作为歌单收藏</button>
+          <button class="icon-btn" id="queueCloseBtn" title="关闭列表">✕</button>
+        </div>
+      </div>
+      <div class="playlist queue-playlist" id="playlist"></div>
+    </div>
+  </div>
+
+  <footer class="global-player-bar" id="globalPlayerBar">
+    <div class="progress-section">
+      <div class="time-display">
+        <span id="currentTime">0:00</span>
+        <span id="totalTime">0:00</span>
+      </div>
+      <div class="progress-container" id="progressContainer">
+        <div class="progress-bar" id="progressBar"></div>
+      </div>
+    </div>
+
+    <div class="bottom-main">
+      <div class="bottom-left bottom-left-with-cover">
+        <div class="bottom-cover" id="bottomTrackCover">
+          <img id="bottomTrackCoverImg" alt="当前播放封面">
+          <span id="bottomTrackCoverPlaceholder">♪</span>
+        </div>
+        <div class="bottom-meta">
+          <div class="bottom-track" id="bottomTrackTitle">&nbsp;</div>
+          <div class="bottom-artist" id="bottomTrackArtist">&nbsp;</div>
+        </div>
+      </div>
+
+      <div class="controls">
+        <button id="loopBtn" title="单曲循环: 关">🔂</button>
+        <button id="prevBtn" title="上一首">⏮</button>
+        <button id="playBtn" title="播放 / 暂停">▶</button>
+        <button id="nextBtn" title="下一首">⏭</button>
+        <button id="queueToggleBtn" title="打开播放列表">☰</button>
+      </div>
+
+      <div class="bottom-right">
+        <button class="icon-btn" title="歌词">词</button>
+        <button class="icon-btn" title="音量">🔊</button>
+        <button class="icon-btn" title="更多">⋯</button>
+      </div>
+    </div>
+  </footer>
   <div id="appToastContainer" class="app-toast-container" aria-live="polite"></div>
   <script type="module" src="./bootstrap.js"></script>
 </body>

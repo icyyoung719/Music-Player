@@ -41,22 +41,16 @@
 
         <div class="content-stack">
           <div class="content-main">
+            <div class="song-queue-entry">
+              <button id="songAddFileBtn">🎵 添加文件并打开列表</button>
+              <button id="songAddFolderBtn">📂 添加文件夹并打开列表</button>
+              <button id="songOpenQueueBtn">☰ 打开当前播放列表</button>
+            </div>
+
             <div class="lyrics-container" id="lyricsContainer">
               <div class="lyrics-wrapper" id="lyricsWrapper">
                 <div class="lyric-line no-lyrics">暂无歌词</div>
               </div>
-            </div>
-
-            <div class="panel-card">
-              <div class="file-actions">
-                <label for="fileInput" class="file-label">🎵 添加文件</label>
-                <input type="file" id="fileInput" accept="audio/*" multiple>
-                <button id="folderBtn">📂 添加文件夹</button>
-                <button id="clearBtn">🗑 清空列表</button>
-              </div>
-
-              <div style="margin-top: 10px; margin-bottom: 6px; font-size: 13px; color: rgba(255,255,255,0.82);">当前播放列表</div>
-              <div class="playlist" id="playlist"></div>
             </div>
           </div>
 
@@ -71,36 +65,5 @@
       </section>
     </main>
 
-    <footer class="bottombar">
-      <div class="progress-section">
-        <div class="time-display">
-          <span id="currentTime">0:00</span>
-          <span id="totalTime">0:00</span>
-        </div>
-        <div class="progress-container" id="progressContainer">
-          <div class="progress-bar" id="progressBar"></div>
-        </div>
-      </div>
-
-      <div class="bottom-main">
-        <div class="bottom-left">
-          <div class="bottom-track" id="bottomTrackTitle">&nbsp;</div>
-          <div class="bottom-artist" id="bottomTrackArtist">&nbsp;</div>
-        </div>
-
-        <div class="controls">
-          <button id="loopBtn" title="单曲循环: 关">🔂</button>
-          <button id="prevBtn" title="上一首">⏮</button>
-          <button id="playBtn" title="播放 / 暂停">▶</button>
-          <button id="nextBtn" title="下一首">⏭</button>
-        </div>
-
-        <div class="bottom-right">
-          <button class="icon-btn" title="歌词">词</button>
-          <button class="icon-btn" title="音量">🔊</button>
-          <button class="icon-btn" title="更多">⋯</button>
-        </div>
-      </div>
-    </footer>
   </div>
 </div>

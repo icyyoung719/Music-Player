@@ -22,7 +22,8 @@ export function createPlaybackController(options) {
     dom,
     onShowHomePage,
     onShowSongPage,
-    onSetHomeNowCover
+    onSetHomeNowCover,
+    onSavedPlaylistChanged = null
   } = options
 
   const audio = new Audio()
@@ -38,6 +39,8 @@ export function createPlaybackController(options) {
   let fadeTimer = null
   let fadeToken = 0
   let loadRequestId = 0
+  let isQueueOverlayOpen = false
+  const metadataHydrationKeys = new Set()
 
   function getAudioExtFromPath(filePath) {
     const source = String(filePath || '')
@@ -240,6 +243,43 @@ export function createPlaybackController(options) {
     if (dom.homeFeaturedTitleEl && title) dom.homeFeaturedTitleEl.textContent = title
   }
 
+  function setBottomNowPlayingCover(coverDataUrl) {
+    if (!dom.bottomTrackCoverImgEl || !dom.bottomTrackCoverPlaceholderEl) return
+
+    if (coverDataUrl) {
+      dom.bottomTrackCoverImgEl.src = coverDataUrl
+      dom.bottomTrackCoverImgEl.style.display = 'block'
+      dom.bottomTrackCoverPlaceholderEl.style.display = 'none'
+      return
+    }
+
+    dom.bottomTrackCoverImgEl.src = ''
+    dom.bottomTrackCoverImgEl.style.display = 'none'
+    dom.bottomTrackCoverPlaceholderEl.style.display = 'inline'
+  }
+
+  function openQueueOverlay() {
+    if (!dom.queueOverlayEl) return
+    isQueueOverlayOpen = true
+    dom.queueOverlayEl.classList.add('visible')
+    dom.queueOverlayEl.setAttribute('aria-hidden', 'false')
+  }
+
+  function closeQueueOverlay() {
+    if (!dom.queueOverlayEl) return
+    isQueueOverlayOpen = false
+    dom.queueOverlayEl.classList.remove('visible')
+    dom.queueOverlayEl.setAttribute('aria-hidden', 'true')
+  }
+
+  function toggleQueueOverlay() {
+    if (isQueueOverlayOpen) {
+      closeQueueOverlay()
+      return
+    }
+    openQueueOverlay()
+  }
+
   function reportPlayerState() {
     if (!electronAPI || !electronAPI.reportPlayerState) return
 
@@ -278,10 +318,168 @@ export function createPlaybackController(options) {
     dom.trackArtist.textContent = ''
     dom.trackAlbum.textContent = ''
     setBottomNowPlaying('', '')
+    setBottomNowPlayingCover('')
+    if (lyricManager) {
+      lyricManager.setLyrics(null)
+    }
     onSetHomeNowCover(null)
     dom.coverImg.style.display = 'none'
     dom.coverImg.src = ''
     dom.coverPlaceholder.style.display = 'flex'
+  }
+
+  function getTrackArtistText(track) {
+    const artist = track?.metadataCache?.artist
+      || track?.lazyNetease?.artist
+      || track?.lazyNetease?.artists
+      || ''
+
+    return String(artist || '').trim() || '未知歌手'
+  }
+
+  function getTrackDurationText(track) {
+    const durationSeconds = Number(track?.metadataCache?.duration)
+    if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
+      return formatTime(durationSeconds)
+    }
+
+    const durationMs = Number(track?.lazyNetease?.durationMs)
+    if (Number.isFinite(durationMs) && durationMs > 0) {
+      return formatTime(durationMs / 1000)
+    }
+
+    return '--:--'
+  }
+
+  function getTrackCoverDataUrl(track) {
+    return track?.metadataCache?.coverDataUrl
+      || track?.lazyNetease?.coverDataUrl
+      || track?.lazyNetease?.coverUrl
+      || ''
+  }
+
+  async function saveTrackToSavedPlaylist(index) {
+    const track = playlist[index]
+    const filePath = getCurrentTrackPath(track, electronAPI)
+    if (!filePath) {
+      alert('该歌曲暂无本地文件，暂不支持收藏到本地歌单')
+      return
+    }
+
+    if (!electronAPI?.playlistList || !electronAPI?.playlistCreate || !electronAPI?.playlistAddTracks) {
+      return
+    }
+
+    const listResult = await electronAPI.playlistList()
+    const existing = Array.isArray(listResult?.playlists) ? listResult.playlists : []
+
+    let playlistId = ''
+    if (existing.length) {
+      const tips = existing.map((item, idx) => `${idx + 1}. ${item.name}`).join('\n')
+      const input = prompt(`选择歌单序号，或输入新歌单名称：\n${tips}`, '1')
+      if (input === null) return
+
+      const trimmed = String(input || '').trim()
+      const choice = Number.parseInt(trimmed, 10)
+      if (Number.isFinite(choice) && choice >= 1 && choice <= existing.length) {
+        playlistId = existing[choice - 1].id
+      } else {
+        const created = await electronAPI.playlistCreate(trimmed || (track.name || '收藏歌曲'))
+        playlistId = created?.ok ? created.playlist?.id || '' : ''
+      }
+    } else {
+      const name = prompt('输入新歌单名称：', track.name || '收藏歌曲')
+      if (name === null) return
+      const created = await electronAPI.playlistCreate(String(name || '').trim() || '收藏歌曲')
+      playlistId = created?.ok ? created.playlist?.id || '' : ''
+    }
+
+    if (!playlistId) {
+      alert('收藏失败，未能确定目标歌单')
+      return
+    }
+
+    const metadataCache = {
+      title: track?.metadataCache?.title || track?.name || getFileNameFromPath(filePath),
+      artist: track?.metadataCache?.artist || null,
+      album: track?.metadataCache?.album || null,
+      duration: track?.metadataCache?.duration || null
+    }
+
+    const addResult = await electronAPI.playlistAddTracks(playlistId, [{ path: filePath, metadataCache }])
+    if (!addResult?.ok) {
+      alert('收藏失败，添加歌曲时出错')
+      return
+    }
+
+    if (typeof onSavedPlaylistChanged === 'function') {
+      onSavedPlaylistChanged(playlistId)
+    }
+
+    alert('已添加到歌单')
+  }
+
+  async function saveCurrentQueueAsSavedPlaylist() {
+    const tracks = collectCurrentQueueAsTrackInputs()
+    if (!tracks.length) {
+      alert('当前播放列表没有可收藏的本地歌曲')
+      return
+    }
+
+    if (!electronAPI?.playlistCreate || !electronAPI?.playlistAddTracks) {
+      return
+    }
+
+    const name = prompt('输入要收藏成的歌单名称：', `播放列表 ${new Date().toLocaleDateString()}`)
+    if (name === null) return
+    const created = await electronAPI.playlistCreate(String(name || '').trim() || `播放列表 ${Date.now()}`)
+    const playlistId = created?.ok ? created.playlist?.id || '' : ''
+    if (!playlistId) {
+      alert('创建歌单失败')
+      return
+    }
+
+    const result = await electronAPI.playlistAddTracks(playlistId, tracks)
+    if (!result?.ok) {
+      alert('歌单收藏失败')
+      return
+    }
+
+    if (typeof onSavedPlaylistChanged === 'function') {
+      onSavedPlaylistChanged(playlistId)
+    }
+
+    alert(`已收藏到歌单：${created.playlist?.name || '未命名歌单'}`)
+  }
+
+  async function hydrateTrackDisplayMetadata(index, track) {
+    const filePath = getCurrentTrackPath(track, electronAPI)
+    if (!filePath || !electronAPI?.getMetadata) return
+
+    const key = `${index}:${normalizePath(filePath)}`
+    if (metadataHydrationKeys.has(key)) return
+    if (track?.metadataCache?.duration && track?.metadataCache?.artist && track?.metadataCache?.coverDataUrl) return
+
+    metadataHydrationKeys.add(key)
+    try {
+      const meta = await electronAPI.getMetadata(filePath)
+      if (!meta) return
+
+      const targetTrack = playlist[index]
+      if (!targetTrack) return
+      targetTrack.metadataCache = {
+        ...targetTrack.metadataCache,
+        title: meta.title || targetTrack.metadataCache?.title || targetTrack.name,
+        artist: meta.artist || targetTrack.metadataCache?.artist || null,
+        album: meta.album || targetTrack.metadataCache?.album || null,
+        duration: Number.isFinite(meta.duration) ? meta.duration : targetTrack.metadataCache?.duration || null,
+        coverDataUrl: meta.coverDataUrl || targetTrack.metadataCache?.coverDataUrl || ''
+      }
+
+      updatePlaylistUI()
+    } catch {
+      // Ignore metadata hydration errors for queue preview cards.
+    }
   }
 
   function updatePlaylistUI() {
@@ -295,12 +493,29 @@ export function createPlaybackController(options) {
     }
 
     playlist.forEach((track, index) => {
+      hydrateTrackDisplayMetadata(index, track)
+
       const item = document.createElement('div')
       item.className = 'playlist-item' + (index === currentIndex ? ' active' : '')
 
       const idxSpan = document.createElement('span')
       idxSpan.className = 'playlist-index'
       idxSpan.textContent = index + 1
+
+      const cover = document.createElement('span')
+      cover.className = 'playlist-cover'
+      const coverDataUrl = getTrackCoverDataUrl(track)
+      if (coverDataUrl) {
+        const coverImg = document.createElement('img')
+        coverImg.src = coverDataUrl
+        coverImg.alt = '歌曲封面'
+        cover.appendChild(coverImg)
+      } else {
+        cover.textContent = '♪'
+      }
+
+      const body = document.createElement('div')
+      body.className = 'playlist-item-body'
 
       const titleSpan = document.createElement('span')
       titleSpan.className = 'playlist-item-title'
@@ -310,18 +525,41 @@ export function createPlaybackController(options) {
         titleSpan.textContent = track.name
       }
 
+      const metaSpan = document.createElement('span')
+      metaSpan.className = 'playlist-item-meta'
+      metaSpan.textContent = `${getTrackArtistText(track)} · ${getTrackDurationText(track)}`
+
+      body.appendChild(titleSpan)
+      body.appendChild(metaSpan)
+
+      const actions = document.createElement('span')
+      actions.className = 'playlist-item-actions'
+
+      const saveBtn = document.createElement('button')
+      saveBtn.className = 'playlist-item-action'
+      saveBtn.textContent = '添加到歌单'
+      saveBtn.title = '添加到某个歌单'
+      saveBtn.addEventListener('click', async (e) => {
+        e.stopPropagation()
+        await saveTrackToSavedPlaylist(index)
+      })
+
       const delBtn = document.createElement('button')
-      delBtn.className = 'playlist-delete-btn'
-      delBtn.textContent = '✕'
+      delBtn.className = 'playlist-item-action playlist-delete-btn'
+      delBtn.textContent = '移除'
       delBtn.title = '从列表移除'
       delBtn.addEventListener('click', (e) => {
         e.stopPropagation()
         removeTrack(index)
       })
 
+      actions.appendChild(saveBtn)
+      actions.appendChild(delBtn)
+
       item.appendChild(idxSpan)
-      item.appendChild(titleSpan)
-      item.appendChild(delBtn)
+      item.appendChild(cover)
+      item.appendChild(body)
+      item.appendChild(actions)
       item.addEventListener('click', () => loadTrack(index))
       dom.playlistEl.appendChild(item)
     })
@@ -537,6 +775,7 @@ export function createPlaybackController(options) {
     audio.pause()
 
     if (isLazyNeteaseTrack(track) && track.lazyNetease?.coverUrl) {
+      setBottomNowPlayingCover(track.lazyNetease.coverUrl)
       onSetHomeNowCover(track.lazyNetease.coverUrl)
     }
 
@@ -582,8 +821,10 @@ export function createPlaybackController(options) {
           dom.coverImg.src = meta.coverDataUrl
           dom.coverImg.style.display = 'block'
           dom.coverPlaceholder.style.display = 'none'
+          setBottomNowPlayingCover(meta.coverDataUrl)
           onSetHomeNowCover(meta.coverDataUrl)
         } else {
+          setBottomNowPlayingCover('')
           onSetHomeNowCover(null)
         }
 
@@ -607,7 +848,8 @@ export function createPlaybackController(options) {
           title: meta.title || track.name,
           artist: meta.artist || null,
           album: meta.album || null,
-          duration: meta.duration || null
+          duration: meta.duration || null,
+          coverDataUrl: meta.coverDataUrl || ''
         }
       }
     }
@@ -823,19 +1065,27 @@ export function createPlaybackController(options) {
   }
 
   function bindControlEvents() {
+    const appendTracksAndOpenQueue = (tracks) => {
+      if (!tracks.length) return
+      appendToPlaylist(tracks)
+      openQueueOverlay()
+    }
+
     dom.fileInput.addEventListener('change', async (e) => {
       const files = Array.from(e.target.files)
       if (!files.length) return
-      appendToPlaylist(files.map((file) => ({ name: file.name, file, path: null })))
+      appendTracksAndOpenQueue(files.map((file) => ({ name: file.name, file, path: null })))
       dom.fileInput.value = ''
     })
 
-    dom.folderBtn.addEventListener('click', async () => {
+    const handleAddFolder = async () => {
       if (!electronAPI || !electronAPI.selectFolder) return
       const paths = await electronAPI.selectFolder()
       if (!paths || !paths.length) return
-      appendToPlaylist(paths.map((p) => ({ name: p.split(/[/\\]/).pop(), path: p, file: null })))
-    })
+      appendTracksAndOpenQueue(paths.map((p) => ({ name: p.split(/[/\\]/).pop(), path: p, file: null })))
+    }
+
+    dom.folderBtn.addEventListener('click', handleAddFolder)
 
     if (dom.songPageEl) {
       let dragDepth = 0
@@ -885,9 +1135,50 @@ export function createPlaybackController(options) {
           return
         }
         if (!tracks.length) return
-        appendToPlaylist(tracks)
+        appendTracksAndOpenQueue(tracks)
       })
     }
+
+    if (dom.songAddFileBtn) {
+      dom.songAddFileBtn.addEventListener('click', () => {
+        openQueueOverlay()
+        dom.fileInput.click()
+      })
+    }
+
+    if (dom.songAddFolderBtn) {
+      dom.songAddFolderBtn.addEventListener('click', async () => {
+        openQueueOverlay()
+        await handleAddFolder()
+      })
+    }
+
+    if (dom.songOpenQueueBtn) {
+      dom.songOpenQueueBtn.addEventListener('click', openQueueOverlay)
+    }
+
+    if (dom.queueToggleBtn) {
+      dom.queueToggleBtn.addEventListener('click', toggleQueueOverlay)
+    }
+
+    if (dom.queueCloseBtn) {
+      dom.queueCloseBtn.addEventListener('click', closeQueueOverlay)
+    }
+
+    if (dom.queueOverlayBackdropEl) {
+      dom.queueOverlayBackdropEl.addEventListener('click', closeQueueOverlay)
+    }
+
+    if (dom.queueSaveBtn) {
+      dom.queueSaveBtn.addEventListener('click', saveCurrentQueueAsSavedPlaylist)
+    }
+
+    document.addEventListener('keydown', (event) => {
+      if (event.key !== 'Escape') return
+      if (!isQueueOverlayOpen) return
+      event.preventDefault()
+      closeQueueOverlay()
+    })
 
     dom.clearBtn.addEventListener('click', () => {
       if (playlist.length === 0) return
