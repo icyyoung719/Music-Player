@@ -28,9 +28,9 @@ function truncate(value, maxLen = 18) {
 export function createDailyRecommendationManager(options) {
   const {
     electronAPI,
+    neteaseDatabaseService,
     dom,
-    onReplaceQueueWithTracks,
-    onShowSongPage
+    eventBus
   } = options
 
   if (!dom?.coverEl || !dom?.metaEl) {
@@ -100,13 +100,15 @@ export function createDailyRecommendationManager(options) {
   }
 
   async function refreshDailyRecommendation() {
-    if (!electronAPI?.neteaseGetDailyRecommendation) return
+    if (!neteaseDatabaseService && !electronAPI?.neteaseGetDailyRecommendation) return
 
     state.loading = true
     state.lastError = ''
     renderState()
 
-    const res = await electronAPI.neteaseGetDailyRecommendation()
+    const res = neteaseDatabaseService
+      ? await neteaseDatabaseService.getDailyRecommendation()
+      : await electronAPI.neteaseGetDailyRecommendation()
 
     state.loading = false
     if (!res?.ok) {
@@ -183,13 +185,15 @@ export function createDailyRecommendationManager(options) {
   }
 
   async function playFirst() {
-    if (!state.tracks.length || typeof onReplaceQueueWithTracks !== 'function') return
+    if (!state.tracks.length || !eventBus) return
 
     const queueTracks = state.tracks.map(createLazyQueueTrack)
-    onReplaceQueueWithTracks(queueTracks, 0, { source: 'daily-recommendation-lazy' })
-    if (typeof onShowSongPage === 'function') {
-      onShowSongPage()
-    }
+    eventBus.emit('playback:queue.replace', {
+      tracks: queueTracks,
+      startIndex: 0,
+      options: { source: 'daily-recommendation-lazy' }
+    })
+    eventBus.emit('view:song.open')
   }
 
   function bindEvents() {

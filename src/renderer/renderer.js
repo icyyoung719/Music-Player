@@ -8,6 +8,10 @@ import { createAccountManager } from './modules/accountManager.js'
 import { createDownloadManager } from './modules/downloadManager.js'
 import { createToastManager } from './modules/toastManager.js'
 import { createDailyRecommendationManager } from './modules/dailyRecommendationManager.js'
+import { createEventBus } from './core/eventBus.js'
+import { createViewManager } from './core/viewManager.js'
+import { createNeteaseDatabaseService } from './core/neteaseDatabaseService.js'
+import { createDownloadService } from './core/downloadService.js'
 
 const homePageEl = document.getElementById('homePage')
 const songPageEl = document.getElementById('songPage')
@@ -205,93 +209,41 @@ let accountManager = null
 let savedPlaylistManager = null
 let toastManager = null
 let dailyRecommendationManager = null
-let currentHomeView = 'recommend'
+let viewManager = null
+let neteaseDatabaseService = null
+let downloadService = null
 let currentSettingsTab = 'playback'
 const createdSavedPlaylistIdsByName = new Map()
 const pendingSavedPlaylistPromises = new Map()
+const eventBus = createEventBus()
 
 function showHomeView(view) {
-  currentHomeView = ['recommend', 'download', 'playlist-detail'].includes(view)
-    ? view
-    : 'recommend'
-
-  if (homeRecommendViewEl) {
-    homeRecommendViewEl.classList.toggle('page-hidden', currentHomeView !== 'recommend')
+  if (viewManager) {
+    viewManager.showHomeView(view)
   }
-
-  if (homeDownloadViewEl) {
-    homeDownloadViewEl.classList.toggle('page-hidden', currentHomeView !== 'download')
-  }
-
-  if (homePlaylistDetailViewEl) {
-    homePlaylistDetailViewEl.classList.toggle('page-hidden', currentHomeView !== 'playlist-detail')
-  }
-
-  if (homeMenuRecommendEl) {
-    homeMenuRecommendEl.classList.toggle('active', currentHomeView === 'recommend')
-  }
-
-  if (homeMenuDownloadEl) {
-    homeMenuDownloadEl.classList.toggle('active', currentHomeView === 'download')
-  }
-
-  if (savedPlaylistManager && savedPlaylistManager.setActiveView) {
-    savedPlaylistManager.setActiveView(currentHomeView)
-  }
-}
-
-function showHomeShell() {
-  if (songPageEl) songPageEl.classList.add('page-hidden')
-  if (homePageEl) homePageEl.classList.remove('page-hidden')
 }
 
 function openSavedPlaylistDetail(playlistId) {
-  showHomeShell()
-
-  if (savedPlaylistManager && savedPlaylistManager.openPlaylist) {
-    savedPlaylistManager.openPlaylist(playlistId)
+  if (viewManager) {
+    viewManager.openSavedPlaylistDetail(playlistId)
   }
-
-  showHomeView('playlist-detail')
 }
 
 function showSongPage() {
-  if (homePageEl) homePageEl.classList.add('page-hidden')
-  if (songPageEl) songPageEl.classList.remove('page-hidden')
-  if (playbackController) {
-    // Wait for display block to take effect
-    requestAnimationFrame(() => {
-      playbackController.refreshLyricsScroll()
-    })
+  if (viewManager) {
+    viewManager.showSongPage()
   }
 }
 
 function showHomePage() {
-  showHomeShell()
-  showHomeView(currentHomeView)
+  if (viewManager) {
+    viewManager.showHomePage()
+  }
 }
 
 function setHomeNowCover(dataUrl) {
-  if (homeNowCoverImgEl && homeNowCoverPlaceholderEl) {
-    if (dataUrl) {
-      homeNowCoverImgEl.src = dataUrl
-      homeNowCoverImgEl.style.display = 'block'
-      homeNowCoverPlaceholderEl.style.display = 'none'
-    } else {
-      homeNowCoverImgEl.src = ''
-      homeNowCoverImgEl.style.display = 'none'
-      homeNowCoverPlaceholderEl.style.display = 'inline'
-    }
-  }
-
-  if (homeFeaturedCoverEl) {
-    if (dataUrl) {
-      homeFeaturedCoverEl.style.backgroundImage = `url(${dataUrl})`
-      homeFeaturedCoverEl.style.backgroundSize = 'cover'
-      homeFeaturedCoverEl.style.backgroundPosition = 'center'
-    } else {
-      homeFeaturedCoverEl.style.backgroundImage = ''
-    }
+  if (viewManager) {
+    viewManager.setHomeNowCover(dataUrl)
   }
 }
 
@@ -452,17 +404,22 @@ function setupPlaybackController() {
   playbackController = createPlaybackController({
     electronAPI: window.electronAPI,
     dom: playbackDom,
-    onShowHomePage: showHomePage,
-    onShowSongPage: showSongPage,
-    onSetHomeNowCover: setHomeNowCover,
-    onSavedPlaylistChanged: (playlistId) => {
-      if (savedPlaylistManager && savedPlaylistManager.refreshSavedPlaylists) {
-        savedPlaylistManager.refreshSavedPlaylists(playlistId)
-      }
-    }
+    eventBus
   })
 
   playbackController.init()
+}
+
+function setupServices() {
+  neteaseDatabaseService = createNeteaseDatabaseService({
+    electronAPI: window.electronAPI
+  })
+
+  downloadService = createDownloadService({
+    electronAPI: window.electronAPI,
+    eventBus
+  })
+  downloadService.init()
 }
 
 function setupSavedPlaylistManager() {
@@ -470,14 +427,13 @@ function setupSavedPlaylistManager() {
     electronAPI: window.electronAPI,
     dom: savedPlaylistDom,
     promptForPlaylistName: requestPlaylistName,
-    getCurrentQueueTrackInputs: () => playbackController.collectCurrentQueueAsTrackInputs(),
-    appendTracksToQueue: (tracks) => playbackController.appendToPlaylist(tracks),
-    replaceQueueWithTracks: (tracks, startIndex = 0, options = {}) =>
-      playbackController.replaceCurrentQueueWithTracks(tracks, startIndex, options),
-    onRequestOpenPlaylist: (playlistId) => openSavedPlaylistDetail(playlistId)
+    eventBus
   })
 
   savedPlaylistManager.init()
+  if (viewManager) {
+    viewManager.bindSavedPlaylistManager(savedPlaylistManager)
+  }
 }
 
 async function ensureSavedPlaylistByName(name, playlistKey = '') {
@@ -538,54 +494,7 @@ function setupShortcutManager() {
     storageKey: SHORTCUT_STORAGE_KEY,
     actionDefinitions: shortcutActions,
     closeOnConfirm: false,
-    onAction: (action) => {
-      switch (action) {
-        case 'togglePlay':
-          playbackController.togglePlayback({ silent: true })
-          break
-        case 'seekBackward':
-          playbackController.seekBy(-SEEK_SECONDS)
-          break
-        case 'seekForward':
-          playbackController.seekBy(SEEK_SECONDS)
-          break
-        case 'previousTrack':
-          playbackController.playPreviousTrack()
-          break
-        case 'nextTrack':
-          playbackController.playNextTrack()
-          break
-        case 'toggleLoop':
-          playbackController.toggleLoopState()
-          break
-        case 'showHomePage':
-          showHomePage()
-          break
-        case 'showSongPage':
-          showSongPage()
-          break
-        case 'toggleTheme': {
-          const themeToggle = document.querySelector('[data-theme-toggle]')
-          if (themeToggle) themeToggle.click()
-          break
-        }
-        case 'openShortcuts':
-          openSettingsPanel('shortcuts')
-          break
-        case 'minimizeWindow':
-          if (window.electronAPI && window.electronAPI.minimizeWindow) {
-            window.electronAPI.minimizeWindow()
-          }
-          break
-        case 'clearPlaylist':
-          if (playbackController.hasQueue()) {
-            playbackController.clearPlaylist()
-          }
-          break
-        default:
-          break
-      }
-    }
+    eventBus
   })
 
   shortcutManager.init()
@@ -706,17 +615,10 @@ function setupSettingsPanel() {
 function setupNeteaseManager() {
   const manager = createNeteaseManager({
     electronAPI: window.electronAPI,
+    neteaseDatabaseService,
+    downloadService,
     dom: neteaseDom,
-    onAppendDownloadedTrack: (track) => {
-      if (!playbackController || !track?.path) return
-      playbackController.appendToPlaylist([
-        {
-          name: track.name || track.path.split(/[/\\]/).pop(),
-          path: track.path,
-          file: null
-        }
-      ])
-    }
+    eventBus
   })
   manager.init()
 }
@@ -724,17 +626,10 @@ function setupNeteaseManager() {
 function setupNeteaseSearchManager() {
   const manager = createNeteaseSearchManager({
     electronAPI: window.electronAPI,
+    neteaseDatabaseService,
+    downloadService,
     dom: neteaseSearchDom,
-    onAppendDownloadedTrack: (track) => {
-      if (!playbackController || !track?.path) return
-      playbackController.appendToPlaylist([
-        {
-          name: track.name || track.path.split(/[/\\]/).pop(),
-          path: track.path,
-          file: null
-        }
-      ])
-    }
+    eventBus
   })
   manager.init()
 }
@@ -750,18 +645,10 @@ function setupToastManager() {
 function setupDownloadManager() {
   const manager = createDownloadManager({
     electronAPI: window.electronAPI,
+    neteaseDatabaseService,
+    downloadService,
     dom: downloadDom,
-    onAppendTrack: (track) => {
-      if (!playbackController || !track?.path) return
-      playbackController.appendToPlaylist([{ name: track.name, path: track.path, file: null }])
-    },
-    onPushToast: (payload) => {
-      if (toastManager) {
-        toastManager.pushToast(payload)
-      }
-    },
-    onEnsureSavedPlaylist: ensureSavedPlaylistByName,
-    onAppendTrackToSavedPlaylist: appendDownloadedTrackToSavedPlaylist
+    eventBus
   })
 
   manager.init()
@@ -770,14 +657,148 @@ function setupDownloadManager() {
 function setupDailyRecommendationManager() {
   dailyRecommendationManager = createDailyRecommendationManager({
     electronAPI: window.electronAPI,
+    neteaseDatabaseService,
     dom: dailyRecommendationDom,
-    onReplaceQueueWithTracks: (tracks, startIndex = 0, options = {}) =>
-      playbackController.replaceCurrentQueueWithTracks(tracks, startIndex, options),
-    onAppendTracksToQueue: (tracks) => playbackController.appendToPlaylist(tracks),
-    onShowSongPage: showSongPage
+    eventBus
   })
 
   dailyRecommendationManager.init()
+}
+
+function setupViewManager() {
+  viewManager = createViewManager({
+    dom: {
+      homePageEl,
+      songPageEl,
+      homeRecommendViewEl,
+      homeDownloadViewEl,
+      homePlaylistDetailViewEl,
+      homeMenuRecommendEl,
+      homeMenuDownloadEl,
+      homeNowCoverImgEl,
+      homeNowCoverPlaceholderEl,
+      homeFeaturedCoverEl
+    },
+    savedPlaylistManager,
+    onSongPageShown: () => {
+      if (playbackController) {
+        playbackController.refreshLyricsScroll()
+      }
+    }
+  })
+}
+
+function handleShortcutAction(action) {
+  switch (action) {
+    case 'togglePlay':
+      playbackController?.togglePlayback({ silent: true })
+      break
+    case 'seekBackward':
+      playbackController?.seekBy(-SEEK_SECONDS)
+      break
+    case 'seekForward':
+      playbackController?.seekBy(SEEK_SECONDS)
+      break
+    case 'previousTrack':
+      playbackController?.playPreviousTrack()
+      break
+    case 'nextTrack':
+      playbackController?.playNextTrack()
+      break
+    case 'toggleLoop':
+      playbackController?.toggleLoopState()
+      break
+    case 'showHomePage':
+      showHomePage()
+      break
+    case 'showSongPage':
+      showSongPage()
+      break
+    case 'toggleTheme': {
+      const themeToggle = document.querySelector('[data-theme-toggle]')
+      if (themeToggle) themeToggle.click()
+      break
+    }
+    case 'openShortcuts':
+      openSettingsPanel('shortcuts')
+      break
+    case 'minimizeWindow':
+      if (window.electronAPI && window.electronAPI.minimizeWindow) {
+        window.electronAPI.minimizeWindow()
+      }
+      break
+    case 'clearPlaylist':
+      if (playbackController?.hasQueue()) {
+        playbackController.clearPlaylist()
+      }
+      break
+    default:
+      break
+  }
+}
+
+function setupEventBusBridge() {
+  eventBus.on('playback:queue.append', (payload) => {
+    const tracks = Array.isArray(payload?.tracks) ? payload.tracks : []
+    if (!tracks.length || !playbackController) return
+    playbackController.appendToPlaylist(tracks)
+  })
+
+  eventBus.on('playback:queue.replace', (payload) => {
+    const tracks = Array.isArray(payload?.tracks) ? payload.tracks : []
+    if (!tracks.length || !playbackController) return
+    playbackController.replaceCurrentQueueWithTracks(
+      tracks,
+      Number.isFinite(payload?.startIndex) ? payload.startIndex : 0,
+      payload?.options || {}
+    )
+  })
+
+  eventBus.on('playlist:saved.changed', (payload) => {
+    if (savedPlaylistManager?.refreshSavedPlaylists) {
+      savedPlaylistManager.refreshSavedPlaylists(payload?.playlistId || null)
+    }
+  })
+
+  eventBus.on('playback:home-cover.changed', (payload) => {
+    setHomeNowCover(payload || '')
+  })
+
+  eventBus.on('view:home.open', () => {
+    showHomePage()
+  })
+
+  eventBus.on('view:song.open', () => {
+    showSongPage()
+  })
+
+  eventBus.on('view:playlist.open', (payload) => {
+    openSavedPlaylistDetail(payload?.playlistId || '')
+  })
+
+  eventBus.on('toast:push', (payload) => {
+    if (toastManager) {
+      toastManager.pushToast(payload)
+    }
+  })
+
+  eventBus.on('shortcut:action', (payload) => {
+    handleShortcutAction(payload?.action || '')
+  })
+
+  eventBus.handle('playlist:ensure-by-name', async (payload) => {
+    return ensureSavedPlaylistByName(payload?.name || '', payload?.playlistKey || '')
+  })
+
+  eventBus.handle('playlist:add-track', async (payload) => {
+    await appendDownloadedTrackToSavedPlaylist(payload?.playlistId || '', payload?.track || null)
+    return true
+  })
+
+  eventBus.handle('playback:queue.collect-current-track-inputs', () => {
+    if (!playbackController) return []
+    return playbackController.collectCurrentQueueAsTrackInputs()
+  })
 }
 
 function setupPlayerControlListener() {
@@ -789,7 +810,10 @@ function setupPlayerControlListener() {
 }
 
 function initRenderer() {
+  setupViewManager()
   setupWindowEvents()
+  setupServices()
+  setupEventBusBridge()
   setupToastManager()
   setupPlaybackController()
   setupSavedPlaylistManager()

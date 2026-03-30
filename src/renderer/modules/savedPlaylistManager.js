@@ -5,10 +5,7 @@ export function createSavedPlaylistManager(options) {
     electronAPI,
     dom,
     promptForPlaylistName,
-    getCurrentQueueTrackInputs,
-    appendTracksToQueue,
-    replaceQueueWithTracks,
-    onRequestOpenPlaylist
+    eventBus
   } = options
 
   let savedState = { playlists: [], trackLibrary: {} }
@@ -17,6 +14,16 @@ export function createSavedPlaylistManager(options) {
   const trackCoverCache = new Map()
   let detailRenderToken = 0
   let lastRenderedPlaylistId = undefined
+
+  function emit(eventName, payload) {
+    if (!eventBus) return
+    eventBus.emit(eventName, payload)
+  }
+
+  async function request(eventName, payload) {
+    if (!eventBus) return undefined
+    return eventBus.request(eventName, payload)
+  }
 
   function getSelectedSavedPlaylist() {
     return savedState.playlists.find((item) => item.id === selectedSavedPlaylistId) || null
@@ -274,7 +281,11 @@ export function createSavedPlaylistManager(options) {
       })
 
       row.addEventListener('click', () => {
-        replaceQueueWithTracks(getQueueTracksForPlaylist(selected), index)
+        emit('playback:queue.replace', {
+          tracks: getQueueTracksForPlaylist(selected),
+          startIndex: index,
+          options: {}
+        })
       })
 
       fragment.appendChild(row)
@@ -324,9 +335,7 @@ export function createSavedPlaylistManager(options) {
       }
 
       await refreshSavedPlaylists(result.playlist.id)
-      if (typeof onRequestOpenPlaylist === 'function') {
-        onRequestOpenPlaylist(result.playlist.id)
-      }
+      emit('view:playlist.open', { playlistId: result.playlist.id })
     } catch {
       alert('创建歌单失败，请查看控制台日志')
     }
@@ -383,7 +392,7 @@ export function createSavedPlaylistManager(options) {
       return
     }
 
-    appendTracksToQueue(tracks)
+    emit('playback:queue.append', { tracks })
   }
 
   function playSelectedPlaylist() {
@@ -399,7 +408,12 @@ export function createSavedPlaylistManager(options) {
       return
     }
 
-    replaceQueueWithTracks(tracks, 0)
+    emit('playback:queue.replace', {
+      tracks,
+      startIndex: 0,
+      options: {}
+    })
+    emit('view:song.open')
   }
 
   async function addCurrentQueueToSavedPlaylist() {
@@ -409,9 +423,7 @@ export function createSavedPlaylistManager(options) {
       return
     }
 
-    const tracks = typeof getCurrentQueueTrackInputs === 'function'
-      ? getCurrentQueueTrackInputs()
-      : []
+    const tracks = (await request('playback:queue.collect-current-track-inputs')) || []
 
     if (!tracks.length) {
       alert('当前播放列表没有可添加的本地歌曲')

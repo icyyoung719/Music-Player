@@ -4,6 +4,7 @@
     storageKey,
     actionDefinitions,
     onAction,
+    eventBus,
     isEditableElement = defaultIsEditableElement,
     confirmDialog = (message) => window.confirm(message),
     closeOnConfirm = true
@@ -283,7 +284,14 @@
     }
 
     e.preventDefault()
-    onAction(action)
+    if (eventBus) {
+      eventBus.emit('shortcut:action', { action })
+      return
+    }
+
+    if (typeof onAction === 'function') {
+      onAction(action)
+    }
   }
 
   function bindDomEvents() {

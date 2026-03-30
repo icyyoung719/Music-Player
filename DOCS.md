@@ -39,6 +39,9 @@
 核心模块：
 
 - `src/renderer/modules/playbackController.js`
+- `src/renderer/modules/playbackUIController.js`
+- `src/renderer/modules/playbackFadeManager.js`
+- `src/renderer/modules/lazyQueueManager.js`
 - `src/renderer/modules/lyricManager.js`
 
 ### 1.2 快捷键与设置
@@ -140,13 +143,21 @@
 1. Main 初始化日志、播放列表处理器与网易云处理器。
 2. 应用就绪后创建主窗口并初始化托盘/媒体键壳层。
 3. Renderer 通过 `bootstrap.js` 装配 partials。
-4. `renderer.js` 初始化业务模块并连接回调。
+4. `renderer.js` 初始化业务模块，通过事件总线连接跨模块交互，并注入共享服务。
 
 ### 2.3 模块组织策略
 
 - `renderer.js` 保持编排层职责。
 - 功能细节放在 `src/renderer/modules/*.js`。
+- 跨模块通信与共享状态访问放在 `src/renderer/core/*.js`。
 - main 侧按能力拆分到 `src/main/modules/*`。
+
+渲染层核心模块：
+
+- `src/renderer/core/eventBus.js`：发布/订阅与 request/handle 模式
+- `src/renderer/core/viewManager.js`：页面与子视图切换、封面区域同步
+- `src/renderer/core/neteaseDatabaseService.js`：网易云查询/搜索/建议/日推数据访问
+- `src/renderer/core/downloadService.js`：下载任务状态汇聚与任务操作封装
 
 ## 3. 关键实现机制
 
@@ -197,6 +208,13 @@
 - 启动读取 `playlists.json`
 - 自动修正历史数据形状并迁移到 schema v2
 - 清理未被歌单引用的 trackLibrary 项
+
+### 3.7 渲染层事件与服务边界
+
+- 业务模块之间优先通过 event bus 通信，避免直接回调耦合
+- 下载任务状态由 `downloadService` 汇聚，模块通过订阅获取更新
+- 网易云只读数据访问优先经过 `neteaseDatabaseService`
+- `renderer.js` 负责装配，不承载具体业务细节
 
 ## 4. 数据与存储
 

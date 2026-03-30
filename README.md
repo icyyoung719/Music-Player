@@ -42,7 +42,8 @@
 - Preload (`src/preload/preload.js`)
   - 通过 `contextBridge` 暴露受控 API
 - Renderer (`src/renderer/**`)
-  - 页面装配、状态编排、交互逻辑
+  - 页面装配、事件编排、交互逻辑
+  - 通过 `src/renderer/core/` 统一跨模块事件与服务访问
 
 安全边界：
 
@@ -57,6 +58,7 @@
 - 渲染层壳：`src/renderer/index.html`
 - 渲染层启动：`src/renderer/bootstrap.js`
 - 渲染层编排：`src/renderer/renderer.js`
+- 渲染层核心：`src/renderer/core/*.js`
 - 功能模块：`src/renderer/modules/*.js`
 
 ## 数据与存储

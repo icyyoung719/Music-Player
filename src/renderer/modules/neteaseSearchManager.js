@@ -25,7 +25,14 @@ function formatDuration(ms) {
 }
 
 export function createNeteaseSearchManager(options) {
-  const { electronAPI, dom, onAppendDownloadedTrack } = options
+  const {
+    electronAPI,
+    neteaseDatabaseService,
+    downloadService,
+    dom,
+    eventBus,
+    onAppendDownloadedTrack
+  } = options
 
   if (!electronAPI || !dom?.keywordInput || !dom?.searchBtn || !dom?.resultList) {
     return { init() {} }
@@ -151,12 +158,16 @@ export function createNeteaseSearchManager(options) {
     setSearchStatus('正在搜索...')
     const token = ++state.requestToken
 
-    const response = await electronAPI.neteaseSearch({
+    const payload = {
       keywords: state.keywords,
       type: state.type,
       limit: state.limit,
       offset: state.offset
-    })
+    }
+
+    const response = neteaseDatabaseService
+      ? await neteaseDatabaseService.search(payload)
+      : await electronAPI.neteaseSearch(payload)
 
     if (token !== state.requestToken) {
       return
@@ -185,7 +196,9 @@ export function createNeteaseSearchManager(options) {
     }
 
     const token = ++state.requestToken
-    const response = await electronAPI.neteaseSearchSuggest({ keywords })
+    const response = neteaseDatabaseService
+      ? await neteaseDatabaseService.suggest({ keywords })
+      : await electronAPI.neteaseSearchSuggest({ keywords })
     if (token !== state.requestToken) {
       return
     }
@@ -204,6 +217,17 @@ export function createNeteaseSearchManager(options) {
     if (!autoQueueTaskIds.has(task.id)) return
 
     autoQueueTaskIds.delete(task.id)
+    if (task.filePath && eventBus) {
+      eventBus.emit('playback:queue.append', {
+        tracks: [{
+          path: task.filePath,
+          name: task.title || task.songId || '网易云下载',
+          file: null
+        }]
+      })
+      return
+    }
+
     if (typeof onAppendDownloadedTrack === 'function' && task.filePath) {
       onAppendDownloadedTrack({
         path: task.filePath,
@@ -220,11 +244,15 @@ export function createNeteaseSearchManager(options) {
     }
 
     setSearchStatus('正在创建歌曲播放任务...')
-    const res = await electronAPI.neteaseDownloadSongTask({
+    const payload = {
       songId: id,
       level: 'exhigh',
       mode: 'song-temp-queue-only'
-    })
+    }
+
+    const res = downloadService
+      ? await downloadService.createSongTask(payload)
+      : await electronAPI.neteaseDownloadSongTask(payload)
 
     if (!res?.ok || !res?.task?.id) {
       const msg = res?.message || res?.error || 'REQUEST_FAILED'
@@ -244,12 +272,16 @@ export function createNeteaseSearchManager(options) {
     }
 
     setSearchStatus('正在创建歌单播放任务...')
-    const res = await electronAPI.neteaseDownloadPlaylistById({
+    const payload = {
       playlistId: id,
       level: 'exhigh',
       mode: 'playlist-download-and-queue',
       duplicateStrategy: 'skip'
-    })
+    }
+
+    const res = downloadService
+      ? await downloadService.createPlaylistTasks(payload)
+      : await electronAPI.neteaseDownloadPlaylistById(payload)
 
     if (!res?.ok) {
       const msg = res?.message || res?.error || 'REQUEST_FAILED'
@@ -326,7 +358,11 @@ export function createNeteaseSearchManager(options) {
       }
     })
 
-    if (electronAPI.onNeteaseDownloadTaskUpdate) {
+    if (downloadService) {
+      downloadService.onTaskUpdate((task) => {
+        updateTask(task)
+      })
+    } else if (electronAPI.onNeteaseDownloadTaskUpdate) {
       electronAPI.onNeteaseDownloadTaskUpdate((task) => {
         updateTask(task)
       })

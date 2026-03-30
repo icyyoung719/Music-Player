@@ -7,24 +7,24 @@
   getCurrentTrackPath
 } from './trackUtils.js'
 import { createLyricManager } from './lyricManager.js'
+import { createPlaybackFadeManager } from './playbackFadeManager.js'
+import { createLazyQueueManager } from './lazyQueueManager.js'
+import { createPlaybackUIController } from './playbackUIController.js'
 
 const PREFETCH_BEFORE_SECONDS = 20
-const FADE_SETTINGS_STORAGE_KEY = 'musicPlayer.playbackFade.v1'
-const DEFAULT_FADE_SETTINGS = {
-  fadeInMs: 250,
-  fadeOutMs: 350
-}
 const SUPPORTED_AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.aac', '.ogg', '.wav', '.m4a', '.opus', '.wma'])
 
 export function createPlaybackController(options) {
   const {
     electronAPI,
     dom,
-    onShowHomePage,
-    onShowSongPage,
-    onSetHomeNowCover,
-    onSavedPlaylistChanged = null
+    eventBus
   } = options
+
+  function emit(eventName, payload) {
+    if (!eventBus) return
+    eventBus.emit(eventName, payload)
+  }
 
   const audio = new Audio()
   let playlist = []
@@ -33,14 +33,87 @@ export function createPlaybackController(options) {
   let isSeeking = false
   let previewSeekRatio = null
   let lyricManager = null
-  const lazyTaskIndexMap = new Map()
-  const lazyWaitersByIndex = new Map()
-  let fadeSettings = loadFadeSettings()
-  let fadeTimer = null
-  let fadeToken = 0
+  const fadeManager = createPlaybackFadeManager({ audio })
+  let fadeSettings = fadeManager.getSettings()
   let loadRequestId = 0
-  let isQueueOverlayOpen = false
   const metadataHydrationKeys = new Set()
+  const lazyQueueManager = createLazyQueueManager({
+    electronAPI,
+    getPlaylist: () => playlist,
+    getCurrentIndex: () => currentIndex,
+    onTrackReady: (index) => {
+      if (index === currentIndex) {
+        updatePlaylistUI()
+      }
+    }
+  })
+  const uiController = createPlaybackUIController({
+    dom,
+    electronAPI,
+    audio,
+    getPlaylist: () => playlist,
+    getCurrentIndex: () => currentIndex,
+    getTrackArtistText,
+    getTrackDurationText,
+    getTrackCoverDataUrl,
+    onHydrateTrack: (index, track) => {
+      hydrateTrackDisplayMetadata(index, track)
+    },
+    onSaveTrack: (index) => saveTrackToSavedPlaylist(index),
+    onRemoveTrack: (index) => removeTrack(index),
+    onLoadTrack: (index) => loadTrack(index),
+    onResetLyrics: () => {
+      if (lyricManager) lyricManager.setLyrics(null)
+    },
+    onHomeCoverChanged: (dataUrl) => {
+      emit('playback:home-cover.changed', dataUrl)
+    }
+  })
+
+  function setPlayButtonState(isPlaying) {
+    uiController.setPlayButtonState(isPlaying)
+  }
+
+  function setBottomNowPlaying(title, artist) {
+    uiController.setBottomNowPlaying(title, artist)
+  }
+
+  function setBottomNowPlayingCover(dataUrl) {
+    uiController.setBottomNowPlayingCover(dataUrl)
+  }
+
+  function openQueueOverlay() {
+    uiController.openQueueOverlay()
+  }
+
+  function closeQueueOverlay() {
+    uiController.closeQueueOverlay()
+  }
+
+  function toggleQueueOverlay() {
+    uiController.toggleQueueOverlay()
+  }
+
+  function reportPlayerState() {
+    uiController.reportPlayerState()
+  }
+
+  function resetProgress() {
+    uiController.resetProgress()
+  }
+
+  function updateProgressUIByRatio(ratio, currentTime) {
+    uiController.updateProgressUIByRatio(ratio, currentTime)
+  }
+
+  function resetTrackMeta() {
+    uiController.resetTrackMeta()
+  }
+
+  function updatePlaylistUI() {
+    uiController.updatePlaylistUI()
+    reportPlayerState()
+  }
 
   function getAudioExtFromPath(filePath) {
     const source = String(filePath || '')
@@ -183,184 +256,14 @@ export function createPlaybackController(options) {
     return tracks
   }
 
-  function clampFadeDuration(value, fallbackValue) {
-    if (!Number.isFinite(value)) return fallbackValue
-    return Math.max(0, Math.min(5000, Math.round(value)))
-  }
-
-  function sanitizeFadeSettings(input = {}) {
-    return {
-      fadeInMs: clampFadeDuration(Number(input.fadeInMs), DEFAULT_FADE_SETTINGS.fadeInMs),
-      fadeOutMs: clampFadeDuration(Number(input.fadeOutMs), DEFAULT_FADE_SETTINGS.fadeOutMs)
-    }
-  }
-
-  function loadFadeSettings() {
-    try {
-      const raw = localStorage.getItem(FADE_SETTINGS_STORAGE_KEY)
-      if (!raw) return { ...DEFAULT_FADE_SETTINGS }
-      const parsed = JSON.parse(raw)
-      return sanitizeFadeSettings(parsed || {})
-    } catch (err) {
-      console.warn('Failed to load fade settings:', err)
-      return { ...DEFAULT_FADE_SETTINGS }
-    }
-  }
-
-  function persistFadeSettings() {
-    try {
-      localStorage.setItem(FADE_SETTINGS_STORAGE_KEY, JSON.stringify(fadeSettings))
-    } catch (err) {
-      console.warn('Failed to save fade settings:', err)
-    }
-  }
-
   function stopFade(options = {}) {
-    const { resetVolume = false } = options
-    if (fadeTimer) {
-      clearInterval(fadeTimer)
-      fadeTimer = null
-    }
-    fadeToken += 1
-    if (resetVolume) {
-      audio.volume = 1
-    }
+    fadeManager.stopFade(options)
   }
 
   function runFadeTo(targetVolume, durationMs) {
-    const safeTarget = Math.max(0, Math.min(1, Number(targetVolume) || 0))
-    const safeDuration = Math.max(0, Number(durationMs) || 0)
-
-    stopFade()
-
-    if (safeDuration <= 0 || Math.abs(audio.volume - safeTarget) < 0.001) {
-      audio.volume = safeTarget
-      return Promise.resolve(true)
-    }
-
-    const localToken = fadeToken
-    const startVolume = audio.volume
-    const delta = safeTarget - startVolume
-    const startAt = Date.now()
-
-    return new Promise((resolve) => {
-      fadeTimer = setInterval(() => {
-        if (localToken !== fadeToken) {
-          resolve(false)
-          return
-        }
-
-        const elapsed = Date.now() - startAt
-        const progress = Math.max(0, Math.min(1, elapsed / safeDuration))
-        audio.volume = Math.max(0, Math.min(1, startVolume + delta * progress))
-
-        if (progress >= 1) {
-          clearInterval(fadeTimer)
-          fadeTimer = null
-          resolve(true)
-        }
-      }, 20)
-    })
+    return fadeManager.runFadeTo(targetVolume, durationMs)
   }
 
-  function setPlayButtonState(isPlaying) {
-    if (!dom.playBtn) return
-    dom.playBtn.textContent = isPlaying ? '⏸' : '▶'
-    dom.playBtn.title = isPlaying ? '暂停' : '播放'
-  }
-
-  function setBottomNowPlaying(title, artist) {
-    if (dom.bottomTrackTitleEl) dom.bottomTrackTitleEl.textContent = title || '\u00a0'
-    if (dom.bottomTrackArtistEl) dom.bottomTrackArtistEl.textContent = artist || '\u00a0'
-    if (dom.homeNowTitleEl) dom.homeNowTitleEl.textContent = title || 'Little Busters!'
-    if (dom.homeNowArtistEl) dom.homeNowArtistEl.textContent = artist || 'Rita / VISUAL ARTS'
-    if (dom.homeFeaturedTitleEl && title) dom.homeFeaturedTitleEl.textContent = title
-  }
-
-  function setBottomNowPlayingCover(coverDataUrl) {
-    if (!dom.bottomTrackCoverImgEl || !dom.bottomTrackCoverPlaceholderEl) return
-
-    if (coverDataUrl) {
-      dom.bottomTrackCoverImgEl.src = coverDataUrl
-      dom.bottomTrackCoverImgEl.style.display = 'block'
-      dom.bottomTrackCoverPlaceholderEl.style.display = 'none'
-      return
-    }
-
-    dom.bottomTrackCoverImgEl.src = ''
-    dom.bottomTrackCoverImgEl.style.display = 'none'
-    dom.bottomTrackCoverPlaceholderEl.style.display = 'inline'
-  }
-
-  function openQueueOverlay() {
-    if (!dom.queueOverlayEl) return
-    isQueueOverlayOpen = true
-    dom.queueOverlayEl.classList.add('visible')
-    dom.queueOverlayEl.setAttribute('aria-hidden', 'false')
-  }
-
-  function closeQueueOverlay() {
-    if (!dom.queueOverlayEl) return
-    isQueueOverlayOpen = false
-    dom.queueOverlayEl.classList.remove('visible')
-    dom.queueOverlayEl.setAttribute('aria-hidden', 'true')
-  }
-
-  function toggleQueueOverlay() {
-    if (isQueueOverlayOpen) {
-      closeQueueOverlay()
-      return
-    }
-    openQueueOverlay()
-  }
-
-  function reportPlayerState() {
-    if (!electronAPI || !electronAPI.reportPlayerState) return
-
-    const hasQueue = playlist.length > 0
-    const currentTrack = currentIndex >= 0 && currentIndex < playlist.length ? playlist[currentIndex] : null
-    const title = dom.trackTitle && dom.trackTitle.textContent ? dom.trackTitle.textContent : (currentTrack?.name || '')
-
-    electronAPI.reportPlayerState({
-      hasQueue,
-      isPlaying: hasQueue && !audio.paused,
-      title
-    })
-  }
-
-  function resetProgress() {
-    dom.progressBar.style.width = '0%'
-    dom.progressContainer.style.setProperty('--progress', '0%')
-    dom.currentTimeEl.textContent = '0:00'
-    dom.totalTimeEl.textContent = '0:00'
-  }
-
-  function updateProgressUIByRatio(ratio, currentTime) {
-    const safeRatio = Math.max(0, Math.min(1, ratio || 0))
-    const pct = safeRatio * 100
-    const pctText = pct + '%'
-    dom.progressBar.style.width = pctText
-    dom.progressContainer.style.setProperty('--progress', pctText)
-
-    if (Number.isFinite(currentTime)) {
-      dom.currentTimeEl.textContent = formatTime(currentTime)
-    }
-  }
-
-  function resetTrackMeta() {
-    dom.trackTitle.textContent = '未选择歌曲'
-    dom.trackArtist.textContent = ''
-    dom.trackAlbum.textContent = ''
-    setBottomNowPlaying('', '')
-    setBottomNowPlayingCover('')
-    if (lyricManager) {
-      lyricManager.setLyrics(null)
-    }
-    onSetHomeNowCover(null)
-    dom.coverImg.style.display = 'none'
-    dom.coverImg.src = ''
-    dom.coverPlaceholder.style.display = 'flex'
-  }
 
   function getTrackArtistText(track) {
     const artist = track?.metadataCache?.artist
@@ -446,9 +349,7 @@ export function createPlaybackController(options) {
       return
     }
 
-    if (typeof onSavedPlaylistChanged === 'function') {
-      onSavedPlaylistChanged(playlistId)
-    }
+    emit('playlist:saved.changed', { playlistId })
 
     alert('已添加到歌单')
   }
@@ -479,9 +380,7 @@ export function createPlaybackController(options) {
       return
     }
 
-    if (typeof onSavedPlaylistChanged === 'function') {
-      onSavedPlaylistChanged(playlistId)
-    }
+    emit('playlist:saved.changed', { playlistId })
 
     alert(`已收藏到歌单：${created.playlist?.name || '未命名歌单'}`)
   }
@@ -516,267 +415,17 @@ export function createPlaybackController(options) {
     }
   }
 
-  function updatePlaylistUI() {
-    dom.playlistEl.innerHTML = ''
-    if (playlist.length === 0) {
-      const empty = document.createElement('div')
-      empty.className = 'playlist-empty'
-      empty.textContent = '拖入或添加歌曲'
-      dom.playlistEl.appendChild(empty)
-      return
-    }
-
-    playlist.forEach((track, index) => {
-      hydrateTrackDisplayMetadata(index, track)
-
-      const item = document.createElement('div')
-      item.className = 'playlist-item' + (index === currentIndex ? ' active' : '')
-
-      const idxSpan = document.createElement('span')
-      idxSpan.className = 'playlist-index'
-      idxSpan.textContent = index + 1
-
-      const cover = document.createElement('span')
-      cover.className = 'playlist-cover'
-      const coverDataUrl = getTrackCoverDataUrl(track)
-      if (coverDataUrl) {
-        const coverImg = document.createElement('img')
-        coverImg.src = coverDataUrl
-        coverImg.alt = '歌曲封面'
-        cover.appendChild(coverImg)
-      } else {
-        cover.textContent = '♪'
-      }
-
-      const body = document.createElement('div')
-      body.className = 'playlist-item-body'
-
-      const titleSpan = document.createElement('span')
-      titleSpan.className = 'playlist-item-title'
-      if (track?.lazyNetease?.songId && !track.path && !track.file) {
-        titleSpan.textContent = `${track.name} · 云端`
-      } else {
-        titleSpan.textContent = track.name
-      }
-
-      const metaSpan = document.createElement('span')
-      metaSpan.className = 'playlist-item-meta'
-      metaSpan.textContent = `${getTrackArtistText(track)} · ${getTrackDurationText(track)}`
-
-      body.appendChild(titleSpan)
-      body.appendChild(metaSpan)
-
-      const actions = document.createElement('span')
-      actions.className = 'playlist-item-actions'
-
-      const saveBtn = document.createElement('button')
-      saveBtn.className = 'playlist-item-action'
-      saveBtn.textContent = '添加到歌单'
-      saveBtn.title = '添加到某个歌单'
-      saveBtn.addEventListener('click', async (e) => {
-        e.stopPropagation()
-        await saveTrackToSavedPlaylist(index)
-      })
-
-      const delBtn = document.createElement('button')
-      delBtn.className = 'playlist-item-action playlist-delete-btn'
-      delBtn.textContent = '移除'
-      delBtn.title = '从列表移除'
-      delBtn.addEventListener('click', (e) => {
-        e.stopPropagation()
-        removeTrack(index)
-      })
-
-      actions.appendChild(saveBtn)
-      actions.appendChild(delBtn)
-
-      item.appendChild(idxSpan)
-      item.appendChild(cover)
-      item.appendChild(body)
-      item.appendChild(actions)
-      item.addEventListener('click', () => loadTrack(index))
-      dom.playlistEl.appendChild(item)
-    })
-
-    const activeItem = dom.playlistEl.querySelector('.playlist-item.active')
-    if (activeItem) activeItem.scrollIntoView({ block: 'nearest' })
-    reportPlayerState()
-  }
-
-  function isLazyNeteaseTrack(track) {
-    return Boolean(track?.lazyNetease?.songId)
-  }
-
-  function markLazyTrackState(index, nextState, taskId = '') {
-    const track = playlist[index]
-    if (!isLazyNeteaseTrack(track)) return
-
-    track.lazyNetease.state = String(nextState || track.lazyNetease.state || 'idle')
-    track.lazyNetease.taskId = taskId ? String(taskId) : String(track.lazyNetease.taskId || '')
-  }
-
-  function resolveLazyWaiters(index, ok) {
-    const waiters = lazyWaitersByIndex.get(index)
-    if (!waiters || !waiters.length) {
-      lazyWaitersByIndex.delete(index)
-      return
-    }
-
-    for (const waiter of waiters) {
-      try {
-        waiter(Boolean(ok))
-      } catch {
-        // Ignore waiter errors.
-      }
-    }
-
-    lazyWaitersByIndex.delete(index)
-  }
-
-  function waitForLazyTrackReady(index, timeoutMs = 60000) {
-    return new Promise((resolve) => {
-      const timer = setTimeout(() => {
-        resolve(false)
-      }, timeoutMs)
-
-      const wrappedResolve = (ok) => {
-        clearTimeout(timer)
-        resolve(Boolean(ok))
-      }
-
-      const waiters = lazyWaitersByIndex.get(index) || []
-      waiters.push(wrappedResolve)
-      lazyWaitersByIndex.set(index, waiters)
-    })
-  }
-
-  function buildLazySongTaskPayload(track) {
-    const source = track?.lazyNetease || {}
-    const level = String(source.level || 'exhigh')
-    const safeName = String(source.title || track?.name || source.songId || 'netease-track')
-      .replace(/[\\/:*?"<>|]/g, '_')
-
-    return {
-      songId: String(source.songId || ''),
-      level: String(source.level || 'exhigh'),
-      mode: 'song-temp-queue-only',
-      silentToast: true,
-      title: String(source.title || track?.name || ''),
-      fileName: `${safeName || source.songId}-${level}`
-    }
-  }
-
-  function applyLazyResolvedTask(index, task) {
-    const track = playlist[index]
-    if (!track || !isLazyNeteaseTrack(track)) return false
-    if (!task?.filePath) return false
-
-    track.path = task.filePath
-    track.file = null
-    markLazyTrackState(index, 'succeeded', task.id || '')
-
-    if (task.songMetadata && typeof task.songMetadata === 'object') {
-      track.metadataCache = {
-        title: task.songMetadata.title || track.name,
-        artist: task.songMetadata.artist || track.metadataCache?.artist || null,
-        album: task.songMetadata.album || track.metadataCache?.album || null,
-        duration: track.metadataCache?.duration || null
-      }
-    }
-
-    return true
-  }
 
   async function ensureTrackReadyForPlayback(index, options = {}) {
-    const track = playlist[index]
-    if (!track) return false
-    if (!isLazyNeteaseTrack(track)) {
-      return Boolean(track.path || track.file)
-    }
-
-    if (track.path || track.file) {
-      markLazyTrackState(index, 'succeeded', track.lazyNetease.taskId || '')
-      return true
-    }
-
-    if (!electronAPI?.neteaseDownloadSongTask) return false
-
-    const waitForReady = options.waitForReady !== false
-    if (track.lazyNetease.state === 'downloading') {
-      if (!waitForReady) return false
-      return waitForLazyTrackReady(index)
-    }
-
-    if (track.lazyNetease.state === 'failed' && !waitForReady) {
-      return false
-    }
-
-    markLazyTrackState(index, 'downloading')
-    const taskRes = await electronAPI.neteaseDownloadSongTask(buildLazySongTaskPayload(track))
-    if (!taskRes?.ok || !taskRes?.task?.id) {
-      markLazyTrackState(index, 'failed')
-      resolveLazyWaiters(index, false)
-      return false
-    }
-
-    const task = taskRes.task
-    markLazyTrackState(index, task.status === 'failed' ? 'failed' : 'downloading', task.id)
-    lazyTaskIndexMap.set(task.id, index)
-
-    if (task.status === 'succeeded' || task.status === 'skipped') {
-      const ok = applyLazyResolvedTask(index, task)
-      lazyTaskIndexMap.delete(task.id)
-      resolveLazyWaiters(index, ok)
-      return ok
-    }
-
-    if (!waitForReady) {
-      return false
-    }
-
-    return waitForLazyTrackReady(index)
+    return lazyQueueManager.ensureTrackReadyForPlayback(index, options)
   }
 
   function maybePrefetchNextLazyTrack() {
-    const nextIndex = currentIndex + 1
-    if (nextIndex < 0 || nextIndex >= playlist.length) return
-    const nextTrack = playlist[nextIndex]
-    if (!isLazyNeteaseTrack(nextTrack)) return
-    if (nextTrack.path || nextTrack.file) return
-    if (nextTrack.lazyNetease.state === 'downloading' || nextTrack.lazyNetease.state === 'succeeded') return
-
-    ensureTrackReadyForPlayback(nextIndex, { waitForReady: false })
-      .catch(() => {})
+    lazyQueueManager.maybePrefetchNextLazyTrack()
   }
 
   function handleLazyDownloadTaskUpdate(task) {
-    const taskId = String(task?.id || '')
-    if (!taskId) return
-    if (!lazyTaskIndexMap.has(taskId)) return
-
-    const index = lazyTaskIndexMap.get(taskId)
-    const track = playlist[index]
-    if (!track || !isLazyNeteaseTrack(track)) {
-      lazyTaskIndexMap.delete(taskId)
-      resolveLazyWaiters(index, false)
-      return
-    }
-
-    if (task.status === 'succeeded' || task.status === 'skipped') {
-      const ok = applyLazyResolvedTask(index, task)
-      lazyTaskIndexMap.delete(taskId)
-      resolveLazyWaiters(index, ok)
-      if (index === currentIndex) {
-        updatePlaylistUI()
-      }
-      return
-    }
-
-    if (task.status === 'failed' || task.status === 'canceled') {
-      markLazyTrackState(index, 'failed', taskId)
-      lazyTaskIndexMap.delete(taskId)
-      resolveLazyWaiters(index, false)
-    }
+    lazyQueueManager.handleLazyDownloadTaskUpdate(task)
   }
 
   async function loadTrack(index) {
@@ -795,13 +444,13 @@ export function createPlaybackController(options) {
       dom.coverImg.style.display = 'block'
       dom.coverPlaceholder.style.display = 'none'
       setBottomNowPlayingCover(nextCover)
-      onSetHomeNowCover(nextCover)
+      emit('playback:home-cover.changed', nextCover)
     } else {
       dom.coverImg.style.display = 'none'
       dom.coverImg.src = ''
       dom.coverPlaceholder.style.display = 'flex'
       setBottomNowPlayingCover('')
-      onSetHomeNowCover(null)
+      emit('playback:home-cover.changed', null)
     }
     resetProgress()
     updatePlaylistUI()
@@ -864,10 +513,10 @@ export function createPlaybackController(options) {
           dom.coverImg.style.display = 'block'
           dom.coverPlaceholder.style.display = 'none'
           setBottomNowPlayingCover(meta.coverDataUrl)
-          onSetHomeNowCover(meta.coverDataUrl)
+          emit('playback:home-cover.changed', meta.coverDataUrl)
         } else {
           setBottomNowPlayingCover('')
-          onSetHomeNowCover(null)
+          emit('playback:home-cover.changed', null)
         }
 
         // Set Lyrics
@@ -938,8 +587,7 @@ export function createPlaybackController(options) {
   function setQueueTracks(nextTracks, startIndex = 0) {
     loadRequestId += 1
     playlist = Array.isArray(nextTracks) ? nextTracks.slice() : []
-    lazyTaskIndexMap.clear()
-    lazyWaitersByIndex.clear()
+    lazyQueueManager.reset()
     currentIndex = -1
     stopFade({ resetVolume: true })
     audio.pause()
@@ -959,7 +607,7 @@ export function createPlaybackController(options) {
   }
 
   function removeTrack(index) {
-    resolveLazyWaiters(index, false)
+    lazyQueueManager.removeTrack(index)
 
     if (index === currentIndex) {
       loadRequestId += 1
@@ -990,10 +638,7 @@ export function createPlaybackController(options) {
 
   function clearPlaylist() {
     loadRequestId += 1
-    for (const index of Array.from(lazyWaitersByIndex.keys())) {
-      resolveLazyWaiters(index, false)
-    }
-    lazyTaskIndexMap.clear()
+    lazyQueueManager.reset()
     playlist = []
     currentIndex = -1
     stopFade({ resetVolume: true })
@@ -1220,7 +865,7 @@ export function createPlaybackController(options) {
 
     document.addEventListener('keydown', (event) => {
       if (event.key !== 'Escape') return
-      if (!isQueueOverlayOpen) return
+      if (!uiController.getQueueOverlayOpenState()) return
       event.preventDefault()
       closeQueueOverlay()
     })
@@ -1235,8 +880,16 @@ export function createPlaybackController(options) {
     dom.nextBtn.addEventListener('click', playNextTrack)
     dom.loopBtn.addEventListener('click', toggleLoopState)
 
-    if (dom.songBackBtn) dom.songBackBtn.addEventListener('click', onShowHomePage)
-    if (dom.homeGoSongBtn) dom.homeGoSongBtn.addEventListener('click', onShowSongPage)
+    if (dom.songBackBtn) {
+      dom.songBackBtn.addEventListener('click', () => {
+        emit('view:home.open')
+      })
+    }
+    if (dom.homeGoSongBtn) {
+      dom.homeGoSongBtn.addEventListener('click', () => {
+        emit('view:song.open')
+      })
+    }
   }
 
   function bindAudioEvents() {
@@ -1352,8 +1005,7 @@ export function createPlaybackController(options) {
   }
 
   function updateFadeSettings(nextSettings = {}) {
-    fadeSettings = sanitizeFadeSettings({ ...fadeSettings, ...nextSettings })
-    persistFadeSettings()
+    fadeSettings = fadeManager.updateSettings(nextSettings)
     return { ...fadeSettings }
   }
 

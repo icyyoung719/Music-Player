@@ -25,14 +25,13 @@ function normalizeId(raw) {
 export function createDownloadManager(options) {
   const {
     electronAPI,
+    neteaseDatabaseService,
+    downloadService,
     dom,
-    onAppendTrack,
-    onPushToast,
-    onEnsureSavedPlaylist,
-    onAppendTrackToSavedPlaylist
+    eventBus
   } = options || {}
 
-  if (!electronAPI || !dom) {
+  if (!dom) {
     return { init() {} }
   }
 
@@ -43,6 +42,16 @@ export function createDownloadManager(options) {
 
   let resolvedSong = null
   let resolvedPlaylist = null
+
+  function emit(eventName, payload) {
+    if (!eventBus) return
+    eventBus.emit(eventName, payload)
+  }
+
+  async function request(eventName, payload) {
+    if (!eventBus) return undefined
+    return eventBus.request(eventName, payload)
+  }
 
   function escapeHtml(value) {
     return String(value || '')
@@ -227,7 +236,9 @@ export function createDownloadManager(options) {
     }
 
     setSongPreview('正在查询歌曲...')
-    const res = await electronAPI.neteaseResolveId({ type: 'song', id: songId })
+    const res = neteaseDatabaseService
+      ? await neteaseDatabaseService.resolveById('song', songId)
+      : await electronAPI.neteaseResolveId({ type: 'song', id: songId })
     if (!res?.ok || !res.item) {
       resolvedSong = null
       setSongPreview('歌曲查询失败，可能 ID 不存在或请求受限。', true)
@@ -246,7 +257,9 @@ export function createDownloadManager(options) {
     }
 
     setPlaylistPreview('正在查询歌单...')
-    const res = await electronAPI.neteaseResolveId({ type: 'playlist', id: playlistId })
+    const res = neteaseDatabaseService
+      ? await neteaseDatabaseService.resolveById('playlist', playlistId)
+      : await electronAPI.neteaseResolveId({ type: 'playlist', id: playlistId })
     if (!res?.ok || !res.item) {
       resolvedPlaylist = null
       setPlaylistPreview('歌单查询失败，可能 ID 不存在或请求受限。', true)
@@ -267,29 +280,37 @@ export function createDownloadManager(options) {
   async function handlePostTaskHooks(task) {
     if (task.status !== 'succeeded') return
 
-    if (task.addToQueue && !handledQueueTaskIds.has(task.id) && typeof onAppendTrack === 'function') {
+    if (task.addToQueue && !handledQueueTaskIds.has(task.id)) {
       handledQueueTaskIds.add(task.id)
-      onAppendTrack({
-        path: task.filePath,
-        name: task.title || task.songId || '网易云下载'
+      emit('playback:queue.append', {
+        tracks: [{
+          path: task.filePath,
+          name: task.title || task.songId || '网易云下载',
+          file: null
+        }]
       })
     }
 
     const savePlaylistName = String(task.savePlaylistName || '').trim()
     if (!savePlaylistName || handledSaveTaskIds.has(task.id)) return
-    if (typeof onEnsureSavedPlaylist !== 'function' || typeof onAppendTrackToSavedPlaylist !== 'function') return
 
     handledSaveTaskIds.add(task.id)
     const playlistKey = String(task.savePlaylistBatchKey || savePlaylistName).trim()
-    const playlistId = await onEnsureSavedPlaylist(savePlaylistName, playlistKey)
+    const playlistId = await request('playlist:ensure-by-name', {
+      name: savePlaylistName,
+      playlistKey
+    })
     if (!playlistId) return
 
-    await onAppendTrackToSavedPlaylist(playlistId, {
-      path: task.filePath,
-      title: task.songMetadata?.title || task.title || '网易云下载',
-      artist: task.songMetadata?.artist || '',
-      album: task.songMetadata?.album || '',
-      duration: null
+    await request('playlist:add-track', {
+      playlistId,
+      track: {
+        path: task.filePath,
+        title: task.songMetadata?.title || task.title || '网易云下载',
+        artist: task.songMetadata?.artist || '',
+        album: task.songMetadata?.album || '',
+        duration: null
+      }
     })
   }
 
@@ -339,7 +360,9 @@ export function createDownloadManager(options) {
   }
 
   async function loadTasks() {
-    const res = await electronAPI.neteaseDownloadTaskList()
+    const res = downloadService
+      ? await downloadService.loadTasks()
+      : await electronAPI.neteaseDownloadTaskList()
     if (!res?.ok || !Array.isArray(res.tasks)) return
 
     taskStateMap.clear()
@@ -359,14 +382,18 @@ export function createDownloadManager(options) {
 
     persistQuality()
     const level = getCurrentQuality()
-    const res = await electronAPI.neteaseDownloadSongTask({
+    const payload = {
       songId,
       level,
       mode,
       title: resolvedSong?.name || `歌曲 ${songId}`,
       fileName: `${songId}-${level}`,
       duplicateStrategy: 'skip'
-    })
+    }
+
+    const res = downloadService
+      ? await downloadService.createSongTask(payload)
+      : await electronAPI.neteaseDownloadSongTask(payload)
 
     if (!res?.ok || !res.task) {
       setSongPreview(`创建下载任务失败: ${res?.message || res?.error || 'UNKNOWN'}`, true)
@@ -386,12 +413,16 @@ export function createDownloadManager(options) {
 
     persistQuality()
     const level = getCurrentQuality()
-    const res = await electronAPI.neteaseDownloadPlaylistById({
+    const payload = {
       playlistId,
       level,
       mode,
       duplicateStrategy: 'skip'
-    })
+    }
+
+    const res = downloadService
+      ? await downloadService.createPlaylistTasks(payload)
+      : await electronAPI.neteaseDownloadPlaylistById(payload)
 
     if (!res?.ok) {
       setPlaylistPreview(`歌单下载任务创建失败: ${res?.message || res?.error || 'UNKNOWN'}`, true)
@@ -409,31 +440,33 @@ export function createDownloadManager(options) {
 
   async function cancelTask(taskId) {
     if (!taskId) return
-    const res = await electronAPI.neteaseDownloadTaskCancel({ id: taskId })
+    const res = downloadService
+      ? await downloadService.cancelTask(taskId)
+      : await electronAPI.neteaseDownloadTaskCancel({ id: taskId })
     if (res?.ok && res.task) {
       updateTask(res.task)
     }
   }
 
   async function openDir(dirType) {
-    const res = await electronAPI.neteaseOpenDownloadDir({ dirType })
-    if (!res?.ok && typeof onPushToast === 'function') {
-      onPushToast({ level: 'error', message: `打开目录失败: ${res?.message || res?.error || 'UNKNOWN'}` })
+    const res = downloadService
+      ? await downloadService.openDir(dirType)
+      : await electronAPI.neteaseOpenDownloadDir({ dirType })
+    if (!res?.ok) {
+      emit('toast:push', { level: 'error', message: `打开目录失败: ${res?.message || res?.error || 'UNKNOWN'}` })
     }
   }
 
   async function clearTemp() {
-    const res = await electronAPI.neteaseClearTempDownloads()
+    const res = downloadService
+      ? await downloadService.clearTemp()
+      : await electronAPI.neteaseClearTempDownloads()
     if (!res?.ok) {
-      if (typeof onPushToast === 'function') {
-        onPushToast({ level: 'error', message: `清理缓存失败: ${res?.message || res?.error || 'UNKNOWN'}` })
-      }
+      emit('toast:push', { level: 'error', message: `清理缓存失败: ${res?.message || res?.error || 'UNKNOWN'}` })
       return
     }
 
-    if (typeof onPushToast === 'function') {
-      onPushToast({ level: 'info', message: `已清理缓存歌曲 ${res.removedFiles || 0} 首` })
-    }
+    emit('toast:push', { level: 'info', message: `已清理缓存歌曲 ${res.removedFiles || 0} 首` })
   }
 
   function bindEvents() {
@@ -486,7 +519,11 @@ export function createDownloadManager(options) {
     bindEvents()
     loadTasks()
 
-    if (electronAPI.onNeteaseDownloadTaskUpdate) {
+    if (downloadService) {
+      downloadService.onTaskUpdate((task) => {
+        updateTask(task)
+      })
+    } else if (electronAPI?.onNeteaseDownloadTaskUpdate) {
       electronAPI.onNeteaseDownloadTaskUpdate((task) => {
         updateTask(task)
       })

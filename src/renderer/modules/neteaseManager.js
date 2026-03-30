@@ -1,5 +1,12 @@
 export function createNeteaseManager(options) {
-  const { electronAPI, dom, onAppendDownloadedTrack } = options
+  const {
+    electronAPI,
+    neteaseDatabaseService,
+    downloadService,
+    dom,
+    eventBus,
+    onAppendDownloadedTrack
+  } = options
 
   if (!dom || !dom.input || !dom.result || !dom.searchBtn || !dom.openBtn) {
     return { init() {} }
@@ -410,20 +417,32 @@ export function createNeteaseManager(options) {
     if (
       task.status === 'succeeded' &&
       autoQueueTaskIds.has(task.id) &&
-      typeof onAppendDownloadedTrack === 'function'
+      task.filePath
     ) {
       autoQueueTaskIds.delete(task.id)
-      onAppendDownloadedTrack({
-        path: task.filePath,
-        name: task.title || task.songId || '网易云下载'
-      })
+      if (eventBus) {
+        eventBus.emit('playback:queue.append', {
+          tracks: [{
+            path: task.filePath,
+            name: task.title || task.songId || '网易云下载',
+            file: null
+          }]
+        })
+      } else if (typeof onAppendDownloadedTrack === 'function') {
+        onAppendDownloadedTrack({
+          path: task.filePath,
+          name: task.title || task.songId || '网易云下载'
+        })
+      }
+
       setResult(`下载并已加入当前列表: ${task.filePath}`)
     }
   }
 
   async function loadTasks() {
-    if (!electronAPI || !electronAPI.neteaseDownloadTaskList) return
-    const res = await electronAPI.neteaseDownloadTaskList()
+    const res = downloadService
+      ? await downloadService.loadTasks()
+      : (electronAPI?.neteaseDownloadTaskList ? await electronAPI.neteaseDownloadTaskList() : null)
     if (!res || !res.ok || !Array.isArray(res.tasks)) return
 
     taskStateMap.clear()
@@ -434,7 +453,7 @@ export function createNeteaseManager(options) {
   }
 
   async function createSongIdDownloadTask(autoQueue) {
-    if (!electronAPI || !electronAPI.neteaseDownloadBySongId || !dom.songIdDownloadInput) return
+    if (!dom.songIdDownloadInput) return
 
     const songId = normalizeId(dom.songIdDownloadInput.value)
     const level = dom.downloadLevelSelect ? dom.downloadLevelSelect.value : 'exhigh'
@@ -444,12 +463,16 @@ export function createNeteaseManager(options) {
     }
 
     setResult('正在创建下载任务...')
-    const res = await electronAPI.neteaseDownloadBySongId({
+    const payload = {
       songId,
       level,
       title: lastResolved?.item?.name || `歌曲 ${songId}`,
       fileName: `${songId}-${level}`
-    })
+    }
+
+    const res = downloadService
+      ? await downloadService.createSongTaskById(payload)
+      : await electronAPI.neteaseDownloadBySongId(payload)
 
     if (!res || !res.ok || !res.task) {
       const msg = res?.message || res?.error || 'DOWNLOAD_CREATE_FAILED'
@@ -473,7 +496,7 @@ export function createNeteaseManager(options) {
   }
 
   async function resolve() {
-    if (!electronAPI || !electronAPI.neteaseResolveId) {
+    if (!neteaseDatabaseService && (!electronAPI || !electronAPI.neteaseResolveId)) {
       setResult('当前环境不支持网易云查询。', true)
       return
     }
@@ -486,7 +509,9 @@ export function createNeteaseManager(options) {
     }
 
     setResult('正在查询...')
-    const res = await electronAPI.neteaseResolveId({ type, id })
+    const res = neteaseDatabaseService
+      ? await neteaseDatabaseService.resolveById(type, id)
+      : await electronAPI.neteaseResolveId({ type, id })
     if (!res || !res.ok) {
       setResult('查询失败：可能是 ID 不存在、接口不可用或请求受限。', true)
       lastResolved = null
@@ -553,8 +578,10 @@ export function createNeteaseManager(options) {
   }
 
   async function cancelTask(taskId) {
-    if (!taskId || !electronAPI || !electronAPI.neteaseDownloadTaskCancel) return
-    const res = await electronAPI.neteaseDownloadTaskCancel({ id: taskId })
+    if (!taskId) return
+    const res = downloadService
+      ? await downloadService.cancelTask(taskId)
+      : (electronAPI?.neteaseDownloadTaskCancel ? await electronAPI.neteaseDownloadTaskCancel({ id: taskId }) : null)
     if (!res || !res.ok || !res.task) {
       setResult('取消任务失败。', true)
       return
@@ -662,7 +689,11 @@ export function createNeteaseManager(options) {
       })
     }
 
-    if (electronAPI && electronAPI.onNeteaseDownloadTaskUpdate) {
+    if (downloadService) {
+      downloadService.onTaskUpdate((task) => {
+        updateTask(task)
+      })
+    } else if (electronAPI && electronAPI.onNeteaseDownloadTaskUpdate) {
       electronAPI.onNeteaseDownloadTaskUpdate((task) => {
         updateTask(task)
       })
