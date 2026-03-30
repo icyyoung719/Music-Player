@@ -7,6 +7,7 @@
 		- [1.5 网易云下载与任务系统](#15-网易云下载与任务系统)
 		- [1.6 每日推荐](#16-每日推荐)
 		- [1.7 桌面壳层能力](#17-桌面壳层能力)
+		- [1.8 日志可视化工具（独立）](#18-日志可视化工具独立)
 	- [2. 主体架构](#2-主体架构)
 		- [2.1 分层与职责](#21-分层与职责)
 		- [2.2 启动流程](#22-启动流程)
@@ -18,6 +19,7 @@
 		- [3.4 懒下载播放（Lazy NetEase Queue）](#34-懒下载播放lazy-netease-queue)
 		- [3.5 元数据、歌词、封面写入](#35-元数据歌词封面写入)
 		- [3.6 歌单 schema 兼容迁移](#36-歌单-schema-兼容迁移)
+		- [3.7 独立日志可视化器实现](#37-独立日志可视化器实现)
 	- [4. 数据与存储](#4-数据与存储)
 	- [5. UI 结构与页面装配](#5-ui-结构与页面装配)
 	- [6. 维护约定（以后改功能时必须同步）](#6-维护约定以后改功能时必须同步)
@@ -124,6 +126,14 @@
 核心实现位置：
 
 - [src/main/modules/playerShell.js](src/main/modules/playerShell.js)
+
+### 1.8 日志可视化工具（独立）
+
+- 提供独立的小工具页面查看 `program.log` 与 `network.log`。
+- 默认读取 Electron userData 下 `logs` 目录。
+- 支持 program/network 关键词过滤。
+- network 额外支持 method/status 过滤与错误高亮。
+- 点击日志可查看完整 JSON 详情，方便排查接口和运行问题。
 
 ## 2. 主体架构
 
@@ -243,6 +253,19 @@ playlistHandlers 负责：
 关键代码：
 
 - [src/main/modules/playlistHandlers.js](src/main/modules/playlistHandlers.js)
+
+### 3.7 独立日志可视化器实现
+
+日志可视化器采用独立 Node HTTP 服务 + 本地静态页面：
+
+- 服务端负责读取并解析 JSON Lines（坏行自动跳过）。
+- 暴露 `/api/meta` 与 `/api/logs` 两个接口。
+- `/api/logs` 支持：
+	- `type=program|network`
+	- `q` 关键词过滤
+	- `method`（仅 network）
+	- `status`（仅 network）
+- 前端通过标签页切换 program/network，并渲染列表与详情。
 
 ## 4. 数据与存储
 

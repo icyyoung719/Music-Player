@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>日志可视化工具</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div>
+          <h1>日志可视化工具</h1>
+          <p id="sourceInfo" class="muted">正在加载日志目录...</p>
+        </div>
+        <div class="actions">
+          <button id="refreshButton" class="btn">刷新</button>
+        </div>
+      </header>
+
+      <section class="tabs">
+        <button data-tab="program" class="tab active">program.log</button>
+        <button data-tab="network" class="tab">network.log</button>
+      </section>
+
+      <section class="filters">
+        <label class="field">
+          <span>关键词</span>
+          <input id="keywordInput" type="text" placeholder="source / event / url / error ..." />
+        </label>
+
+        <label class="field network-only" id="methodField">
+          <span>Method</span>
+          <select id="methodSelect">
+            <option value="ALL">ALL</option>
+          </select>
+        </label>
+
+        <label class="field network-only" id="statusField">
+          <span>Status</span>
+          <select id="statusSelect">
+            <option value="ALL">ALL</option>
+            <option value="2xx">2xx</option>
+            <option value="3xx">3xx</option>
+            <option value="4xx">4xx</option>
+            <option value="5xx">5xx</option>
+            <option value="200">200</option>
+            <option value="401">401</option>
+            <option value="403">403</option>
+            <option value="404">404</option>
+            <option value="500">500</option>
+          </select>
+        </label>
+      </section>
+
+      <section class="stats" id="statsBar">等待加载...</section>
+      <section class="error-banner hidden" id="errorBanner"></section>
+
+      <main class="content">
+        <section class="list-panel">
+          <div id="listHeader" class="list-header"></div>
+          <div id="logList" class="log-list"></div>
+        </section>
+
+        <section class="detail-panel">
+          <h2>详情</h2>
+          <div id="detailSummary" class="detail-summary muted">点击左侧日志查看详情</div>
+          <pre id="detailJson" class="detail-json">{}</pre>
+        </section>
+      </main>
+    </div>
+
+    <script src="./app.js"></script>
+  </body>
+</html>

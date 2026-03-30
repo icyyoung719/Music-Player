@@ -60,6 +60,9 @@
   - 在保留 `id/name/trackIds` 的同时，增加可选字段：`source/platform/platformPlaylistId/creator/coverUrl/updateTime/description/tags`
   - 启动时自动兼容迁移旧版本数据
 - 基础 IPC 示例（渲染进程通知主进程播放动作）
+- 独立日志可视化工具（program.log / network.log）
+  - 运行 `npm run logviz` 启动本地页面
+  - 支持关键词过滤、network 的 method/status 过滤、错误高亮与详情查看
 
 ## 依赖
 
@@ -80,10 +83,16 @@
 为了便于排查网易云接口通信与程序关键行为，主进程已接入文件日志（不依赖终端输出）。
 
 - 日志目录：`app.getPath('userData')/logs`
-- 文件命名：按天切分
-  - `program-YYYY-MM-DD.log`：程序日志
-  - `network-YYYY-MM-DD.log`：网络日志
+- 文件命名：固定文件
+  - `program.log`：程序日志
+  - `network.log`：网络日志
 - 日志格式：每行一条 JSON（JSON Lines）
+
+### 日志可视化工具（独立）
+
+- 启动命令：`npm run logviz`
+- 启动后会自动打开本地页面（默认 `http://127.0.0.1:47831`）
+- 数据来源：默认读取 `app.getPath('userData')/logs` 下的 `program.log` 与 `network.log`
 
 ### 网络日志内容
 
