@@ -32,3 +32,9 @@ When adding a new capability involving privileged APIs:
 - Keep changes localized and readable.
 - Reuse existing helper functions before introducing new abstractions.
 - Maintain current Chinese UI copy conventions.
+
+## Documentation Maintenance
+- When capability or architecture changes are user-visible, sync `README.md` and `DOCS.md`.
+- Keep both docs concise and centered on capability core and architecture boundaries.
+- Avoid process/status wording in docs, including `已完成`、`此次更新`、`修复`、`优化中`、`计划中`.
+- Remove stale troubleshooting narratives and iterative task lists from long-lived docs.

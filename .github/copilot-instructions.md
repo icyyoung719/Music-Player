@@ -23,6 +23,13 @@ This is an Electron-based local music player prototype. Keep edits pragmatic, mo
   - Update `DOCS.md` for current architecture, implementation keys, and maintenance notes.
   - When features are removed/updated or implementation/architecture changes, update both files as needed (do not update only changelog text).
 
+## Documentation Style
+- Treat `README.md` and `DOCS.md` as stable reference docs.
+- Emphasize capability core, architecture, data flow, and usage boundaries.
+- Avoid status/process wording: `已完成`、`此次更新`、`修复`、`优化中`、`计划中`.
+- Keep both files concise; do not include bug timeline narratives or temporary progress notes.
+- Keep `README.md` high-level and keep implementation depth in `DOCS.md`.
+
 ## UI Guidance
 - Respect existing visual direction in `index.html`.
 - Keep desktop and small-screen behavior usable.

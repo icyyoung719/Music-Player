@@ -40,8 +40,15 @@ This file helps coding agents work safely and consistently in this Electron musi
 - Preserve user-facing Chinese copy style in existing UI text.
 - Keep documentation in sync with real implementation:
   - Update `README.md` for user-visible feature/usage changes.
-  - Update `DOCS.md` for feature status, architecture, implementation key points, and data-flow/storage changes.
+  - Update `DOCS.md` for architecture, implementation key points, and data-flow/storage changes.
   - For feature cuts, behavior updates, implementation refactors, or architecture adjustments, treat README/DOCS updates as part of done criteria.
+
+## Documentation Writing Rules
+- `README.md` and `DOCS.md` should describe stable capability cores and architecture boundaries.
+- Do not use status/process wording in long-lived docs, such as: `已完成`、`此次更新`、`修复`、`优化中`、`计划中`.
+- Keep docs concise; remove bug-by-bug timelines, iterative progress notes, and temporary troubleshooting narratives.
+- Remove or rewrite outdated sections that no longer reflect the code behavior.
+- If both files mention the same capability, keep `README.md` brief and keep implementation depth in `DOCS.md`.
 
 ## Quality Checklist
 - App starts without runtime errors.

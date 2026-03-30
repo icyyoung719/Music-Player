@@ -38,8 +38,15 @@
 - Prefer minimal, localized edits.
 - Keep docs synchronized with implementation changes:
   - Update `README.md` for user-facing capability or usage updates.
-  - Update `DOCS.md` for current feature status, architecture, implementation details, and maintenance notes.
+  - Update `DOCS.md` for current architecture, implementation details, and maintenance notes.
   - If features are removed/updated or implementation/architecture changes, include README/DOCS updates in the same change set when applicable.
+
+## Documentation Style Guardrails
+- Write `README.md` and `DOCS.md` as long-lived reference docs, not release notes.
+- Focus on capability core, architecture, data flow, and usage boundaries.
+- Avoid status/process language such as `已完成`、`此次更新`、`修复`、`补齐`.
+- Keep content compact; do not keep bug-fix timelines or feature-polish narratives.
+- Remove stale sections that are no longer suitable for external or maintenance-facing documentation.
 
 ## Common Change Workflow
 1. Read target module and related IPC/preload calls.
