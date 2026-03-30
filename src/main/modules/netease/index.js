@@ -32,6 +32,7 @@ const {
   sanitizeId,
   getSongPageUrl,
   getPlaylistPageUrl,
+  extractSongMetadata,
   resolveSongUrlWithLevelFallback,
   fetchSongMetadataById,
   fetchPlaylistTracksById,
@@ -74,6 +75,31 @@ const AUTH_PATHS = {
     '/login/qr/check',
     '/login/qrcode/client/login'
   ]
+}
+
+function normalizeDailyRecommendationTracks(data) {
+  const songList = Array.isArray(data?.recommend)
+    ? data.recommend
+    : Array.isArray(data?.data?.dailySongs)
+      ? data.data.dailySongs
+      : []
+
+  return songList
+    .map((song) => {
+      const normalized = extractSongMetadata(song, song?.id)
+      if (!normalized?.songId) return null
+      return {
+        id: String(normalized.songId),
+        name: normalized.title || `歌曲 ${normalized.songId}`,
+        artist: normalized.artist || '',
+        album: normalized.album || '',
+        durationMs: Number(normalized.durationMs || 0),
+        year: normalized.year,
+        coverUrl: normalized.coverUrl || '',
+        reason: String(song?.reason || '').trim()
+      }
+    })
+    .filter(Boolean)
 }
 
 function registerNeteaseHandlers() {
@@ -821,6 +847,85 @@ function registerNeteaseHandlers() {
         message: 'Failed to call authenticated NetEase API',
         error: err,
         data: { path: pathValue }
+      })
+      return { ok: false, error: 'REQUEST_FAILED', message: err?.message || '' }
+    }
+  })
+
+  ipcMain.handle('netease:get-daily-recommendation', async () => {
+    await ensureAuthStateLoaded()
+
+    if (!authState.cookie && !authState.userId) {
+      return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
+    }
+
+    try {
+      const dailyResult = await postFormWithFallback(
+        [
+          '/api/v1/discovery/recommend/songs',
+          '/weapi/v1/discovery/recommend/songs',
+          '/recommend/songs'
+        ],
+        {},
+        12000,
+        { cookieProfile: 'ios' }
+      )
+
+      if (!dailyResult.ok || !dailyResult.result?.data) {
+        return {
+          ok: false,
+          error: 'REQUEST_FAILED',
+          message: dailyResult.error || 'REQUEST_FAILED'
+        }
+      }
+
+      const data = dailyResult.result.data
+      const code = Number(data?.code || 0)
+      if (code && code !== 200) {
+        const message = extractApiErrorMessage(data) || 'REQUEST_FAILED'
+        if (isRiskControlMessage(message)) {
+          return { ok: false, error: 'LOGIN_RISK_BLOCKED', code, message }
+        }
+        return { ok: false, error: 'REQUEST_FAILED', code, message }
+      }
+
+      const tracks = normalizeDailyRecommendationTracks(data)
+      if (!tracks.length) {
+        return { ok: false, error: 'EMPTY_DAILY_RECOMMENDATION', message: '今日暂无推荐歌曲' }
+      }
+
+      const now = new Date()
+      const dayKey = now.toISOString().slice(0, 10).replace(/-/g, '')
+
+      return {
+        ok: true,
+        data: {
+          playlist: {
+            id: `netease-daily-${dayKey}`,
+            name: '每日推荐',
+            source: 'netease',
+            platform: 'netease',
+            platformPlaylistId: 'daily-recommendation',
+            creator: {
+              userId: String(authState.userId || ''),
+              nickname: String(authState.userName || '').trim() || '网易云用户'
+            },
+            coverUrl: tracks[0]?.coverUrl || '',
+            updateTime: now.toISOString(),
+            description: '网易云每日推荐歌曲',
+            tags: ['daily-recommendation', 'netease'],
+            trackCount: tracks.length,
+            trackIds: tracks.map((item) => String(item.id))
+          },
+          tracks
+        }
+      }
+    } catch (err) {
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'get-daily-recommendation-failed',
+        message: 'Failed to fetch daily recommendation',
+        error: err
       })
       return { ok: false, error: 'REQUEST_FAILED', message: err?.message || '' }
     }

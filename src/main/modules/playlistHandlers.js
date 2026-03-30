@@ -6,8 +6,10 @@ const { parseFile } = require('music-metadata')
 const { logProgramEvent } = require('./logger')
 
 const NETEASE_TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
+const PLAYLIST_SCHEMA_VERSION = 2
 
 let playlistState = {
+  schemaVersion: PLAYLIST_SCHEMA_VERSION,
   playlists: [],
   trackLibrary: {}
 }
@@ -90,7 +92,60 @@ function makeUniquePlaylistName(baseName, existingPlaylists, excludeId = null) {
 }
 
 function ensureStateShape(rawState) {
+  const normalizedVersion = Number(rawState?.schemaVersion)
+  const schemaVersion = Number.isFinite(normalizedVersion)
+    ? Math.max(1, Math.trunc(normalizedVersion))
+    : 1
+
+  const normalizeText = (value, maxLen = 512) => String(value || '').trim().slice(0, maxLen)
+
+  const normalizeTags = (value) => {
+    if (!Array.isArray(value)) return []
+    const deduped = new Set()
+    for (const item of value) {
+      const text = normalizeText(item, 40)
+      if (!text) continue
+      deduped.add(text)
+    }
+    return Array.from(deduped).slice(0, 20)
+  }
+
+  const normalizeCreator = (value) => {
+    if (!value || typeof value !== 'object') return null
+    const userId = normalizeText(value.userId, 64)
+    const nickname = normalizeText(value.nickname, 64)
+    if (!userId && !nickname) return null
+    return {
+      userId,
+      nickname
+    }
+  }
+
+  const normalizeDateText = (value) => {
+    const text = normalizeText(value, 64)
+    if (!text) return ''
+    const date = new Date(text)
+    if (Number.isNaN(date.getTime())) return ''
+    return date.toISOString()
+  }
+
+  const normalizePlaylistMeta = (item) => {
+    const source = normalizeText(item?.source, 24).toLowerCase() || 'local'
+    const platform = normalizeText(item?.platform, 24).toLowerCase() || 'local'
+    return {
+      source,
+      platform,
+      platformPlaylistId: normalizeText(item?.platformPlaylistId, 80),
+      creator: normalizeCreator(item?.creator),
+      coverUrl: normalizeText(item?.coverUrl, 2048),
+      description: normalizeText(item?.description, 1024),
+      updateTime: normalizeDateText(item?.updateTime),
+      tags: normalizeTags(item?.tags)
+    }
+  }
+
   const safeState = {
+    schemaVersion: PLAYLIST_SCHEMA_VERSION,
     playlists: Array.isArray(rawState?.playlists) ? rawState.playlists : [],
     trackLibrary:
       rawState?.trackLibrary && typeof rawState.trackLibrary === 'object'
@@ -103,8 +158,24 @@ function ensureStateShape(rawState) {
     name: normalizePlaylistName(item?.name),
     trackIds: Array.isArray(item?.trackIds)
       ? item.trackIds.filter(trackId => typeof trackId === 'string' && trackId)
-      : []
+      : [],
+    ...normalizePlaylistMeta(item)
   }))
+
+  // Legacy migration path (schemaVersion < 2): fill missing NetEase-aligned optional fields.
+  if (schemaVersion < 2) {
+    safeState.playlists = safeState.playlists.map((item) => ({
+      ...item,
+      source: item.source || 'local',
+      platform: item.platform || 'local',
+      platformPlaylistId: item.platformPlaylistId || '',
+      creator: item.creator || null,
+      coverUrl: item.coverUrl || '',
+      description: item.description || '',
+      updateTime: item.updateTime || new Date().toISOString(),
+      tags: Array.isArray(item.tags) ? item.tags : []
+    }))
+  }
 
   const normalizedLibrary = {}
   for (const [trackId, track] of Object.entries(safeState.trackLibrary)) {
@@ -134,6 +205,11 @@ async function initializePlaylistState() {
     const content = await fs.promises.readFile(storePath, 'utf8')
     const parsed = JSON.parse(content)
     playlistState = ensureStateShape(parsed)
+
+    const parsedVersion = Number(parsed?.schemaVersion)
+    if (!Number.isFinite(parsedVersion) || Math.trunc(parsedVersion) !== PLAYLIST_SCHEMA_VERSION) {
+      await savePlaylistState()
+    }
   } catch (err) {
     if (err.code !== 'ENOENT') {
       logProgramEvent({
@@ -143,7 +219,7 @@ async function initializePlaylistState() {
         error: err
       })
     }
-    playlistState = ensureStateShape({ playlists: [], trackLibrary: {} })
+    playlistState = ensureStateShape({ schemaVersion: PLAYLIST_SCHEMA_VERSION, playlists: [], trackLibrary: {} })
     await savePlaylistState()
   }
 }
@@ -204,6 +280,7 @@ function removeUnreferencedTracks() {
 
 function getPlaylistListPayload() {
   return {
+    schemaVersion: playlistState.schemaVersion,
     playlists: playlistState.playlists,
     trackLibrary: playlistState.trackLibrary
   }
@@ -246,7 +323,15 @@ async function importPlaylistsFromObject(imported) {
     const newPlaylist = {
       id: createId(),
       name: uniqueName,
-      trackIds: []
+      trackIds: [],
+      source: incomingPlaylist.source || 'local',
+      platform: incomingPlaylist.platform || 'local',
+      platformPlaylistId: incomingPlaylist.platformPlaylistId || '',
+      creator: incomingPlaylist.creator || null,
+      coverUrl: incomingPlaylist.coverUrl || '',
+      description: incomingPlaylist.description || '',
+      updateTime: incomingPlaylist.updateTime || new Date().toISOString(),
+      tags: Array.isArray(incomingPlaylist.tags) ? incomingPlaylist.tags : []
     }
 
     for (const trackId of incomingPlaylist.trackIds) {
@@ -375,7 +460,15 @@ function registerPlaylistHandlers() {
     const newPlaylist = {
       id: createId(),
       name: uniqueName,
-      trackIds: []
+      trackIds: [],
+      source: 'local',
+      platform: 'local',
+      platformPlaylistId: '',
+      creator: null,
+      coverUrl: '',
+      description: '',
+      updateTime: new Date().toISOString(),
+      tags: []
     }
 
     playlistState.playlists.push(newPlaylist)
@@ -395,6 +488,7 @@ function registerPlaylistHandlers() {
     }
 
     playlist.name = makeUniquePlaylistName(payload.name, playlistState.playlists, playlist.id)
+    playlist.updateTime = new Date().toISOString()
     await savePlaylistState()
     return { ok: true, playlist }
   })
@@ -453,7 +547,7 @@ function registerPlaylistHandlers() {
     }
 
     const exportData = {
-      version: 1,
+      schemaVersion: PLAYLIST_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       playlists: [playlist],
       trackLibrary: {}

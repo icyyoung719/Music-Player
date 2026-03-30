@@ -6,6 +6,7 @@ import { createNeteaseManager } from './modules/neteaseManager.js'
 import { createAccountManager } from './modules/accountManager.js'
 import { createDownloadManager } from './modules/downloadManager.js'
 import { createToastManager } from './modules/toastManager.js'
+import { createDailyRecommendationManager } from './modules/dailyRecommendationManager.js'
 
 const homePageEl = document.getElementById('homePage')
 const songPageEl = document.getElementById('songPage')
@@ -141,6 +142,15 @@ const downloadDom = {
   taskList: document.getElementById('downloadTaskList')
 }
 
+const dailyRecommendationDom = {
+  coverEl: document.getElementById('dailyRecommendCover'),
+  metaEl: document.getElementById('dailyRecommendMeta'),
+  statusEl: document.getElementById('dailyRecommendStatus'),
+  playBtn: document.getElementById('dailyRecommendPlayBtn'),
+  appendBtn: document.getElementById('dailyRecommendAppendBtn'),
+  refreshBtn: document.getElementById('dailyRecommendRefreshBtn')
+}
+
 const SHORTCUT_STORAGE_KEY = 'musicPlayer.shortcuts.v1'
 const SEEK_SECONDS = 5
 const shortcutActions = {
@@ -163,6 +173,7 @@ let playbackController = null
 let accountManager = null
 let savedPlaylistManager = null
 let toastManager = null
+let dailyRecommendationManager = null
 let currentHomeView = 'recommend'
 const createdSavedPlaylistIdsByName = new Map()
 const pendingSavedPlaylistPromises = new Map()
@@ -575,6 +586,19 @@ function setupDownloadManager() {
   manager.init()
 }
 
+function setupDailyRecommendationManager() {
+  dailyRecommendationManager = createDailyRecommendationManager({
+    electronAPI: window.electronAPI,
+    dom: dailyRecommendationDom,
+    onReplaceQueueWithTracks: (tracks, startIndex = 0, options = {}) =>
+      playbackController.replaceCurrentQueueWithTracks(tracks, startIndex, options),
+    onAppendTracksToQueue: (tracks) => playbackController.appendToPlaylist(tracks),
+    onShowSongPage: showSongPage
+  })
+
+  dailyRecommendationManager.init()
+}
+
 function setupPlayerControlListener() {
   if (!window.electronAPI || !window.electronAPI.onPlayerControl) return
 
@@ -588,6 +612,7 @@ function initRenderer() {
   setupToastManager()
   setupPlaybackController()
   setupSavedPlaylistManager()
+  setupDailyRecommendationManager()
   setupNeteaseManager()
   setupDownloadManager()
   setupAccountManager()

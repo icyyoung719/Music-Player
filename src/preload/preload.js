@@ -50,6 +50,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     return () => ipcRenderer.removeListener('netease:auth:state-updated', wrapped)
   },
   neteaseAuthRequest: (payload) => ipcRenderer.invoke('netease:auth:request', payload),
+  neteaseGetDailyRecommendation: () => ipcRenderer.invoke('netease:get-daily-recommendation'),
   neteaseResolveSongDownloadUrl: (payload) => ipcRenderer.invoke('netease:resolve-song-download-url', payload),
   neteaseDownloadBySongId: (payload) => ipcRenderer.invoke('netease:download-by-song-id', payload),
   neteaseDownloadTaskList: () => ipcRenderer.invoke('netease:download-task:list'),
