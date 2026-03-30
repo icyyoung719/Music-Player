@@ -79,17 +79,8 @@ export function createPlaybackController(options) {
 
   function createTrackInputByFile(file) {
     if (!isSupportedAudioFile(file)) return null
-    const resolvedPath = tryGetFilePath(file)
-    if (resolvedPath && isSupportedAudioPath(resolvedPath)) {
-      return {
-        name: getFileNameFromPath(resolvedPath),
-        path: resolvedPath,
-        file: null
-      }
-    }
-
     return {
-      name: file.name,
+      name: file.name || '未知歌曲',
       file,
       path: null
     }
@@ -98,7 +89,21 @@ export function createPlaybackController(options) {
   async function readDirectoryEntries(directoryEntry) {
     return new Promise((resolve, reject) => {
       const reader = directoryEntry.createReader()
-      reader.readEntries(resolve, reject)
+      const allEntries = []
+
+      const readNext = () => {
+        reader.readEntries((entries) => {
+          if (!entries || entries.length === 0) {
+            resolve(allEntries)
+            return
+          }
+
+          allEntries.push(...entries)
+          readNext()
+        }, reject)
+      }
+
+      readNext()
     })
   }
 
@@ -108,37 +113,66 @@ export function createPlaybackController(options) {
     })
   }
 
+  function getDroppedFileIdentity(file) {
+    if (!file) return ''
+    const fileName = String(file.name || '').toLowerCase()
+    const fileSize = Number(file.size) || 0
+    const lastModified = Number(file.lastModified) || 0
+    if (fileName || fileSize || lastModified) {
+      return `file:${fileName}|size:${fileSize}|mtime:${lastModified}`
+    }
+
+    const filePath = normalizePath(tryGetFilePath(file))
+    if (filePath) return `path:${filePath}`
+
+    return ''
+  }
+
+  async function collectFilesFromDropEntry(entry, pushFile) {
+    if (!entry) return
+
+    if (entry.isFile) {
+      const file = await readFileEntry(entry)
+      pushFile(file)
+      return
+    }
+
+    if (!entry.isDirectory) return
+    const children = await readDirectoryEntries(entry)
+    for (const childEntry of children) {
+      await collectFilesFromDropEntry(childEntry, pushFile)
+    }
+  }
+
   async function collectDropTrackInputs(dataTransfer) {
     const items = Array.from(dataTransfer?.items || [])
     const tracks = []
     const looseFiles = []
+    const seenFiles = new Set()
 
-    for (const item of items) {
-      if (item.kind !== 'file') continue
-
-      try {
-        const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
-        if (entry?.isFile) {
-          const file = await readFileEntry(entry)
-          looseFiles.push(file)
-          continue
-        }
-
-        if (entry?.isDirectory) {
-          const children = await readDirectoryEntries(entry)
-          for (const childEntry of children) {
-            if (!childEntry.isFile) continue
-            const childFile = await readFileEntry(childEntry)
-            looseFiles.push(childFile)
-          }
-        }
-      } catch (err) {
-        console.warn('Failed to collect dropped item:', err)
-      }
+    const pushLooseFile = (file) => {
+      const identity = getDroppedFileIdentity(file)
+      if (!identity || seenFiles.has(identity)) return
+      seenFiles.add(identity)
+      looseFiles.push(file)
     }
 
-    if (looseFiles.length === 0 && dataTransfer?.files?.length) {
-      looseFiles.push(...Array.from(dataTransfer.files))
+    // Windows Explorer multi-select is most reliable via dataTransfer.files.
+    if (dataTransfer?.files?.length) {
+      for (const file of Array.from(dataTransfer.files)) {
+        pushLooseFile(file)
+      }
+    } else {
+      for (const item of items) {
+        if (item.kind !== 'file') continue
+
+        try {
+          const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
+          await collectFilesFromDropEntry(entry, pushLooseFile)
+        } catch (err) {
+          console.warn('Failed to collect dropped item:', err)
+        }
+      }
     }
 
     for (const file of looseFiles) {
@@ -755,10 +789,23 @@ export function createPlaybackController(options) {
     dom.trackArtist.textContent = track.metadataCache?.artist || ''
     dom.trackAlbum.textContent = track.metadataCache?.album || ''
     setBottomNowPlaying(track.name, track.metadataCache?.artist || '')
-    dom.coverImg.style.display = 'none'
-    dom.coverImg.src = ''
-    dom.coverPlaceholder.style.display = 'flex'
+    const nextCover = getTrackCoverDataUrl(track)
+    if (nextCover) {
+      dom.coverImg.src = nextCover
+      dom.coverImg.style.display = 'block'
+      dom.coverPlaceholder.style.display = 'none'
+      setBottomNowPlayingCover(nextCover)
+      onSetHomeNowCover(nextCover)
+    } else {
+      dom.coverImg.style.display = 'none'
+      dom.coverImg.src = ''
+      dom.coverPlaceholder.style.display = 'flex'
+      setBottomNowPlayingCover('')
+      onSetHomeNowCover(null)
+    }
     resetProgress()
+    updatePlaylistUI()
+    reportPlayerState()
 
     if (lyricManager) {
       lyricManager.setLyrics(null)
@@ -773,11 +820,6 @@ export function createPlaybackController(options) {
     }
 
     audio.pause()
-
-    if (isLazyNeteaseTrack(track) && track.lazyNetease?.coverUrl) {
-      setBottomNowPlayingCover(track.lazyNetease.coverUrl)
-      onSetHomeNowCover(track.lazyNetease.coverUrl)
-    }
 
     const ready = await ensureTrackReadyForPlayback(index, { waitForReady: true })
     if (requestId !== loadRequestId) return
@@ -1065,16 +1107,19 @@ export function createPlaybackController(options) {
   }
 
   function bindControlEvents() {
-    const appendTracksAndOpenQueue = (tracks) => {
+    const appendTracks = (tracks, options = {}) => {
+      const { openQueue = false } = options
       if (!tracks.length) return
       appendToPlaylist(tracks)
-      openQueueOverlay()
+      if (openQueue) {
+        openQueueOverlay()
+      }
     }
 
     dom.fileInput.addEventListener('change', async (e) => {
       const files = Array.from(e.target.files)
       if (!files.length) return
-      appendTracksAndOpenQueue(files.map((file) => ({ name: file.name, file, path: null })))
+      appendTracks(files.map((file) => ({ name: file.name, file, path: null })), { openQueue: true })
       dom.fileInput.value = ''
     })
 
@@ -1082,7 +1127,7 @@ export function createPlaybackController(options) {
       if (!electronAPI || !electronAPI.selectFolder) return
       const paths = await electronAPI.selectFolder()
       if (!paths || !paths.length) return
-      appendTracksAndOpenQueue(paths.map((p) => ({ name: p.split(/[/\\]/).pop(), path: p, file: null })))
+      appendTracks(paths.map((p) => ({ name: p.split(/[/\\]/).pop(), path: p, file: null })), { openQueue: true })
     }
 
     dom.folderBtn.addEventListener('click', handleAddFolder)
@@ -1135,7 +1180,7 @@ export function createPlaybackController(options) {
           return
         }
         if (!tracks.length) return
-        appendTracksAndOpenQueue(tracks)
+        appendTracks(tracks, { openQueue: false })
       })
     }
 

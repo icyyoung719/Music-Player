@@ -27,17 +27,6 @@ export function getTrackUniqueKey(track, electronAPI) {
   if (track.path) return `path:${normalizePath(track.path)}`
 
   if (track.file) {
-    let resolvedPath = null
-    if (electronAPI && electronAPI.getPathForFile) {
-      try {
-        resolvedPath = electronAPI.getPathForFile(track.file)
-      } catch {
-        resolvedPath = null
-      }
-    }
-
-    if (resolvedPath) return `path:${normalizePath(resolvedPath)}`
-
     return `file:${track.file.name}|${track.file.size}|${track.file.lastModified}`
   }
 
