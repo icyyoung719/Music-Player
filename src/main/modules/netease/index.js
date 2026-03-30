@@ -323,10 +323,12 @@ function registerNeteaseHandlers() {
     authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
 
     try {
+      // Per Netease API: /login expects username, password (or md5_password), rememberLogin
+      // Password recommendation: encodeURIComponent recommended for special char safety, use MD5 + form encoding
       const bodyData = {
         username: email,
         password: md5(password),
-        rememberLogin: true
+        rememberLogin: 'true'
       }
 
       const loginResult = await postFormWithFallback(
@@ -401,11 +403,14 @@ function registerNeteaseHandlers() {
     authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
 
     try {
+      // Per Netease API: /captcha/sent expects phone, ctcode (optional, default '86')
+      // CRITICAL: Set-Cookie from this response must be preserved and reused in subsequent
+      // /login/cellphone call. Failure to preserve cookies causes risk control error (code 10004).
       const sendResult = await postFormWithFallback(
         AUTH_PATHS.captchaSend,
         {
-          ctcode: countryCode,
-          cellphone: phone
+          phone,
+          ctcode: countryCode
         },
         12000,
         { cookieProfile: 'ios' }
@@ -468,13 +473,13 @@ function registerNeteaseHandlers() {
     authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
 
     try {
+      // Per Netease API: /login/cellphone expects phone, captcha, countrycode, rememberLogin
+      // Note: Set-Cookie from /captcha/sent must be preserved to avoid risk control (code 10004)
       const payloadData = {
         phone,
-        cellphone: phone,
         captcha,
         countrycode: countryCode,
-        ctcode: countryCode,
-        rememberLogin: true
+        rememberLogin: 'true'
       }
 
       const loginResult = await postFormWithFallback(
@@ -553,11 +558,18 @@ function registerNeteaseHandlers() {
     authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
 
     try {
+      const timestamp = Date.now()
+      const qrKeyPaths = AUTH_PATHS.qrKey.map((pathValue) =>
+        pathValue.includes('?') ? `${pathValue}&timestamp=${timestamp}` : `${pathValue}?timestamp=${timestamp}`
+      )
+
       const keyResult = await postFormWithFallback(
-        AUTH_PATHS.qrKey,
-        { type: 1 },
+        qrKeyPaths,
+        {
+          type: 1
+        },
         12000,
-        { cookieProfile: 'ios' }
+        { cookieProfile: 'pc' }
       )
 
       if (!keyResult.ok || !keyResult.result?.data) {
@@ -569,6 +581,11 @@ function registerNeteaseHandlers() {
       }
 
       const data = keyResult.result.data
+      const keyResponseCookie = normalizeCookieHeader(keyResult.result.headers['set-cookie'])
+      if (keyResponseCookie) {
+        // Keep QR session cookies for subsequent /login/qr/check polling calls.
+        authState.cookie = keyResponseCookie
+      }
       const code = Number(data?.code || 0)
       if (code !== 200) {
         return {
@@ -627,15 +644,43 @@ function registerNeteaseHandlers() {
     authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
 
     try {
-      const checkResult = await postFormWithFallback(
-        AUTH_PATHS.qrCheck,
-        {
-          key: qrKey,
-          type: 1
-        },
-        12000,
-        { cookieProfile: 'ios' }
+      const timestamp = Date.now()
+      const qrCheckPaths = AUTH_PATHS.qrCheck.map((pathValue) =>
+        pathValue.includes('?') ? `${pathValue}&timestamp=${timestamp}` : `${pathValue}?timestamp=${timestamp}`
       )
+
+      const checkPayload = {
+        key: qrKey,
+        type: 1
+      }
+
+      let checkResult = await postFormWithFallback(
+        qrCheckPaths,
+        checkPayload,
+        12000,
+        { cookieProfile: 'pc' }
+      )
+
+      // Per NetEase QR login reference: after scan may return 502, retry with noCookie=true.
+      if (checkResult.ok && checkResult.result?.data) {
+        const retryCode = Number(checkResult.result.data?.code || 0)
+        if (retryCode === 502) {
+          const noCookiePaths = AUTH_PATHS.qrCheck.map((pathValue) =>
+            pathValue.includes('?')
+              ? `${pathValue}&noCookie=true&timestamp=${Date.now()}`
+              : `${pathValue}?noCookie=true&timestamp=${Date.now()}`
+          )
+          const retryResult = await postFormWithFallback(
+            noCookiePaths,
+            checkPayload,
+            12000,
+            { cookieProfile: 'pc' }
+          )
+          if (retryResult.ok) {
+            checkResult = retryResult
+          }
+        }
+      }
 
       if (!checkResult.ok || !checkResult.result?.data) {
         return {
@@ -649,6 +694,12 @@ function registerNeteaseHandlers() {
       const data = result.data
       const code = Number(data?.code || 0)
       const message = extractApiErrorMessage(data)
+
+      const pollCookie = normalizeCookieHeader(result.headers['set-cookie'])
+      if (pollCookie) {
+        // Some QR flows rotate anti-risk cookies during polling; keep latest in memory.
+        authState.cookie = pollCookie
+      }
 
       if (code === 803) {
         const cookie = normalizeCookieHeader(result.headers['set-cookie'])

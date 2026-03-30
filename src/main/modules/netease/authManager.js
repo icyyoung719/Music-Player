@@ -160,6 +160,12 @@ async function requestNeteaseApi(pathname, data = {}, options = {}) {
   })
 }
 
+// Post form data with automatic fallback across multiple endpoint paths.
+// Each request call includes authState.cookie in headers, which is live-updated from
+// previous Set-Cookie responses. This enables proper cookie-based session flow:
+// e.g., /captcha/sent → Set-Cookie → /login/cellphone (with persisted cookie) → success.
+// NOTE: Do NOT use this for stateless requests. Callers must manually update authState.cookie
+// if Set-Cookie headers from response need to be persisted to authState.
 async function postFormWithFallback(paths, data, timeout = 12000, options = {}) {
   const attempted = []
   let lastError = null
