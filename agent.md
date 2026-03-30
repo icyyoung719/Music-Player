@@ -36,6 +36,10 @@
 - Do not import Node APIs directly in renderer modules.
 - Preserve current module boundaries; avoid moving logic back into one large file.
 - Prefer minimal, localized edits.
+- Keep docs synchronized with implementation changes:
+  - Update `README.md` for user-facing capability or usage updates.
+  - Update `DOCS.md` for current feature status, architecture, implementation details, and maintenance notes.
+  - If features are removed/updated or implementation/architecture changes, include README/DOCS updates in the same change set when applicable.
 
 ## Common Change Workflow
 1. Read target module and related IPC/preload calls.

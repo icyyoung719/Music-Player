@@ -18,7 +18,10 @@ This is an Electron-based local music player prototype. Keep edits pragmatic, mo
 - Keep `renderer.js` as composition/orchestration.
 - Keep utility logic in `trackUtils.js` when reusable.
 - Prefer small functions with clear side effects.
-- Update README.md after significant changes.
+- Documentation maintenance is required after significant changes:
+  - Update `README.md` for user-facing capability/usage changes.
+  - Update `DOCS.md` for current architecture, implementation keys, and maintenance notes.
+  - When features are removed/updated or implementation/architecture changes, update both files as needed (do not update only changelog text).
 
 ## UI Guidance
 - Respect existing visual direction in `index.html`.

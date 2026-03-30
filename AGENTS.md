@@ -38,6 +38,10 @@ This file helps coding agents work safely and consistently in this Electron musi
   2. preload bridge API
   3. renderer usage
 - Preserve user-facing Chinese copy style in existing UI text.
+- Keep documentation in sync with real implementation:
+  - Update `README.md` for user-visible feature/usage changes.
+  - Update `DOCS.md` for feature status, architecture, implementation key points, and data-flow/storage changes.
+  - For feature cuts, behavior updates, implementation refactors, or architecture adjustments, treat README/DOCS updates as part of done criteria.
 
 ## Quality Checklist
 - App starts without runtime errors.
@@ -50,4 +54,4 @@ This file helps coding agents work safely and consistently in this Electron musi
 1. Identify layer: main, preload, renderer orchestrator, renderer module.
 2. Make smallest viable code change.
 3. Validate impacted behavior manually.
-4. Document notable behavior changes in PR/commit notes.
+4. Update `README.md` and `DOCS.md` when applicable, then document notable behavior changes in PR/commit notes.
