@@ -63,6 +63,7 @@ const savedPlaylistDom = {
 }
 
 const playbackDom = {
+  songPageEl: document.getElementById('songPage'),
   fileInput: document.getElementById('fileInput'),
   folderBtn: document.getElementById('folderBtn'),
   clearBtn: document.getElementById('clearBtn'),

@@ -1181,6 +1181,11 @@ body {
   gap: 8px;
   align-items: center;
 }
+.drop-hint {
+  margin-top: 8px;
+  color: var(--text-sub);
+  font-size: 12px;
+}
 .file-label,
 .file-actions button,
 .saved-row button,
@@ -1204,6 +1209,10 @@ button:hover,
 .saved-row button:hover {
   transform: translateY(-1px);
   background: var(--panel-strong);
+}
+.song-page.drag-over .panel-card {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--line));
+  background: color-mix(in srgb, var(--panel) 78%, var(--accent) 22%);
 }
 button.btn-active {
   background: linear-gradient(150deg, var(--accent), var(--accent-2));

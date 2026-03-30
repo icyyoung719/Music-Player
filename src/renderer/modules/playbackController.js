@@ -14,6 +14,7 @@ const DEFAULT_FADE_SETTINGS = {
   fadeInMs: 250,
   fadeOutMs: 350
 }
+const SUPPORTED_AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.aac', '.ogg', '.wav', '.m4a', '.opus', '.wma'])
 
 export function createPlaybackController(options) {
   const {
@@ -37,6 +38,113 @@ export function createPlaybackController(options) {
   let fadeTimer = null
   let fadeToken = 0
   let loadRequestId = 0
+
+  function getAudioExtFromPath(filePath) {
+    const source = String(filePath || '')
+    const match = source.match(/\.([a-z0-9]+)$/i)
+    if (!match) return ''
+    return `.${match[1].toLowerCase()}`
+  }
+
+  function isSupportedAudioPath(filePath) {
+    return SUPPORTED_AUDIO_EXTENSIONS.has(getAudioExtFromPath(filePath))
+  }
+
+  function isSupportedAudioFile(file) {
+    if (!file) return false
+    if (typeof file.type === 'string' && file.type.startsWith('audio/')) return true
+    return isSupportedAudioPath(file.name)
+  }
+
+  function tryGetFilePath(file) {
+    if (!file || !electronAPI?.getPathForFile) return ''
+    try {
+      return electronAPI.getPathForFile(file) || ''
+    } catch {
+      return ''
+    }
+  }
+
+  function createTrackInputByPath(filePath) {
+    if (!isSupportedAudioPath(filePath)) return null
+    return {
+      name: getFileNameFromPath(filePath),
+      path: filePath,
+      file: null
+    }
+  }
+
+  function createTrackInputByFile(file) {
+    if (!isSupportedAudioFile(file)) return null
+    const resolvedPath = tryGetFilePath(file)
+    if (resolvedPath && isSupportedAudioPath(resolvedPath)) {
+      return {
+        name: getFileNameFromPath(resolvedPath),
+        path: resolvedPath,
+        file: null
+      }
+    }
+
+    return {
+      name: file.name,
+      file,
+      path: null
+    }
+  }
+
+  async function readDirectoryEntries(directoryEntry) {
+    return new Promise((resolve, reject) => {
+      const reader = directoryEntry.createReader()
+      reader.readEntries(resolve, reject)
+    })
+  }
+
+  async function readFileEntry(fileEntry) {
+    return new Promise((resolve, reject) => {
+      fileEntry.file(resolve, reject)
+    })
+  }
+
+  async function collectDropTrackInputs(dataTransfer) {
+    const items = Array.from(dataTransfer?.items || [])
+    const tracks = []
+    const looseFiles = []
+
+    for (const item of items) {
+      if (item.kind !== 'file') continue
+
+      try {
+        const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
+        if (entry?.isFile) {
+          const file = await readFileEntry(entry)
+          looseFiles.push(file)
+          continue
+        }
+
+        if (entry?.isDirectory) {
+          const children = await readDirectoryEntries(entry)
+          for (const childEntry of children) {
+            if (!childEntry.isFile) continue
+            const childFile = await readFileEntry(childEntry)
+            looseFiles.push(childFile)
+          }
+        }
+      } catch (err) {
+        console.warn('Failed to collect dropped item:', err)
+      }
+    }
+
+    if (looseFiles.length === 0 && dataTransfer?.files?.length) {
+      looseFiles.push(...Array.from(dataTransfer.files))
+    }
+
+    for (const file of looseFiles) {
+      const track = createTrackInputByFile(file)
+      if (track) tracks.push(track)
+    }
+
+    return tracks
+  }
 
   function clampFadeDuration(value, fallbackValue) {
     if (!Number.isFinite(value)) return fallbackValue
@@ -728,6 +836,58 @@ export function createPlaybackController(options) {
       if (!paths || !paths.length) return
       appendToPlaylist(paths.map((p) => ({ name: p.split(/[/\\]/).pop(), path: p, file: null })))
     })
+
+    if (dom.songPageEl) {
+      let dragDepth = 0
+
+      const hasFilePayload = (event) => {
+        const types = Array.from(event.dataTransfer?.types || [])
+        return types.includes('Files')
+      }
+
+      const clearDragState = () => {
+        dragDepth = 0
+        dom.songPageEl.classList.remove('drag-over')
+      }
+
+      dom.songPageEl.addEventListener('dragenter', (event) => {
+        if (!hasFilePayload(event)) return
+        event.preventDefault()
+        dragDepth += 1
+        dom.songPageEl.classList.add('drag-over')
+      })
+
+      dom.songPageEl.addEventListener('dragover', (event) => {
+        if (!hasFilePayload(event)) return
+        event.preventDefault()
+        event.dataTransfer.dropEffect = 'copy'
+      })
+
+      dom.songPageEl.addEventListener('dragleave', (event) => {
+        if (!hasFilePayload(event)) return
+        event.preventDefault()
+        dragDepth = Math.max(0, dragDepth - 1)
+        if (dragDepth === 0) {
+          dom.songPageEl.classList.remove('drag-over')
+        }
+      })
+
+      dom.songPageEl.addEventListener('drop', async (event) => {
+        if (!hasFilePayload(event)) return
+        event.preventDefault()
+        clearDragState()
+
+        let tracks = []
+        try {
+          tracks = await collectDropTrackInputs(event.dataTransfer)
+        } catch (err) {
+          console.warn('Failed to parse drop payload:', err)
+          return
+        }
+        if (!tracks.length) return
+        appendToPlaylist(tracks)
+      })
+    }
 
     dom.clearBtn.addEventListener('click', () => {
       if (playlist.length === 0) return
