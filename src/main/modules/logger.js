@@ -9,10 +9,6 @@ const BINARY_HEX_PREVIEW_BYTES = 64
 
 let writeQueue = Promise.resolve()
 
-function getDateKey() {
-  return new Date().toISOString().slice(0, 10)
-}
-
 function resolveLogDirPath() {
   try {
     return path.join(app.getPath('userData'), LOG_DIR_NAME)
@@ -22,8 +18,7 @@ function resolveLogDirPath() {
 }
 
 function resolveLogFilePath(prefix) {
-  const date = getDateKey()
-  return path.join(resolveLogDirPath(), `${prefix}-${date}.log`)
+  return path.join(resolveLogDirPath(), `${prefix}.log`)
 }
 
 function enqueueWrite(filePath, line) {
@@ -140,15 +135,25 @@ function logNetworkEvent(payload) {
 
 function initializeLogger() {
   const logDir = resolveLogDirPath()
-  fs.promises.mkdir(logDir, { recursive: true }).catch(() => {
-    // Do not block app startup when log directory cannot be created.
-  })
+  const clearLogsTask = fs.promises
+    .mkdir(logDir, { recursive: true })
+    .then(async () => {
+      await Promise.all([
+        fs.promises.writeFile(resolveLogFilePath(PROGRAM_FILE_PREFIX), '', 'utf8'),
+        fs.promises.writeFile(resolveLogFilePath(NETWORK_FILE_PREFIX), '', 'utf8')
+      ])
+    })
+    .catch(() => {
+      // Do not block app startup when log directory cannot be created.
+    })
 
-  logProgramEvent({
-    source: 'logger',
-    event: 'initialized',
-    message: 'Logger initialized',
-    data: { logDir }
+  clearLogsTask.finally(() => {
+    logProgramEvent({
+      source: 'logger',
+      event: 'initialized',
+      message: 'Logger initialized',
+      data: { logDir }
+    })
   })
 }
 
