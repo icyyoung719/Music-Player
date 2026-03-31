@@ -129,6 +129,18 @@ export function createDailyRecommendationManager(options) {
     state.tracks = tracks
     state.playlist = res?.data?.playlist || null
     state.lastError = ''
+
+    if (state.playlist && eventBus) {
+      eventBus.emit('cloud-playlist:encountered', {
+        sourceKind: 'daily',
+        playlist: {
+          ...state.playlist,
+          collected: true,
+          sourceKinds: ['daily']
+        }
+      })
+    }
+
     renderState()
   }
 

@@ -34,7 +34,9 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     neteaseDatabaseService,
     downloadService,
     eventBus,
-    dom
+    dom,
+    requestDownloadStrategy,
+    getCloudPlaylistManager
   } = options
 
   if (!dom?.overlay || !dom?.closeBtn || !dom?.trackList) {
@@ -44,10 +46,11 @@ export function createNeteasePlaylistDetailManager(options = {}) {
   const state = {
     playlistId: '',
     playlistName: '',
-    requestToken: 0
+    requestToken: 0,
+    sourceKind: '',
+    playlistData: null,
+    collected: false
   }
-
-  const autoQueueTaskIds = new Set()
 
   function setStatus(text, isError = false) {
     if (!dom.status) return
@@ -80,13 +83,19 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     dom.overlay.setAttribute('aria-hidden', 'true')
   }
 
+  function renderCollectButton() {
+    if (!dom.collectBtn) return
+    dom.collectBtn.textContent = state.collected ? '取消收藏云端引用' : '收藏云端引用'
+  }
+
   function renderSummary(playlist) {
     if (dom.name) {
       dom.name.textContent = playlist.name || `歌单 ${playlist.id || ''}`
     }
 
     if (dom.sub) {
-      dom.sub.textContent = `创建者 ${playlist.creator || '未知'} · ${playlist.trackCount || 0} 首 · 播放 ${formatPlayCount(playlist.playCount)}`
+      const sourceHint = state.sourceKind ? ` · 来源 ${state.sourceKind}` : ''
+      dom.sub.textContent = `创建者 ${playlist.creator || '未知'} · ${playlist.trackCount || 0} 首 · 播放 ${formatPlayCount(playlist.playCount)}${sourceHint}`
     }
 
     const firstLetter = String(playlist.name || '♪').trim().slice(0, 1) || '♪'
@@ -133,20 +142,57 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     dom.trackList.innerHTML = html
   }
 
-  function handleTaskUpdate(task) {
-    if (!task?.id) return
-    if (task.status !== 'succeeded') return
-    if (!autoQueueTaskIds.has(task.id)) return
+  function createLazyQueueTrack(item) {
+    const songId = String(item?.songId || '').trim()
+    const title = String(item?.title || '').trim() || `歌曲 ${songId}`
+    const artist = String(item?.artist || '').trim()
+    const album = String(item?.album || '').trim()
+    const durationMs = Number(item?.durationMs || 0)
+    const coverUrl = String(item?.coverUrl || '').trim()
 
-    autoQueueTaskIds.delete(task.id)
-    if (task.filePath && eventBus) {
-      eventBus.emit('playback:queue.append', {
-        tracks: [{
-          path: task.filePath,
-          name: task.title || task.songId || '网易云下载',
-          file: null
-        }]
-      })
+    return {
+      name: title,
+      path: null,
+      file: null,
+      metadataCache: {
+        title,
+        artist: artist || null,
+        album: album || null,
+        duration: durationMs > 0 ? durationMs / 1000 : null
+      },
+      lazyNetease: {
+        songId,
+        title,
+        artist,
+        album,
+        coverUrl,
+        durationMs,
+        level: 'exhigh',
+        state: 'idle',
+        taskId: ''
+      }
+    }
+  }
+
+  function getCurrentCloudReference() {
+    if (!state.playlistData) return null
+    return {
+      id: `netease-cloud-${state.playlistId}`,
+      platform: 'netease',
+      source: 'cloud',
+      platformPlaylistId: state.playlistId,
+      name: state.playlistData.name || state.playlistName || `歌单 ${state.playlistId}`,
+      creator: {
+        userId: '',
+        nickname: String(state.playlistData.creator || '').trim()
+      },
+      coverUrl: String(state.playlistData.coverUrl || '').trim(),
+      description: String(state.playlistData.description || '').trim(),
+      trackCount: Number(state.playlistData.trackCount || 0),
+      playCount: Number(state.playlistData.playCount || 0),
+      tags: Array.isArray(state.playlistData.tags) ? state.playlistData.tags : [],
+      collected: state.collected,
+      sourceKinds: [state.sourceKind || 'playback']
     }
   }
 
@@ -157,24 +203,25 @@ export function createNeteasePlaylistDetailManager(options = {}) {
       return
     }
 
-    const payload = {
-      songId: id,
-      level: 'exhigh',
-      mode: 'song-temp-queue-only'
-    }
+    const tracks = Array.isArray(state.playlistData?.tracks) ? state.playlistData.tracks : []
+    const index = Math.max(0, tracks.findIndex((item) => String(item?.songId || '') === id))
+    const queueTracks = tracks.map(createLazyQueueTrack)
 
-    setStatus('正在创建歌曲播放任务...')
-    const res = downloadService
-      ? await downloadService.createSongTask(payload)
-      : await electronAPI.neteaseDownloadSongTask(payload)
-
-    if (!res?.ok || !res?.task?.id) {
-      setStatus(`创建播放任务失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
+    if (!queueTracks.length || !eventBus) {
+      setStatus('当前歌单暂无可播放歌曲。', true)
       return
     }
 
-    autoQueueTaskIds.add(res.task.id)
-    setStatus('歌曲已加入待播队列，下载完成后会自动加入播放列表。')
+    eventBus.emit('playback:queue.replace', {
+      tracks: queueTracks,
+      startIndex: index,
+      options: {
+        source: 'cloud-playlist-lazy',
+        cloudPlaylistId: state.playlistId
+      }
+    })
+    eventBus.emit('view:song.open')
+    setStatus(`已从第 ${index + 1} 首开始播放云端歌单（按需下载）。`)
   }
 
   async function downloadSongById(songId) {
@@ -204,35 +251,23 @@ export function createNeteasePlaylistDetailManager(options = {}) {
   }
 
   async function playCurrentPlaylist() {
-    const id = String(state.playlistId || '').trim()
-    if (!/^\d{1,20}$/.test(id)) {
-      setStatus('无法播放：歌单 ID 无效。', true)
+    const tracks = Array.isArray(state.playlistData?.tracks) ? state.playlistData.tracks : []
+    if (!tracks.length || !eventBus) {
+      setStatus('当前歌单暂无可播放歌曲。', true)
       return
     }
 
-    const payload = {
-      playlistId: id,
-      level: 'exhigh',
-      mode: 'playlist-download-and-queue',
-      duplicateStrategy: 'skip'
-    }
-
-    setStatus('正在创建歌单播放任务...')
-    const res = downloadService
-      ? await downloadService.createPlaylistTasks(payload)
-      : await electronAPI.neteaseDownloadPlaylistById(payload)
-
-    if (!res?.ok) {
-      setStatus(`创建歌单播放任务失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
-      return
-    }
-
-    const tasks = Array.isArray(res.tasks) ? res.tasks : []
-    for (const task of tasks) {
-      if (task?.id) autoQueueTaskIds.add(task.id)
-    }
-
-    setStatus(`歌单任务已创建：${res.createdCount || 0} 首入队，完成后会自动加入播放列表。`)
+    const queueTracks = tracks.map(createLazyQueueTrack)
+    eventBus.emit('playback:queue.replace', {
+      tracks: queueTracks,
+      startIndex: 0,
+      options: {
+        source: 'cloud-playlist-lazy',
+        cloudPlaylistId: state.playlistId
+      }
+    })
+    eventBus.emit('view:song.open')
+    setStatus(`已开始播放云端歌单，共 ${queueTracks.length} 首（按需下载）。`)
   }
 
   async function downloadCurrentPlaylist() {
@@ -262,7 +297,92 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setStatus(`歌单下载任务已创建：${res.createdCount || 0} 首。`)
   }
 
-  async function openByPlaylistId(playlistId, playlistName = '') {
+  async function toggleCollectCurrentPlaylist() {
+    const reference = getCurrentCloudReference()
+    if (!reference) {
+      setStatus('当前歌单信息未就绪，请稍后再试。', true)
+      return
+    }
+
+    const cloudPlaylistManager = typeof getCloudPlaylistManager === 'function'
+      ? getCloudPlaylistManager()
+      : null
+    if (!cloudPlaylistManager) {
+      setStatus('云端歌单管理器未就绪。', true)
+      return
+    }
+
+    if (!state.collected) {
+      const res = await cloudPlaylistManager.saveCloudPlaylistReference({
+        ...reference,
+        collected: true
+      })
+      if (!res?.ok) {
+        setStatus(`收藏失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
+        return
+      }
+      state.collected = true
+      renderCollectButton()
+      setStatus('已收藏到云端歌单引用列表。')
+      return
+    }
+
+    const removeRes = await cloudPlaylistManager.removeCloudPlaylistReference({
+      platformPlaylistId: reference.platformPlaylistId
+    })
+    if (!removeRes?.ok) {
+      setStatus(`取消收藏失败: ${removeRes?.message || removeRes?.error || 'REQUEST_FAILED'}`, true)
+      return
+    }
+
+    state.collected = false
+    renderCollectButton()
+    setStatus('已从云端歌单引用列表移除。')
+  }
+
+  async function saveCurrentPlaylistToLocal() {
+    const id = String(state.playlistId || '').trim()
+    if (!/^\d{1,20}$/.test(id)) {
+      setStatus('无法处理：歌单 ID 无效。', true)
+      return
+    }
+
+    const strategy = typeof requestDownloadStrategy === 'function'
+      ? await requestDownloadStrategy()
+      : 'full-download'
+
+    if (strategy === 'cancel') {
+      setStatus('已取消操作。')
+      return
+    }
+
+    if (strategy === 'lazy-play') {
+      await playCurrentPlaylist()
+      setStatus('已切换为按需播放，未执行全量下载。')
+      return
+    }
+
+    const payload = {
+      playlistId: id,
+      level: 'exhigh',
+      mode: 'playlist-download-and-save',
+      duplicateStrategy: 'skip'
+    }
+
+    setStatus('正在下载并写入本地歌单...')
+    const res = downloadService
+      ? await downloadService.createPlaylistTasks(payload)
+      : await electronAPI.neteaseDownloadPlaylistById(payload)
+
+    if (!res?.ok) {
+      setStatus(`下载失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
+      return
+    }
+
+    setStatus(`下载任务已创建：${res.createdCount || 0} 首，完成后将写入本地歌单。`)
+  }
+
+  async function openByPlaylistId(playlistId, playlistName = '', options = {}) {
     const id = String(playlistId || '').trim()
     if (!/^\d{1,20}$/.test(id)) {
       setStatus('无法查看详情：歌单 ID 无效。', true)
@@ -271,6 +391,10 @@ export function createNeteasePlaylistDetailManager(options = {}) {
 
     state.playlistId = id
     state.playlistName = String(playlistName || '').trim()
+    state.sourceKind = String(options?.source || '').trim() || 'playback'
+    state.playlistData = null
+    state.collected = Boolean(options?.cloudPlaylist?.collected)
+    renderCollectButton()
 
     openOverlay()
     if (dom.name) {
@@ -296,8 +420,33 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     }
 
     const playlist = response.data
+    state.playlistData = playlist
     renderSummary(playlist)
     renderTracks(playlist.tracks)
+    renderCollectButton()
+
+    if (eventBus) {
+      eventBus.emit('cloud-playlist:encountered', {
+        sourceKind: state.sourceKind || 'playback',
+        playlist: {
+          id,
+          platformPlaylistId: id,
+          name: playlist.name,
+          creator: {
+            userId: '',
+            nickname: playlist.creator || ''
+          },
+          coverUrl: playlist.coverUrl,
+          description: playlist.description,
+          trackCount: playlist.trackCount,
+          playCount: playlist.playCount,
+          tags: playlist.tags,
+          collected: true,
+          sourceKinds: [state.sourceKind || 'playback']
+        }
+      })
+    }
+
     setStatus(`已加载 ${playlist.trackCount || 0} 首歌曲。`)
   }
 
@@ -321,6 +470,18 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     if (dom.downloadBtn) {
       dom.downloadBtn.addEventListener('click', () => {
         downloadCurrentPlaylist()
+      })
+    }
+
+    if (dom.saveLocalBtn) {
+      dom.saveLocalBtn.addEventListener('click', () => {
+        saveCurrentPlaylistToLocal()
+      })
+    }
+
+    if (dom.collectBtn) {
+      dom.collectBtn.addEventListener('click', () => {
+        toggleCollectCurrentPlaylist()
       })
     }
 
@@ -350,16 +511,6 @@ export function createNeteasePlaylistDetailManager(options = {}) {
       event.preventDefault()
       closeOverlay()
     })
-
-    if (downloadService) {
-      downloadService.onTaskUpdate((task) => {
-        handleTaskUpdate(task)
-      })
-    } else if (electronAPI.onNeteaseDownloadTaskUpdate) {
-      electronAPI.onNeteaseDownloadTaskUpdate((task) => {
-        handleTaskUpdate(task)
-      })
-    }
   }
 
   function init() {

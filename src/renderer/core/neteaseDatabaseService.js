@@ -26,11 +26,35 @@ export function createNeteaseDatabaseService(options = {}) {
     return electronAPI.neteaseGetDailyRecommendation()
   }
 
+  async function getUserPlaylists() {
+    if (!electronAPI?.neteaseUserPlaylists) return { ok: false, error: 'API_UNAVAILABLE' }
+    return electronAPI.neteaseUserPlaylists()
+  }
+
+  async function listCloudPlaylists() {
+    if (!electronAPI?.neteaseCloudPlaylistList) return { ok: false, error: 'API_UNAVAILABLE' }
+    return electronAPI.neteaseCloudPlaylistList()
+  }
+
+  async function saveCloudPlaylistRef(payload) {
+    if (!electronAPI?.neteaseCloudPlaylistSaveRef) return { ok: false, error: 'API_UNAVAILABLE' }
+    return electronAPI.neteaseCloudPlaylistSaveRef(payload)
+  }
+
+  async function removeCloudPlaylistRef(payload) {
+    if (!electronAPI?.neteaseCloudPlaylistRemoveRef) return { ok: false, error: 'API_UNAVAILABLE' }
+    return electronAPI.neteaseCloudPlaylistRemoveRef(payload)
+  }
+
   return {
     resolveById,
     search,
     suggest,
     getPlaylistDetail,
-    getDailyRecommendation
+    getDailyRecommendation,
+    getUserPlaylists,
+    listCloudPlaylists,
+    saveCloudPlaylistRef,
+    removeCloudPlaylistRef
   }
 }

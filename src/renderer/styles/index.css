@@ -298,10 +298,19 @@ body {
   gap: 7px;
 }
 .created-playlist-item {
+  width: 100%;
+  border: 1px solid transparent;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+.cloud-playlist-item .created-playlist-count {
+  min-width: 46px;
+  font-size: 10px;
 }
 .created-playlist-name {
   flex: 1;

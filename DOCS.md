@@ -18,6 +18,7 @@
 		- [3.4 懒下载播放队列](#34-懒下载播放队列)
 		- [3.5 元数据与封面处理](#35-元数据与封面处理)
 		- [3.6 歌单 schema 迁移](#36-歌单-schema-迁移)
+		- [3.7 渲染层事件与服务边界](#37-渲染层事件与服务边界)
 	- [4. 数据与存储](#4-数据与存储)
 	- [5. UI 结构与装配](#5-ui-结构与装配)
 
@@ -73,6 +74,8 @@
 
 - 登录方式：邮箱、手机验证码、二维码
 - 登录在独立授权窗口进行
+- 云端歌单与本地歌单双轨管理：云端歌单采用引用收藏，不直接写入本地歌单库
+- 云端歌单支持账户同步（我创建/我收藏）、日推来源入库、播放来源入库
 - 关键词搜索支持歌曲/歌手/歌单卡片化展示，包含封面/头像与核心元信息
 - 歌单搜索结果支持详情面板，可查看歌单曲目并触发播放/下载操作
 - 下载支持单曲/歌单任务创建、取消、状态筛选
@@ -160,7 +163,7 @@
 
 - `src/renderer/core/eventBus.js`：发布/订阅与 request/handle 模式
 - `src/renderer/core/viewManager.js`：页面与子视图切换、封面区域同步
-- `src/renderer/core/neteaseDatabaseService.js`：网易云查询/搜索/建议/歌单详情/日推数据访问
+- `src/renderer/core/neteaseDatabaseService.js`：网易云查询/搜索/建议/歌单详情/日推/云歌单数据访问
 - `src/renderer/core/downloadService.js`：下载任务状态汇聚与任务操作封装
 
 ## 3. 关键实现机制
@@ -196,6 +199,7 @@
 ### 3.4 懒下载播放队列
 
 - 队列项允许以 lazyNetease 形态入队
+- 云端歌单与每日推荐共用懒下载链路
 - 播放命中时触发下载并等待可播放文件
 - 可预取下一首降低切歌等待
 - 下载结果回填队列项 `path`
@@ -227,6 +231,7 @@
 主要文件：
 
 - `playlists.json`
+- `netease-cloud-playlists.json`
 - `netease-auth.json`
 - `netease-track-metadata.json`
 - `shell-preferences.json`

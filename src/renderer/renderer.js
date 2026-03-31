@@ -9,6 +9,7 @@ import { createAccountManager } from './modules/accountManager.js'
 import { createDownloadManager } from './modules/downloadManager.js'
 import { createToastManager } from './modules/toastManager.js'
 import { createDailyRecommendationManager } from './modules/dailyRecommendationManager.js'
+import { createCloudPlaylistManager } from './modules/cloudPlaylistManager.js'
 import { createEventBus } from './core/eventBus.js'
 import { createViewManager } from './core/viewManager.js'
 import { createNeteaseDatabaseService } from './core/neteaseDatabaseService.js'
@@ -22,6 +23,8 @@ const homeFeaturedCoverEl = document.getElementById('homeFeaturedCover')
 const homeMenuRecommendEl = document.getElementById('homeMenuRecommend')
 const homeMenuDownloadEl = document.getElementById('homeMenuDownload')
 const homeCreatedPlaylistListEl = document.getElementById('homeCreatedPlaylistList')
+const homeCloudPlaylistListEl = document.getElementById('homeCloudPlaylistList')
+const homeRefreshCloudPlaylistBtn = document.getElementById('homeRefreshCloudPlaylistBtn')
 const homeRecommendViewEl = document.getElementById('homeRecommendView')
 const homeDownloadViewEl = document.getElementById('homeDownloadView')
 const homePlaylistDetailViewEl = document.getElementById('homePlaylistDetailView')
@@ -169,8 +172,15 @@ const neteasePlaylistDetailDom = {
   sub: document.getElementById('neteasePlaylistOverlaySub'),
   playBtn: document.getElementById('neteasePlaylistOverlayPlayBtn'),
   downloadBtn: document.getElementById('neteasePlaylistOverlayDownloadBtn'),
+  saveLocalBtn: document.getElementById('neteasePlaylistOverlaySaveLocalBtn'),
+  collectBtn: document.getElementById('neteasePlaylistOverlayCollectBtn'),
   status: document.getElementById('neteasePlaylistOverlayStatus'),
   trackList: document.getElementById('neteasePlaylistOverlayTrackList')
+}
+
+const cloudPlaylistDom = {
+  listEl: homeCloudPlaylistListEl,
+  refreshBtn: homeRefreshCloudPlaylistBtn
 }
 
 const downloadDom = {
@@ -223,6 +233,7 @@ let accountManager = null
 let savedPlaylistManager = null
 let toastManager = null
 let dailyRecommendationManager = null
+let cloudPlaylistManager = null
 let viewManager = null
 let neteaseDatabaseService = null
 let downloadService = null
@@ -344,6 +355,96 @@ function requestPlaylistName(title, defaultValue) {
 
     input.focus()
     input.select()
+  })
+}
+
+function requestCloudDownloadStrategy() {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div')
+    overlay.style.position = 'fixed'
+    overlay.style.left = '0'
+    overlay.style.top = '0'
+    overlay.style.width = '100vw'
+    overlay.style.height = '100vh'
+    overlay.style.background = 'rgba(0, 0, 0, 0.45)'
+    overlay.style.display = 'flex'
+    overlay.style.alignItems = 'center'
+    overlay.style.justifyContent = 'center'
+    overlay.style.zIndex = '10000'
+
+    const panel = document.createElement('div')
+    panel.style.width = 'min(460px, 92vw)'
+    panel.style.background = '#1f2b4a'
+    panel.style.border = '1px solid rgba(255,255,255,0.15)'
+    panel.style.borderRadius = '12px'
+    panel.style.padding = '16px'
+    panel.style.color = '#fff'
+
+    const titleEl = document.createElement('div')
+    titleEl.textContent = '下载为本地歌单'
+    titleEl.style.fontSize = '15px'
+    titleEl.style.fontWeight = '700'
+    titleEl.style.marginBottom = '8px'
+
+    const descEl = document.createElement('div')
+    descEl.textContent = '选择本次处理方式：'
+    descEl.style.fontSize = '12px'
+    descEl.style.opacity = '0.9'
+    descEl.style.marginBottom = '12px'
+
+    const actions = document.createElement('div')
+    actions.style.display = 'grid'
+    actions.style.gap = '8px'
+
+    const fullBtn = document.createElement('button')
+    fullBtn.textContent = '全量下载并创建本地歌单'
+    fullBtn.style.padding = '10px 12px'
+    fullBtn.style.borderRadius = '8px'
+    fullBtn.style.border = '1px solid rgba(255,255,255,0.24)'
+    fullBtn.style.background = 'rgba(255,255,255,0.14)'
+    fullBtn.style.color = '#fff'
+    fullBtn.style.cursor = 'pointer'
+
+    const lazyBtn = document.createElement('button')
+    lazyBtn.textContent = '仅按需播放（不立即全量下载）'
+    lazyBtn.style.padding = '10px 12px'
+    lazyBtn.style.borderRadius = '8px'
+    lazyBtn.style.border = '1px solid rgba(255,255,255,0.24)'
+    lazyBtn.style.background = 'rgba(255,255,255,0.08)'
+    lazyBtn.style.color = '#fff'
+    lazyBtn.style.cursor = 'pointer'
+
+    const cancelBtn = document.createElement('button')
+    cancelBtn.textContent = '取消'
+    cancelBtn.style.padding = '8px 12px'
+    cancelBtn.style.borderRadius = '8px'
+    cancelBtn.style.border = '1px solid rgba(255,255,255,0.2)'
+    cancelBtn.style.background = 'transparent'
+    cancelBtn.style.color = '#fff'
+    cancelBtn.style.cursor = 'pointer'
+
+    const close = (value) => {
+      overlay.remove()
+      resolve(value)
+    }
+
+    fullBtn.addEventListener('click', () => close('full-download'))
+    lazyBtn.addEventListener('click', () => close('lazy-play'))
+    cancelBtn.addEventListener('click', () => close('cancel'))
+    overlay.addEventListener('click', (event) => {
+      if (event.target === overlay) {
+        close('cancel')
+      }
+    })
+
+    actions.appendChild(fullBtn)
+    actions.appendChild(lazyBtn)
+    actions.appendChild(cancelBtn)
+    panel.appendChild(titleEl)
+    panel.appendChild(descEl)
+    panel.appendChild(actions)
+    overlay.appendChild(panel)
+    document.body.appendChild(overlay)
   })
 }
 
@@ -658,10 +759,26 @@ function setupNeteasePlaylistDetailManager() {
     neteaseDatabaseService,
     downloadService,
     eventBus,
-    dom: neteasePlaylistDetailDom
+    dom: neteasePlaylistDetailDom,
+    requestDownloadStrategy: requestCloudDownloadStrategy,
+    getCloudPlaylistManager: () => cloudPlaylistManager
   })
 
   neteasePlaylistDetailManager.init()
+}
+
+function setupCloudPlaylistManager() {
+  cloudPlaylistManager = createCloudPlaylistManager({
+    electronAPI: window.electronAPI,
+    neteaseDatabaseService,
+    eventBus,
+    dom: cloudPlaylistDom,
+    onOpenPlaylistDetail: (playlistId, playlistName, options = {}) => {
+      neteasePlaylistDetailManager?.openByPlaylistId(playlistId, playlistName, options)
+    }
+  })
+
+  cloudPlaylistManager.init()
 }
 
 function setupToastManager() {
@@ -850,6 +967,7 @@ function initRenderer() {
   setupDailyRecommendationManager()
   setupNeteaseManager()
   setupNeteasePlaylistDetailManager()
+  setupCloudPlaylistManager()
   setupNeteaseSearchManager()
   setupDownloadManager()
   setupAccountManager()

@@ -1,5 +1,7 @@
 const { ipcMain, shell } = require('electron')
 const fs = require('fs')
+const path = require('path')
+const { app } = require('electron')
 const { logProgramEvent } = require('../logger')
 
 const { requestJson } = require('./httpClient')
@@ -60,6 +62,13 @@ const {
 } = require('./downloadManager')
 
 let handlersRegistered = false
+const CLOUD_PLAYLIST_STORE_NAME = 'netease-cloud-playlists.json'
+
+let cloudPlaylistState = {
+  schemaVersion: 1,
+  playlists: []
+}
+let cloudPlaylistLoaded = false
 
 const AUTH_PATHS = {
   emailLogin: ['/api/login', '/weapi/login', '/login'],
@@ -109,6 +118,167 @@ function normalizeDailyRecommendationTracks(data) {
     .filter(Boolean)
 }
 
+function getCloudPlaylistStorePath() {
+  return path.join(app.getPath('userData'), CLOUD_PLAYLIST_STORE_NAME)
+}
+
+function toSafeNumber(value, fallback = 0) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : fallback
+}
+
+function normalizeCloudPlaylistItem(item) {
+  const playlistId = sanitizeId(item?.platformPlaylistId || item?.id)
+  if (!playlistId) return null
+
+  const tags = Array.isArray(item?.tags)
+    ? item.tags.map((tag) => String(tag || '').trim()).filter(Boolean).slice(0, 20)
+    : []
+
+  return {
+    id: `netease-cloud-${playlistId}`,
+    platform: 'netease',
+    source: 'cloud',
+    platformPlaylistId: playlistId,
+    name: String(item?.name || `歌单 ${playlistId}`).trim() || `歌单 ${playlistId}`,
+    creator: {
+      userId: String(item?.creator?.userId || '').trim(),
+      nickname: String(item?.creator?.nickname || '').trim()
+    },
+    coverUrl: String(item?.coverUrl || '').trim(),
+    description: String(item?.description || '').trim(),
+    trackCount: Math.max(0, Math.trunc(toSafeNumber(item?.trackCount, 0))),
+    playCount: Math.max(0, Math.trunc(toSafeNumber(item?.playCount, 0))),
+    tags,
+    collected: Boolean(item?.collected !== false),
+    sourceKinds: Array.isArray(item?.sourceKinds)
+      ? item.sourceKinds.map((value) => String(value || '').trim()).filter(Boolean)
+      : [],
+    updatedAt: new Date(item?.updatedAt || Date.now()).toISOString()
+  }
+}
+
+function ensureCloudPlaylistStateShape(raw) {
+  const playlists = Array.isArray(raw?.playlists) ? raw.playlists : []
+  const normalized = playlists.map(normalizeCloudPlaylistItem).filter(Boolean)
+  return {
+    schemaVersion: 1,
+    playlists: normalized
+  }
+}
+
+async function loadCloudPlaylistState() {
+  if (cloudPlaylistLoaded) return
+  try {
+    const content = await fs.promises.readFile(getCloudPlaylistStorePath(), 'utf8')
+    cloudPlaylistState = ensureCloudPlaylistStateShape(JSON.parse(content))
+  } catch (err) {
+    if (err?.code !== 'ENOENT') {
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'load-cloud-playlist-store-failed',
+        message: 'Failed to load cloud playlist store',
+        error: err
+      })
+    }
+    cloudPlaylistState = ensureCloudPlaylistStateShape({ schemaVersion: 1, playlists: [] })
+    await saveCloudPlaylistState()
+  }
+  cloudPlaylistLoaded = true
+}
+
+async function saveCloudPlaylistState() {
+  const storePath = getCloudPlaylistStorePath()
+  await fs.promises.mkdir(path.dirname(storePath), { recursive: true })
+  await fs.promises.writeFile(storePath, JSON.stringify(cloudPlaylistState, null, 2), 'utf8')
+}
+
+function upsertCloudPlaylistReference(input, options = {}) {
+  const item = normalizeCloudPlaylistItem(input)
+  if (!item) return null
+
+  const existingIndex = cloudPlaylistState.playlists.findIndex((entry) => entry.platformPlaylistId === item.platformPlaylistId)
+  if (existingIndex < 0) {
+    cloudPlaylistState.playlists.unshift(item)
+    return item
+  }
+
+  const existing = cloudPlaylistState.playlists[existingIndex]
+  const mergedSourceKinds = new Set([...(existing.sourceKinds || []), ...(item.sourceKinds || []), ...(options.sourceKinds || [])])
+  const merged = {
+    ...existing,
+    ...item,
+    collected: options.forceCollected == null ? existing.collected : Boolean(options.forceCollected),
+    sourceKinds: Array.from(mergedSourceKinds).filter(Boolean),
+    updatedAt: new Date().toISOString()
+  }
+
+  cloudPlaylistState.playlists.splice(existingIndex, 1)
+  cloudPlaylistState.playlists.unshift(merged)
+  return merged
+}
+
+async function fetchUserCloudPlaylists() {
+  if (!authState.cookie && !authState.userId) {
+    return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
+  }
+
+  const uid = sanitizeId(authState.userId)
+  if (!uid) {
+    return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
+  }
+
+  try {
+    const data = await requestNeteaseApi('/api/user/playlist', {
+      uid,
+      limit: 100,
+      offset: 0
+    })
+
+    const code = Number(data?.code || 0)
+    if (code && code !== 200) {
+      const message = extractApiErrorMessage(data) || 'REQUEST_FAILED'
+      if (isRiskControlMessage(message)) {
+        return { ok: false, error: 'LOGIN_RISK_BLOCKED', code, message }
+      }
+      return { ok: false, error: 'REQUEST_FAILED', code, message }
+    }
+
+    const rawList = Array.isArray(data?.playlist) ? data.playlist : []
+    const items = rawList
+      .map((item) => {
+        const playlistId = sanitizeId(item?.id)
+        if (!playlistId) return null
+
+        const creatorUserId = sanitizeId(item?.creator?.userId)
+        const ownerId = sanitizeId(uid)
+        const sourceKind = creatorUserId && ownerId && creatorUserId === ownerId ? 'created' : 'subscribed'
+
+        return normalizeCloudPlaylistItem({
+          id: playlistId,
+          platformPlaylistId: playlistId,
+          name: item?.name,
+          creator: {
+            userId: creatorUserId || '',
+            nickname: String(item?.creator?.nickname || '').trim()
+          },
+          coverUrl: item?.coverImgUrl,
+          description: item?.description,
+          trackCount: item?.trackCount,
+          playCount: item?.playCount,
+          tags: item?.tags,
+          collected: true,
+          sourceKinds: [sourceKind, 'account']
+        })
+      })
+      .filter(Boolean)
+
+    return { ok: true, data: items }
+  } catch (err) {
+    return { ok: false, error: 'REQUEST_FAILED', message: err?.message || '' }
+  }
+}
+
 function registerNeteaseHandlers() {
   if (handlersRegistered) return
   handlersRegistered = true
@@ -121,6 +291,7 @@ function registerNeteaseHandlers() {
       error: err
     })
   })
+
 
   ipcMain.handle('netease:resolve-id', async (_event, payload) => {
     const id = sanitizeId(payload?.id)
@@ -936,6 +1107,74 @@ function registerNeteaseHandlers() {
       })
       return { ok: false, error: 'REQUEST_FAILED', message: err?.message || '' }
     }
+  })
+
+  ipcMain.handle('netease:user-playlists', async () => {
+    await ensureAuthStateLoaded()
+    await loadCloudPlaylistState()
+
+    const result = await fetchUserCloudPlaylists()
+    if (!result?.ok) {
+      return result
+    }
+
+    for (const item of result.data) {
+      upsertCloudPlaylistReference(item, {
+        forceCollected: true,
+        sourceKinds: item.sourceKinds
+      })
+    }
+    await saveCloudPlaylistState()
+
+    return {
+      ok: true,
+      data: result.data,
+      state: cloudPlaylistState
+    }
+  })
+
+  ipcMain.handle('netease:cloud-playlist:list', async () => {
+    await ensureAuthStateLoaded()
+    await loadCloudPlaylistState()
+    return {
+      ok: true,
+      data: cloudPlaylistState.playlists
+    }
+  })
+
+  ipcMain.handle('netease:cloud-playlist:save-ref', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+    await loadCloudPlaylistState()
+
+    const saved = upsertCloudPlaylistReference(payload, {
+      forceCollected: payload?.collected,
+      sourceKinds: Array.isArray(payload?.sourceKinds) ? payload.sourceKinds : []
+    })
+    if (!saved) {
+      return { ok: false, error: 'INVALID_PLAYLIST_ID', message: '歌单 ID 无效' }
+    }
+
+    await saveCloudPlaylistState()
+    return { ok: true, data: saved }
+  })
+
+  ipcMain.handle('netease:cloud-playlist:remove-ref', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+    await loadCloudPlaylistState()
+
+    const playlistId = sanitizeId(payload?.platformPlaylistId || payload?.playlistId || payload?.id)
+    if (!playlistId) {
+      return { ok: false, error: 'INVALID_PLAYLIST_ID', message: '歌单 ID 无效' }
+    }
+
+    const before = cloudPlaylistState.playlists.length
+    cloudPlaylistState.playlists = cloudPlaylistState.playlists.filter((item) => item.platformPlaylistId !== playlistId)
+    const removed = cloudPlaylistState.playlists.length !== before
+    if (removed) {
+      await saveCloudPlaylistState()
+    }
+
+    return { ok: true, removed }
   })
 
   ipcMain.handle('netease:search', async (_event, payload) => {
