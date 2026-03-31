@@ -4,6 +4,7 @@ import { createSavedPlaylistManager } from './modules/savedPlaylistManager.js'
 import { createPlaybackController } from './modules/playbackController.js'
 import { createNeteaseManager } from './modules/neteaseManager.js'
 import { createNeteaseSearchManager } from './modules/neteaseSearchManager.js'
+import { createNeteasePlaylistDetailManager } from './modules/neteasePlaylistDetailManager.js'
 import { createAccountManager } from './modules/accountManager.js'
 import { createDownloadManager } from './modules/downloadManager.js'
 import { createToastManager } from './modules/toastManager.js'
@@ -159,6 +160,19 @@ const neteaseSearchDom = {
   pageInfo: document.getElementById('neteaseKeywordPageInfo')
 }
 
+const neteasePlaylistDetailDom = {
+  overlay: document.getElementById('neteasePlaylistOverlay'),
+  closeBtn: document.getElementById('neteasePlaylistOverlayCloseBtn'),
+  cover: document.getElementById('neteasePlaylistOverlayCover'),
+  coverText: document.getElementById('neteasePlaylistOverlayCoverText'),
+  name: document.getElementById('neteasePlaylistOverlayName'),
+  sub: document.getElementById('neteasePlaylistOverlaySub'),
+  playBtn: document.getElementById('neteasePlaylistOverlayPlayBtn'),
+  downloadBtn: document.getElementById('neteasePlaylistOverlayDownloadBtn'),
+  status: document.getElementById('neteasePlaylistOverlayStatus'),
+  trackList: document.getElementById('neteasePlaylistOverlayTrackList')
+}
+
 const downloadDom = {
   songIdInput: document.getElementById('downloadSongIdInput'),
   songResolveBtn: document.getElementById('downloadSongResolveBtn'),
@@ -213,6 +227,7 @@ let viewManager = null
 let neteaseDatabaseService = null
 let downloadService = null
 let currentSettingsTab = 'playback'
+let neteasePlaylistDetailManager = null
 const createdSavedPlaylistIdsByName = new Map()
 const pendingSavedPlaylistPromises = new Map()
 const eventBus = createEventBus()
@@ -629,9 +644,24 @@ function setupNeteaseSearchManager() {
     neteaseDatabaseService,
     downloadService,
     dom: neteaseSearchDom,
-    eventBus
+    eventBus,
+    onOpenPlaylistDetail: (playlistId, playlistName) => {
+      neteasePlaylistDetailManager?.openByPlaylistId(playlistId, playlistName)
+    }
   })
   manager.init()
+}
+
+function setupNeteasePlaylistDetailManager() {
+  neteasePlaylistDetailManager = createNeteasePlaylistDetailManager({
+    electronAPI: window.electronAPI,
+    neteaseDatabaseService,
+    downloadService,
+    eventBus,
+    dom: neteasePlaylistDetailDom
+  })
+
+  neteasePlaylistDetailManager.init()
 }
 
 function setupToastManager() {
@@ -819,6 +849,7 @@ function initRenderer() {
   setupSavedPlaylistManager()
   setupDailyRecommendationManager()
   setupNeteaseManager()
+  setupNeteasePlaylistDetailManager()
   setupNeteaseSearchManager()
   setupDownloadManager()
   setupAccountManager()

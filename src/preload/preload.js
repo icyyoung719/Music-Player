@@ -56,6 +56,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   neteaseSearchHot: () => ipcRenderer.invoke('netease:search-hot'),
   neteaseSearchHotDetail: () => ipcRenderer.invoke('netease:search-hot-detail'),
   neteaseSearchMultimatch: (payload) => ipcRenderer.invoke('netease:search-multimatch', payload),
+  neteasePlaylistDetail: (payload) => ipcRenderer.invoke('netease:playlist-detail', payload),
   neteaseSendText: (payload) => ipcRenderer.invoke('netease:send-text', payload),
   neteaseSendSong: (payload) => ipcRenderer.invoke('netease:send-song', payload),
   neteaseSendAlbum: (payload) => ipcRenderer.invoke('netease:send-album', payload),

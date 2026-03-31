@@ -73,6 +73,8 @@
 
 - 登录方式：邮箱、手机验证码、二维码
 - 登录在独立授权窗口进行
+- 关键词搜索支持歌曲/歌手/歌单卡片化展示，包含封面/头像与核心元信息
+- 歌单搜索结果支持详情面板，可查看歌单曲目并触发播放/下载操作
 - 下载支持单曲/歌单任务创建、取消、状态筛选
 - 下载目录支持 Songs、Temp、Lists/<歌单名>
 - 下载后补全标签、歌词与封面元数据
@@ -85,6 +87,8 @@
 - `src/main/modules/netease/trackMetadata.js`
 - `src/renderer/modules/downloadManager.js`
 - `src/renderer/modules/authWindow.js`
+- `src/renderer/modules/neteaseSearchManager.js`
+- `src/renderer/modules/neteasePlaylistDetailManager.js`
 
 ### 1.5 每日推荐
 
@@ -156,7 +160,7 @@
 
 - `src/renderer/core/eventBus.js`：发布/订阅与 request/handle 模式
 - `src/renderer/core/viewManager.js`：页面与子视图切换、封面区域同步
-- `src/renderer/core/neteaseDatabaseService.js`：网易云查询/搜索/建议/日推数据访问
+- `src/renderer/core/neteaseDatabaseService.js`：网易云查询/搜索/建议/歌单详情/日推数据访问
 - `src/renderer/core/downloadService.js`：下载任务状态汇聚与任务操作封装
 
 ## 3. 关键实现机制

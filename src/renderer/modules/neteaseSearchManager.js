@@ -24,6 +24,29 @@ function formatDuration(ms) {
   return `${min}:${String(rem).padStart(2, '0')}`
 }
 
+function formatPlayCount(value) {
+  const count = Number(value || 0)
+  if (!Number.isFinite(count) || count <= 0) return '0'
+  if (count >= 100000000) return `${(count / 100000000).toFixed(1)} 亿`
+  if (count >= 10000) return `${(count / 10000).toFixed(1)} 万`
+  return String(Math.floor(count))
+}
+
+function escapeHtml(raw) {
+  return String(raw || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;')
+}
+
+function coverStyle(url) {
+  const clean = String(url || '').trim()
+  if (!clean) return ''
+  return `background-image:url('${clean.replace(/'/g, "\\'")}')`
+}
+
 export function createNeteaseSearchManager(options) {
   const {
     electronAPI,
@@ -31,7 +54,8 @@ export function createNeteaseSearchManager(options) {
     downloadService,
     dom,
     eventBus,
-    onAppendDownloadedTrack
+    onAppendDownloadedTrack,
+    onOpenPlaylistDetail
   } = options
 
   if (!electronAPI || !dom?.keywordInput || !dom?.searchBtn || !dom?.resultList) {
@@ -107,33 +131,67 @@ export function createNeteaseSearchManager(options) {
     const html = items
       .map((item) => {
         if (state.type === '100') {
-          const alias = Array.isArray(item.alias) && item.alias.length ? ` · ${item.alias.join(' / ')}` : ''
+          const style = coverStyle(item.picUrl)
+          const name = escapeHtml(item.name)
+          const alias = Array.isArray(item.alias) && item.alias.length ? ` · ${escapeHtml(item.alias.join(' / '))}` : ''
+          const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
           return `
-            <article class="netease-search-item">
-              <div class="netease-search-item-title">${item.name}${alias}</div>
-              <div class="netease-search-item-meta">专辑 ${item.albumSize || 0} · MV ${item.mvSize || 0}</div>
-            </article>
-          `
-        }
-
-        if (state.type === '1000') {
-          return `
-            <article class="netease-search-item">
-              <div class="netease-search-item-title">${item.name}</div>
-              <div class="netease-search-item-meta">创建者 ${item.creator || '未知'} · ${item.trackCount || 0} 首 · 播放 ${item.playCount || 0}</div>
-              <div class="netease-search-item-actions">
-                <button type="button" data-action="play-playlist" data-item-id="${item.id}">播放歌单</button>
+            <article class="netease-result-card netease-result-card-artist">
+              <div class="${coverClass}" ${style ? `style="${style}"` : ''}>${style ? '' : '♪'}</div>
+              <div class="netease-result-content">
+                <div class="netease-result-title">${name}${alias}</div>
+                <div class="netease-result-meta">专辑 ${item.albumSize || 0} · MV ${item.mvSize || 0}</div>
+                <div class="netease-result-foot">
+                  <span class="netease-result-duration">歌手</span>
+                </div>
               </div>
             </article>
           `
         }
 
+        if (state.type === '1000') {
+          const style = coverStyle(item.coverUrl)
+          const name = escapeHtml(item.name)
+          const creator = escapeHtml(item.creator || '未知')
+          const itemId = escapeHtml(item.id)
+          const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
+          return `
+            <article class="netease-result-card netease-result-card-playlist">
+              <div class="${coverClass}" ${style ? `style="${style}"` : ''}>${style ? '' : '♫'}</div>
+              <div class="netease-result-content">
+                <div class="netease-result-title">${name}</div>
+                <div class="netease-result-meta">创建者 ${creator} · ${item.trackCount || 0} 首 · 播放 ${formatPlayCount(item.playCount)}</div>
+                <div class="netease-result-foot">
+                  <span class="netease-result-duration">歌单</span>
+                  <div class="netease-result-actions">
+                    <button type="button" data-action="play-playlist" data-item-id="${itemId}">播放</button>
+                    <button type="button" data-action="view-playlist-detail" data-item-id="${itemId}" data-item-name="${name}">详情</button>
+                  </div>
+                </div>
+              </div>
+            </article>
+          `
+        }
+
+        const style = coverStyle(item.coverUrl)
+        const itemId = escapeHtml(item.id)
+        const name = escapeHtml(item.name)
+        const artist = escapeHtml(item.artist || '未知歌手')
+        const album = escapeHtml(item.album || '未知专辑')
+        const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
+
         return `
-          <article class="netease-search-item">
-            <div class="netease-search-item-title">${item.name}</div>
-            <div class="netease-search-item-meta">${item.artist || '未知歌手'} · ${item.album || '未知专辑'} · ${formatDuration(item.durationMs)}</div>
-            <div class="netease-search-item-actions">
-              <button type="button" data-action="play-song" data-item-id="${item.id}">播放歌曲</button>
+          <article class="netease-result-card netease-result-card-song">
+            <div class="${coverClass}" ${style ? `style="${style}"` : ''}>${style ? '' : '♪'}</div>
+            <div class="netease-result-content">
+              <div class="netease-result-title">${name}</div>
+              <div class="netease-result-meta">${artist} · ${album}</div>
+              <div class="netease-result-foot">
+                <span class="netease-result-duration">${formatDuration(item.durationMs)}</span>
+                <div class="netease-result-actions">
+                  <button type="button" data-action="play-song" data-item-id="${itemId}">播放</button>
+                </div>
+              </div>
             </div>
           </article>
         `
@@ -345,8 +403,12 @@ export function createNeteaseSearchManager(options) {
     dom.resultList.addEventListener('click', (event) => {
       const target = event.target
       if (!(target instanceof HTMLElement)) return
-      const action = String(target.dataset.action || '').trim()
-      const itemId = String(target.dataset.itemId || '').trim()
+
+      const actionButton = target.closest('button[data-action]')
+      if (!(actionButton instanceof HTMLElement)) return
+
+      const action = String(actionButton.dataset.action || '').trim()
+      const itemId = String(actionButton.dataset.itemId || '').trim()
       if (!itemId) return
 
       if (action === 'play-song') {
@@ -355,6 +417,10 @@ export function createNeteaseSearchManager(options) {
 
       if (action === 'play-playlist') {
         playPlaylistById(itemId)
+      }
+
+      if (action === 'view-playlist-detail' && typeof onOpenPlaylistDetail === 'function') {
+        onOpenPlaylistDetail(itemId, String(actionButton.dataset.itemName || '').trim())
       }
     })
 

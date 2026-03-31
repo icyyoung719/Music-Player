@@ -1,7 +1,8 @@
 const PARTIAL_PATHS = [
   './partials/home-page.html',
   './partials/song-page.html',
-  './partials/settings-overlay.html'
+  './partials/settings-overlay.html',
+  './partials/playlist-detail-overlay.html'
 ]
 
 async function loadPartial(path) {

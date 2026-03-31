@@ -16,6 +16,11 @@ export function createNeteaseDatabaseService(options = {}) {
     return electronAPI.neteaseSearchSuggest(payload)
   }
 
+  async function getPlaylistDetail(playlistId) {
+    if (!electronAPI?.neteasePlaylistDetail) return { ok: false, error: 'API_UNAVAILABLE' }
+    return electronAPI.neteasePlaylistDetail({ playlistId })
+  }
+
   async function getDailyRecommendation() {
     if (!electronAPI?.neteaseGetDailyRecommendation) return { ok: false, error: 'API_UNAVAILABLE' }
     return electronAPI.neteaseGetDailyRecommendation()
@@ -25,6 +30,7 @@ export function createNeteaseDatabaseService(options = {}) {
     resolveById,
     search,
     suggest,
+    getPlaylistDetail,
     getDailyRecommendation
   }
 }

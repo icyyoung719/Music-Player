@@ -968,6 +968,33 @@ function registerNeteaseHandlers() {
     return searchNeteaseMultimatch(payload)
   })
 
+  ipcMain.handle('netease:playlist-detail', async (_event, payload) => {
+    await ensureAuthStateLoaded()
+
+    const playlistId = sanitizeId(payload?.playlistId)
+    if (!playlistId) {
+      return { ok: false, error: 'INVALID_PLAYLIST_ID', message: '歌单 ID 无效' }
+    }
+
+    try {
+      const playlist = await fetchPlaylistTracksById(playlistId)
+      if (!playlist) {
+        return { ok: false, error: 'PLAYLIST_NOT_FOUND', message: '未找到对应歌单' }
+      }
+
+      return { ok: true, data: playlist }
+    } catch (err) {
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'playlist-detail-failed',
+        message: 'Failed to fetch NetEase playlist detail',
+        error: err,
+        data: { playlistId }
+      })
+      return { ok: false, error: 'REQUEST_FAILED', message: err?.message || '' }
+    }
+  })
+
   ipcMain.handle('netease:send-text', async (_event, payload) => {
     await ensureAuthStateLoaded()
     if (!authState.cookie && !authState.userId) {
