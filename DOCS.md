@@ -57,7 +57,9 @@
 核心模块：
 
 - `src/renderer/modules/shortcutManager.js`
-- `src/renderer/renderer.js`
+- `src/renderer/modules/settingsManager.js`
+- `src/renderer/modules/navigationBridge.js`
+- `src/renderer/modules/dialogManager.js`
 
 ### 1.3 本地歌单
 
@@ -157,6 +159,7 @@
 2. 应用就绪后创建主窗口并初始化托盘/媒体键壳层。
 3. Renderer 通过 `bootstrap.js` 装配 partials。
 4. `renderer.js` 初始化业务模块，通过事件总线连接跨模块交互，并注入共享服务。
+5. `renderer.js` 只负责模块装配与初始化顺序，DOM 查询、监听与局部业务状态由 `modules/` 与 `core/` 承接。
 
 ### 2.3 模块组织策略
 
@@ -171,6 +174,15 @@
 - `src/renderer/core/viewManager.js`：页面与子视图切换、封面区域同步
 - `src/renderer/core/neteaseDatabaseService.js`：网易云查询/搜索/建议/歌单详情/日推/云歌单数据访问
 - `src/renderer/core/downloadService.js`：下载任务状态汇聚与任务操作封装
+- `src/renderer/core/eventBridgeManager.js`：事件总线到业务模块的桥接与快捷键动作分发
+
+渲染层辅助模块：
+
+- `src/renderer/modules/rendererDom.js`：统一 DOM 引用采集
+- `src/renderer/modules/settingsManager.js`：设置页展示、tab 切换、淡入淡出参数同步
+- `src/renderer/modules/navigationBridge.js`：主页菜单、列表点击与全局播放器区域导航监听
+- `src/renderer/modules/dialogManager.js`：歌单命名与云歌单策略弹窗
+- `src/renderer/modules/playlistCacheService.js`：按名称建歌单缓存、并发去重与下载后入歌单
 
 ## 3. 关键实现机制
 
@@ -230,6 +242,7 @@
 - 下载任务状态由 `downloadService` 汇聚，模块通过订阅获取更新
 - 网易云只读数据访问优先经过 `neteaseDatabaseService`
 - 最近播放通过 `playback:track.started` 事件记录本地歌曲快照，并通过 `playback:queue.replace` / `playback:queue.append` 执行快速播放与加队列
+- `eventBridgeManager` 集中维护 `playlist:ensure-by-name`、`playlist:add-track`、`playback:queue.*`、`view:*` 等桥接契约
 - `renderer.js` 负责装配，不承载具体业务细节
 
 ## 4. 数据与存储
