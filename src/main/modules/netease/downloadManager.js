@@ -13,7 +13,11 @@ const {
   sanitizeSongId,
   resolveAudioExtByResolvedUrl
 } = require('./neteaseApi')
-const { persistTrackMetadataForTask } = require('./trackMetadata')
+const {
+  trackMetadataStore,
+  ensureTrackMetadataLoaded,
+  persistTrackMetadataForTask
+} = require('./trackMetadata')
 
 const MAX_DOWNLOAD_CONCURRENCY = 2
 const DEFAULT_DOWNLOAD_DIR = path.join(os.homedir(), 'Music', 'MyPlayerDownloads')
@@ -181,6 +185,256 @@ async function countFilesRecursive(targetDir) {
     }
   }
   return count
+}
+
+function normalizeFsPath(filePath) {
+  const resolved = path.resolve(String(filePath || ''))
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved
+}
+
+function isPathInside(basePath, targetPath) {
+  const base = normalizeFsPath(basePath)
+  const target = normalizeFsPath(targetPath)
+  if (base === target) return true
+  return target.startsWith(`${base}${path.sep}`)
+}
+
+function resolveDirTypeForPath(filePath, dirs) {
+  if (!filePath || !dirs) return ''
+  if (isPathInside(dirs.songs, filePath)) return 'songs'
+  if (isPathInside(dirs.temp, filePath)) return 'temp'
+  if (isPathInside(dirs.lists, filePath)) return 'lists'
+  return ''
+}
+
+async function fileExists(filePath) {
+  if (!filePath) return false
+  try {
+    await fs.promises.access(filePath, fs.constants.F_OK)
+    return true
+  } catch {
+    return false
+  }
+}
+
+async function listFilesRecursive(rootDir) {
+  const files = []
+  const stack = [rootDir]
+  while (stack.length > 0) {
+    const current = stack.pop()
+    let entries = []
+    try {
+      entries = await fs.promises.readdir(current, { withFileTypes: true })
+    } catch {
+      continue
+    }
+
+    for (const entry of entries) {
+      const full = path.join(current, entry.name)
+      if (entry.isDirectory()) {
+        stack.push(full)
+      } else if (entry.isFile()) {
+        files.push(full)
+      }
+    }
+  }
+  return files
+}
+
+async function locateSongBySongId(songId, dirs, options = {}) {
+  const id = String(songId || '').trim()
+  if (!id) return null
+
+  const includeTemp = options.includeTemp !== false
+  const includeSongs = options.includeSongs !== false
+  const includeLists = Boolean(options.includeLists)
+
+  await ensureTrackMetadataLoaded()
+  for (const [storedPath, metadata] of Object.entries(trackMetadataStore)) {
+    if (!metadata || String(metadata.songId || '').trim() !== id) continue
+    if (!(await fileExists(storedPath))) continue
+
+    const dirType = resolveDirTypeForPath(storedPath, dirs)
+    if (!dirType) continue
+    if (dirType === 'temp' && !includeTemp) continue
+    if (dirType === 'songs' && !includeSongs) continue
+    if (dirType === 'lists' && !includeLists) continue
+
+    return {
+      path: storedPath,
+      dirType
+    }
+  }
+
+  return null
+}
+
+async function locateSongByFileName(fileName, dirs, options = {}) {
+  const normalizedName = String(fileName || '').trim()
+  if (!normalizedName) return null
+
+  const includeTemp = options.includeTemp !== false
+  const includeSongs = options.includeSongs !== false
+  const includeLists = Boolean(options.includeLists)
+
+  if (includeTemp) {
+    const tempPath = path.join(dirs.temp, normalizedName)
+    if (await fileExists(tempPath)) return { path: tempPath, dirType: 'temp' }
+  }
+
+  if (includeSongs) {
+    const songsPath = path.join(dirs.songs, normalizedName)
+    if (await fileExists(songsPath)) return { path: songsPath, dirType: 'songs' }
+  }
+
+  if (includeLists) {
+    const listFiles = await listFilesRecursive(dirs.lists)
+    const matchedPath = listFiles.find((filePath) => path.basename(filePath).toLowerCase() === normalizedName.toLowerCase())
+    if (matchedPath) return { path: matchedPath, dirType: 'lists' }
+  }
+
+  return null
+}
+
+async function moveFileSafely(sourcePath, targetPath) {
+  if (normalizeFsPath(sourcePath) === normalizeFsPath(targetPath)) return targetPath
+
+  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true })
+  try {
+    await fs.promises.rename(sourcePath, targetPath)
+    return targetPath
+  } catch (err) {
+    if (err?.code !== 'EXDEV' && err?.code !== 'EEXIST') {
+      throw err
+    }
+  }
+
+  if (!(await fileExists(targetPath))) {
+    await fs.promises.copyFile(sourcePath, targetPath)
+  }
+  if (await fileExists(sourcePath)) {
+    await fs.promises.unlink(sourcePath).catch(() => {})
+  }
+  return targetPath
+}
+
+async function copyFileSafely(sourcePath, targetPath) {
+  if (normalizeFsPath(sourcePath) === normalizeFsPath(targetPath)) return targetPath
+  await fs.promises.mkdir(path.dirname(targetPath), { recursive: true })
+  if (!(await fileExists(targetPath))) {
+    await fs.promises.copyFile(sourcePath, targetPath)
+  }
+  return targetPath
+}
+
+function publishSkippedTask(task, infoMessage) {
+  downloadTasks.set(task.id, task)
+  emitDownloadTaskUpdate(task)
+  if (infoMessage && shouldEmitTaskToast(task)) {
+    emitGlobalToast({
+      level: 'info',
+      message: infoMessage,
+      taskId: task.id,
+      taskStatus: task.status
+    })
+  }
+}
+
+async function reuseLocalSongForTask(payload, finalFileName, targetFilePath, dirs, dirResolved) {
+  const mode = String(payload.downloadMode || 'song-download-only').trim()
+  const isPlaySong = mode === 'song-temp-queue-only'
+  const isSongDownload = mode === 'song-download-only' || mode === 'song-download-and-queue'
+  const isPlaylistDownload = mode.startsWith('playlist-download-')
+  if (!isPlaySong && !isSongDownload && !isPlaylistDownload) return null
+
+  let located = await locateSongBySongId(payload.songId, dirs, {
+    includeTemp: true,
+    includeSongs: true,
+    includeLists: isPlaySong || isPlaylistDownload
+  })
+
+  if (!located) {
+    located = await locateSongByFileName(finalFileName, dirs, {
+      includeTemp: true,
+      includeSongs: true,
+      includeLists: isPlaySong || isPlaylistDownload
+    })
+  }
+
+  if (!located) return null
+
+  if (isPlaySong) {
+    const skippedTask = createSkippedTask({
+      ...payload,
+      filePath: located.path,
+      fileName: path.basename(located.path),
+      skipReason: 'local-file-reused',
+      targetDirType: located.dirType,
+      playlistContext: payload.playlistContext
+    })
+    publishSkippedTask(skippedTask, `已使用本地文件播放: ${skippedTask.title || skippedTask.songId || path.basename(located.path)}`)
+    return { ok: true, task: skippedTask }
+  }
+
+  if (isSongDownload) {
+    if (located.dirType === 'songs') {
+      const skippedTask = createSkippedTask({
+        ...payload,
+        filePath: located.path,
+        fileName: path.basename(located.path),
+        skipReason: 'already-in-songs',
+        targetDirType: 'songs',
+        playlistContext: payload.playlistContext
+      })
+      publishSkippedTask(skippedTask, `已存在于 Songs，无需重复下载: ${skippedTask.title || skippedTask.songId || path.basename(located.path)}`)
+      return { ok: true, task: skippedTask }
+    }
+
+    if (located.dirType === 'temp') {
+      const movedPath = await moveFileSafely(located.path, targetFilePath)
+      const skippedTask = createSkippedTask({
+        ...payload,
+        filePath: movedPath,
+        fileName: path.basename(movedPath),
+        skipReason: 'moved-temp-to-songs',
+        targetDirType: 'songs',
+        playlistContext: payload.playlistContext
+      })
+      publishSkippedTask(skippedTask, `已将 Temp 文件移动到 Songs: ${skippedTask.title || skippedTask.songId || path.basename(movedPath)}`)
+      return { ok: true, task: skippedTask }
+    }
+  }
+
+  if (isPlaylistDownload) {
+    const targetInLists = path.join(dirResolved.dirPath, finalFileName)
+
+    if (located.dirType === 'lists' && normalizeFsPath(located.path) === normalizeFsPath(targetInLists)) {
+      const skippedTask = createSkippedTask({
+        ...payload,
+        filePath: targetInLists,
+        fileName: finalFileName,
+        skipReason: 'already-in-target-list',
+        targetDirType: 'lists',
+        playlistContext: payload.playlistContext
+      })
+      publishSkippedTask(skippedTask, `歌单内已存在本地文件: ${skippedTask.title || skippedTask.songId || finalFileName}`)
+      return { ok: true, task: skippedTask }
+    }
+
+    const copiedPath = await copyFileSafely(located.path, targetInLists)
+    const skippedTask = createSkippedTask({
+      ...payload,
+      filePath: copiedPath,
+      fileName: finalFileName,
+      skipReason: 'copied-local-to-list',
+      targetDirType: 'lists',
+      playlistContext: payload.playlistContext
+    })
+    publishSkippedTask(skippedTask, `已复用本地文件到歌单目录: ${skippedTask.title || skippedTask.songId || finalFileName}`)
+    return { ok: true, task: skippedTask }
+  }
+
+  return null
 }
 
 // ---------------------------------------------------------------------------
@@ -368,6 +622,12 @@ async function createDownloadTask(payload) {
   await fs.promises.mkdir(dirResolved.dirPath, { recursive: true })
   const filePath = path.join(dirResolved.dirPath, finalFileName)
 
+  const dirs = await ensureDownloadBaseDirs()
+  const reusedLocal = await reuseLocalSongForTask(payload, finalFileName, filePath, dirs, dirResolved)
+  if (reusedLocal) {
+    return reusedLocal
+  }
+
   const duplicateStrategy = String(payload.duplicateStrategy || 'skip').trim().toLowerCase()
   if (duplicateStrategy === 'skip') {
     try {
@@ -381,16 +641,7 @@ async function createDownloadTask(payload) {
         playlistContext: payload.playlistContext
       })
 
-      downloadTasks.set(skippedTask.id, skippedTask)
-      emitDownloadTaskUpdate(skippedTask)
-      if (shouldEmitTaskToast(skippedTask)) {
-        emitGlobalToast({
-          level: 'info',
-          message: `已跳过重复下载: ${skippedTask.title || skippedTask.songId || finalFileName}`,
-          taskId: skippedTask.id,
-          taskStatus: skippedTask.status
-        })
-      }
+      publishSkippedTask(skippedTask, `已跳过重复下载: ${skippedTask.title || skippedTask.songId || finalFileName}`)
       return { ok: true, task: skippedTask }
     } catch {
       // ignore access errors, continue to create normal task

@@ -80,6 +80,10 @@
 - 歌单搜索结果支持详情面板，可查看歌单曲目并触发播放/下载操作
 - 下载支持单曲/歌单任务创建、取消、状态筛选
 - 下载目录支持 Songs、Temp、Lists/<歌单名>
+- 下载任务创建前先执行本地命中检查：
+	- 单曲播放（song-temp-queue-only）扫描 Temp/Songs/Lists，命中后直接复用本地文件
+	- 单曲下载（song-download-only / song-download-and-queue）扫描 Songs/Temp，命中 Temp 时移动到 Songs
+	- 歌单下载（playlist-download-*）优先复用本地 Songs/Temp/Lists 文件并复制到目标 Lists/<歌单名>
 - 下载后补全标签、歌词与封面元数据
 
 核心模块：
@@ -194,7 +198,8 @@
 - 最大并发数：2
 - 任务状态：pending/downloading/succeeded/failed/skipped/canceled
 - 支持取消与跨窗口进度广播
-- 创建任务前执行目标路径去重检查
+- 创建任务前执行本地优先解析：按下载模式扫描 Temp/Songs/Lists，命中后可直接复用、移动或复制
+- 当目标路径已存在时继续使用重复文件跳过策略
 
 ### 3.4 懒下载播放队列
 
