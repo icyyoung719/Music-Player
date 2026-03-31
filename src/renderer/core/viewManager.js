@@ -1,5 +1,5 @@
 function normalizeHomeView(view) {
-  return ['recommend', 'download', 'playlist-detail'].includes(view) ? view : 'recommend'
+  return ['recommend', 'download', 'recently-played', 'playlist-detail'].includes(view) ? view : 'recommend'
 }
 
 export function createViewManager(options) {
@@ -27,6 +27,10 @@ export function createViewManager(options) {
       dom.homeDownloadViewEl.classList.toggle('page-hidden', currentHomeView !== 'download')
     }
 
+    if (dom.homeRecentlyPlayedViewEl) {
+      dom.homeRecentlyPlayedViewEl.classList.toggle('page-hidden', currentHomeView !== 'recently-played')
+    }
+
     if (dom.homePlaylistDetailViewEl) {
       dom.homePlaylistDetailViewEl.classList.toggle('page-hidden', currentHomeView !== 'playlist-detail')
     }
@@ -37,6 +41,10 @@ export function createViewManager(options) {
 
     if (dom.homeMenuDownloadEl) {
       dom.homeMenuDownloadEl.classList.toggle('active', currentHomeView === 'download')
+    }
+
+    if (dom.homeMenuRecentlyPlayedEl) {
+      dom.homeMenuRecentlyPlayedEl.classList.toggle('active', currentHomeView === 'recently-played')
     }
 
     if (currentSavedPlaylistManager && currentSavedPlaylistManager.setActiveView) {

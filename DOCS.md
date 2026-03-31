@@ -34,6 +34,7 @@
 - 当前播放队列管理（追加、删除、清空、切歌）
 - 播放控制（播放/暂停、上一首、下一首、单曲循环、进度拖拽）
 - 淡入淡出控制（切歌、暂停、恢复）
+- 最近播放（本地历史记录、快速重播、加入当前队列）
 - 歌词显示（LRC 解析、滚动、高亮）
 - 封面与元数据展示（标题、歌手、专辑）
 
@@ -44,6 +45,7 @@
 - `src/renderer/modules/playbackFadeManager.js`
 - `src/renderer/modules/lazyQueueManager.js`
 - `src/renderer/modules/lyricManager.js`
+- `src/renderer/modules/recentlyPlayedManager.js`
 
 ### 1.2 快捷键与设置
 
@@ -227,6 +229,7 @@
 - 业务模块之间优先通过 event bus 通信，避免直接回调耦合
 - 下载任务状态由 `downloadService` 汇聚，模块通过订阅获取更新
 - 网易云只读数据访问优先经过 `neteaseDatabaseService`
+- 最近播放通过 `playback:track.started` 事件记录本地歌曲快照，并通过 `playback:queue.replace` / `playback:queue.append` 执行快速播放与加队列
 - `renderer.js` 负责装配，不承载具体业务细节
 
 ## 4. 数据与存储
@@ -240,6 +243,7 @@
 - `netease-auth.json`
 - `netease-track-metadata.json`
 - `shell-preferences.json`
+- 浏览器本地存储：`musicPlayer.recentlyPlayed.v1`（最近播放，最多 50 条，去重上移）
 
 下载目录默认：`%USERPROFILE%\\Music\\MyPlayerDownloads`
 

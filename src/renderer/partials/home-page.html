@@ -30,14 +30,11 @@
       <div class="menu-item active" id="homeMenuRecommend" data-home-view="recommend">🏠 推荐</div>
       <div class="menu-item" id="homeMenuDownload" data-home-view="download">⬇ 下载管理</div>
       <div class="menu-item">🧭 精选</div>
-      <div class="menu-item">📻 播客</div>
-      <div class="menu-item">🎮 漫游</div>
       <div class="menu-item">👥 关注</div>
 
       <div class="menu-title">我的</div>
       <div class="menu-item">❤️ 我喜欢的音乐</div>
-      <div class="menu-item">🕒 最近播放</div>
-      <div class="menu-item">🎙 我的播客</div>
+      <div class="menu-item" id="homeMenuRecentlyPlayed" data-home-view="recently-played">🕒 最近播放</div>
 
       <div class="menu-title menu-title-with-action">
         <span>创建的歌单</span>
@@ -190,6 +187,45 @@
             <div class="netease-task-empty">暂无下载任务</div>
           </div>
         </section>
+      </section>
+
+      <section id="homeRecentlyPlayedView" class="home-content-view page-hidden">
+        <div class="playlist-detail-shell recently-played-shell">
+          <section class="playlist-detail-hero">
+            <div class="playlist-detail-cover" aria-hidden="true">
+              <span>🕒</span>
+            </div>
+
+            <div class="playlist-detail-summary">
+              <div class="playlist-detail-type">最近播放</div>
+              <div class="playlist-detail-title-row">
+                <h2 class="playlist-detail-title">本地最近播放</h2>
+              </div>
+              <div class="playlist-detail-subtitle">仅记录本地可播放歌曲，重复播放会自动置顶。</div>
+              <div class="playlist-detail-meta" id="homeRecentlyPlayedMeta">0 首歌曲</div>
+
+              <div class="playlist-detail-actions">
+                <button id="homeRecentlyPlayedClearBtn">清空最近播放</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="playlist-detail-panel">
+            <div class="playlist-detail-table-head">
+              <span>#</span>
+              <span>封面</span>
+              <span>标题</span>
+              <span>歌手</span>
+              <span>专辑</span>
+              <span>时长</span>
+              <span>操作</span>
+            </div>
+
+            <div class="playlist-detail-track-list" id="homeRecentlyPlayedList">
+              <div class="playlist-detail-empty">最近播放还是空的，播放一首本地歌曲后会显示在这里。</div>
+            </div>
+          </section>
+        </div>
       </section>
 
       <section id="homePlaylistDetailView" class="home-content-view page-hidden">

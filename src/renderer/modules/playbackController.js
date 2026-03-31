@@ -554,6 +554,22 @@ export function createPlaybackController(options) {
         if (requestId !== loadRequestId) return
       }
       setPlayButtonState(true)
+
+      const trackKey = getTrackUniqueKey(track, electronAPI)
+      const filePath = getCurrentTrackPath(track, electronAPI)
+      emit('playback:track.started', {
+        track,
+        trackKey,
+        filePath,
+        playedAt: Date.now(),
+        metadata: {
+          title: track?.metadataCache?.title || track?.name || '',
+          artist: track?.metadataCache?.artist || '',
+          album: track?.metadataCache?.album || '',
+          duration: Number(track?.metadataCache?.duration) || null,
+          coverDataUrl: track?.metadataCache?.coverDataUrl || ''
+        }
+      })
     } catch (err) {
       console.warn('Failed to play audio:', err)
       setPlayButtonState(false)

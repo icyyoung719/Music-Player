@@ -567,6 +567,17 @@ body {
   background: rgba(246,69,69,0.13);
   color: #f64545;
 }
+.recently-played-col-action {
+  gap: 8px;
+}
+.recently-played-col-action .playlist-track-remove-btn:hover {
+  background: rgba(255,255,255,0.16);
+  color: var(--text-main);
+}
+.recently-played-col-action .playlist-track-remove-btn.danger:hover {
+  background: rgba(246,69,69,0.13);
+  color: #f64545;
+}
 .playlist-detail-empty {
   min-height: 140px;
   border: 1px dashed rgba(255,255,255,0.18);
@@ -2408,6 +2419,14 @@ button.btn-active {
   .playlist-detail-track-row .playlist-col-album { grid-area: album; }
   .playlist-detail-track-row .playlist-col-duration { grid-area: duration; justify-self: end; }
   .playlist-detail-track-row .playlist-col-action { grid-area: action; }
+  .recently-played-col-action {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+  }
+  .recently-played-col-action .playlist-track-remove-btn {
+    padding: 4px 8px;
+  }
   .netease-search-result-list { grid-template-columns: 1fr; }
   .netease-result-card { grid-template-columns: 64px minmax(0, 1fr); }
   .netease-result-cover {

@@ -10,6 +10,7 @@ import { createDownloadManager } from './modules/downloadManager.js'
 import { createToastManager } from './modules/toastManager.js'
 import { createDailyRecommendationManager } from './modules/dailyRecommendationManager.js'
 import { createCloudPlaylistManager } from './modules/cloudPlaylistManager.js'
+import { createRecentlyPlayedManager } from './modules/recentlyPlayedManager.js'
 import { createEventBus } from './core/eventBus.js'
 import { createViewManager } from './core/viewManager.js'
 import { createNeteaseDatabaseService } from './core/neteaseDatabaseService.js'
@@ -22,12 +23,17 @@ const homeNowCoverPlaceholderEl = document.getElementById('homeNowCoverPlacehold
 const homeFeaturedCoverEl = document.getElementById('homeFeaturedCover')
 const homeMenuRecommendEl = document.getElementById('homeMenuRecommend')
 const homeMenuDownloadEl = document.getElementById('homeMenuDownload')
+const homeMenuRecentlyPlayedEl = document.getElementById('homeMenuRecentlyPlayed')
 const homeCreatedPlaylistListEl = document.getElementById('homeCreatedPlaylistList')
 const homeCloudPlaylistListEl = document.getElementById('homeCloudPlaylistList')
 const homeRefreshCloudPlaylistBtn = document.getElementById('homeRefreshCloudPlaylistBtn')
 const homeRecommendViewEl = document.getElementById('homeRecommendView')
 const homeDownloadViewEl = document.getElementById('homeDownloadView')
+const homeRecentlyPlayedViewEl = document.getElementById('homeRecentlyPlayedView')
 const homePlaylistDetailViewEl = document.getElementById('homePlaylistDetailView')
+const homeRecentlyPlayedMetaEl = document.getElementById('homeRecentlyPlayedMeta')
+const homeRecentlyPlayedListEl = document.getElementById('homeRecentlyPlayedList')
+const homeRecentlyPlayedClearBtn = document.getElementById('homeRecentlyPlayedClearBtn')
 const globalPlayerBarEl = document.getElementById('globalPlayerBar')
 const windowMinimizeBtn = document.getElementById('windowMinimizeBtn')
 const homeLoginBtn = document.getElementById('homeLoginBtn')
@@ -234,6 +240,7 @@ let savedPlaylistManager = null
 let toastManager = null
 let dailyRecommendationManager = null
 let cloudPlaylistManager = null
+let recentlyPlayedManager = null
 let viewManager = null
 let neteaseDatabaseService = null
 let downloadService = null
@@ -246,6 +253,10 @@ const eventBus = createEventBus()
 function showHomeView(view) {
   if (viewManager) {
     viewManager.showHomeView(view)
+  }
+
+  if (view === 'recently-played') {
+    eventBus.emit('view:recently-played.render')
   }
 }
 
@@ -472,6 +483,13 @@ function setupWindowEvents() {
     homeMenuDownloadEl.addEventListener('click', () => {
       showHomePage()
       showHomeView('download')
+    })
+  }
+
+  if (homeMenuRecentlyPlayedEl) {
+    homeMenuRecentlyPlayedEl.addEventListener('click', () => {
+      showHomePage()
+      showHomeView('recently-played')
     })
   }
 
@@ -801,6 +819,19 @@ function setupDownloadManager() {
   manager.init()
 }
 
+function setupRecentlyPlayedManager() {
+  recentlyPlayedManager = createRecentlyPlayedManager({
+    dom: {
+      listEl: homeRecentlyPlayedListEl,
+      countEl: homeRecentlyPlayedMetaEl,
+      clearBtn: homeRecentlyPlayedClearBtn
+    },
+    eventBus
+  })
+
+  recentlyPlayedManager.init()
+}
+
 function setupDailyRecommendationManager() {
   dailyRecommendationManager = createDailyRecommendationManager({
     electronAPI: window.electronAPI,
@@ -819,9 +850,11 @@ function setupViewManager() {
       songPageEl,
       homeRecommendViewEl,
       homeDownloadViewEl,
+      homeRecentlyPlayedViewEl,
       homePlaylistDetailViewEl,
       homeMenuRecommendEl,
       homeMenuDownloadEl,
+      homeMenuRecentlyPlayedEl,
       homeNowCoverImgEl,
       homeNowCoverPlaceholderEl,
       homeFeaturedCoverEl
@@ -933,6 +966,12 @@ function setupEventBusBridge() {
     handleShortcutAction(payload?.action || '')
   })
 
+  eventBus.on('recently-played:updated', () => {
+    if (recentlyPlayedManager) {
+      recentlyPlayedManager.render()
+    }
+  })
+
   eventBus.handle('playlist:ensure-by-name', async (payload) => {
     return ensureSavedPlaylistByName(payload?.name || '', payload?.playlistKey || '')
   })
@@ -958,6 +997,7 @@ function setupPlayerControlListener() {
 
 function initRenderer() {
   setupViewManager()
+  setupRecentlyPlayedManager()
   setupWindowEvents()
   setupServices()
   setupEventBusBridge()
