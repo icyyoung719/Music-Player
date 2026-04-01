@@ -1,5 +1,35 @@
-// @ts-nocheck
-export function createShortcutManager(options) {
+type ShortcutActionDefinition = {
+  label: string
+  defaultKey?: string
+}
+
+type ShortcutDom = {
+  shortcutList?: HTMLElement | null
+  shortcutOverlay?: HTMLElement | null
+  shortcutBtn?: HTMLElement | null
+  shortcutCloseBtn?: HTMLElement | null
+  shortcutResetBtn?: HTMLElement | null
+  shortcutConfirmBtn?: HTMLElement | null
+}
+
+type ShortcutEventBus = {
+  emit: (eventName: string, payload?: unknown) => void
+}
+
+type ShortcutManagerOptions = {
+  dom: ShortcutDom
+  storageKey: string
+  actionDefinitions: Record<string, ShortcutActionDefinition>
+  onAction?: (action: string) => void
+  eventBus?: ShortcutEventBus
+  isEditableElement?: (target: EventTarget | null) => boolean
+  confirmDialog?: (message: string) => boolean
+  closeOnConfirm?: boolean
+}
+
+type ShortcutConfig = Record<string, string>
+
+export function createShortcutManager(options: ShortcutManagerOptions) {
   const {
     dom,
     storageKey,
@@ -19,24 +49,25 @@ export function createShortcutManager(options) {
   const modifierKeys = new Set(['Control', 'Shift', 'Alt', 'Meta'])
 
   let shortcutConfig = { ...defaultShortcuts }
-  let draftShortcutConfig = null
-  let waitingShortcutAction = null
+  let draftShortcutConfig: ShortcutConfig | null = null
+  let waitingShortcutAction: string | null = null
   let panelOpen = false
 
-  function cloneShortcutConfig(config) {
+  function cloneShortcutConfig(config: ShortcutConfig): ShortcutConfig {
     return Object.fromEntries(actionOrder.map((action) => [action, config[action] || '']))
   }
 
-  function getShortcutEditingConfig() {
+  function getShortcutEditingConfig(): ShortcutConfig {
     return draftShortcutConfig || shortcutConfig
   }
 
-  function hasUnsavedShortcutChanges() {
+  function hasUnsavedShortcutChanges(): boolean {
     if (!draftShortcutConfig) return false
-    return actionOrder.some((action) => (draftShortcutConfig[action] || '') !== (shortcutConfig[action] || ''))
+    const draft = draftShortcutConfig
+    return actionOrder.some((action) => (draft[action] || '') !== (shortcutConfig[action] || ''))
   }
 
-  function normalizeKeyName(key) {
+  function normalizeKeyName(key: unknown): string | null {
     if (typeof key !== 'string') return null
     if (key === ' ') return 'Space'
     const value = key.trim()
@@ -45,13 +76,13 @@ export function createShortcutManager(options) {
     return value
   }
 
-  function normalizeShortcutString(shortcut) {
+  function normalizeShortcutString(shortcut: unknown): string | null {
     if (typeof shortcut !== 'string') return null
     const parts = shortcut.split('+').map((part) => part.trim()).filter(Boolean)
     if (!parts.length) return ''
 
-    const modifiers = []
-    let baseKey = null
+    const modifiers: string[] = []
+    let baseKey: string | null = null
 
     for (const part of parts) {
       const lower = part.toLowerCase()
@@ -86,12 +117,12 @@ export function createShortcutManager(options) {
     return modifiers.length ? `${modifiers.join('+')}+${baseKey}` : baseKey
   }
 
-  function getShortcutFromKeyboardEvent(e) {
+  function getShortcutFromKeyboardEvent(e: KeyboardEvent): string | null {
     const key = normalizeKeyName(e.key)
     if (!key) return null
     if (modifierKeys.has(key)) return null
 
-    const modifiers = []
+    const modifiers: string[] = []
     if (e.ctrlKey) modifiers.push('Ctrl')
     if (e.altKey) modifiers.push('Alt')
     if (e.shiftKey) modifiers.push('Shift')
@@ -100,13 +131,13 @@ export function createShortcutManager(options) {
     return modifiers.length ? `${modifiers.join('+')}+${key}` : key
   }
 
-  function formatShortcutKey(shortcut) {
+  function formatShortcutKey(shortcut: string): string {
     const normalized = normalizeShortcutString(shortcut)
     if (!normalized) return '未设置'
-    return normalized.replaceAll('Arrow', 'Arrow ')
+    return normalized.replace(/Arrow/g, 'Arrow ')
   }
 
-  function saveShortcutConfig() {
+  function saveShortcutConfig(): void {
     try {
       localStorage.setItem(storageKey, JSON.stringify(shortcutConfig))
     } catch (err) {
@@ -114,7 +145,7 @@ export function createShortcutManager(options) {
     }
   }
 
-  function loadShortcutConfig() {
+  function loadShortcutConfig(): void {
     try {
       const raw = localStorage.getItem(storageKey)
       if (!raw) return
@@ -122,7 +153,7 @@ export function createShortcutManager(options) {
       if (!parsed || typeof parsed !== 'object') return
 
       for (const action of actionOrder) {
-        const key = normalizeShortcutString(parsed[action])
+        const key = normalizeShortcutString((parsed as Record<string, unknown>)[action])
         if (typeof key === 'string') {
           shortcutConfig[action] = key
         }
@@ -132,7 +163,7 @@ export function createShortcutManager(options) {
     }
   }
 
-  function setShortcutForAction(action, key) {
+  function setShortcutForAction(action: string, key: string): void {
     if (!draftShortcutConfig) return
 
     const normalizedKey = normalizeShortcutString(key)
@@ -148,28 +179,29 @@ export function createShortcutManager(options) {
     renderShortcutPanel()
   }
 
-  function resetShortcuts() {
+  function resetShortcuts(): void {
     if (!draftShortcutConfig) return
     draftShortcutConfig = { ...defaultShortcuts }
     waitingShortcutAction = null
     renderShortcutPanel()
   }
 
-  function clearShortcutForAction(action) {
+  function clearShortcutForAction(action: string): void {
     if (!draftShortcutConfig) return
     draftShortcutConfig[action] = ''
     renderShortcutPanel()
   }
 
-  function applyShortcutChanges() {
+  function applyShortcutChanges(): void {
     if (!draftShortcutConfig) return
     shortcutConfig = cloneShortcutConfig(draftShortcutConfig)
     saveShortcutConfig()
   }
 
-  function renderShortcutPanel() {
-    if (!dom.shortcutList) return
-    dom.shortcutList.innerHTML = ''
+  function renderShortcutPanel(): void {
+    const listEl = dom.shortcutList
+    if (!listEl) return
+    listEl.innerHTML = ''
     const currentConfig = getShortcutEditingConfig()
 
     actionOrder.forEach((action) => {
@@ -203,11 +235,11 @@ export function createShortcutManager(options) {
       row.appendChild(keyEl)
       row.appendChild(editBtn)
       row.appendChild(clearBtn)
-      dom.shortcutList.appendChild(row)
+      listEl.appendChild(row)
     })
   }
 
-  function openPanel() {
+  function openPanel(): void {
     draftShortcutConfig = cloneShortcutConfig(shortcutConfig)
     waitingShortcutAction = null
     panelOpen = true
@@ -218,7 +250,7 @@ export function createShortcutManager(options) {
     }
   }
 
-  function closePanel(options = {}) {
+  function closePanel(options: { force?: boolean } = {}): boolean {
     if (!panelOpen) return true
     const { force = false } = options
 
@@ -239,17 +271,17 @@ export function createShortcutManager(options) {
     return true
   }
 
-  function isPanelVisible() {
+  function isPanelVisible(): boolean {
     return panelOpen
   }
 
-  function matchShortcutActionByKey(shortcut) {
+  function matchShortcutActionByKey(shortcut: string): string | null {
     const normalized = normalizeShortcutString(shortcut)
     if (!normalized) return null
     return actionOrder.find((action) => shortcutConfig[action] === normalized) || null
   }
 
-  function handleGlobalKeydown(e) {
+  function handleGlobalKeydown(e: KeyboardEvent): void {
     const pressedShortcut = getShortcutFromKeyboardEvent(e)
 
     if (waitingShortcutAction) {
@@ -295,7 +327,7 @@ export function createShortcutManager(options) {
     }
   }
 
-  function bindDomEvents() {
+  function bindDomEvents(): void {
     if (dom.shortcutBtn) {
       dom.shortcutBtn.addEventListener('click', () => {
         openPanel()
@@ -309,7 +341,7 @@ export function createShortcutManager(options) {
     }
 
     if (dom.shortcutOverlay) {
-      dom.shortcutOverlay.addEventListener('click', (e) => {
+      dom.shortcutOverlay.addEventListener('click', (e: MouseEvent) => {
         if (e.target === dom.shortcutOverlay) {
           closePanel()
         }
@@ -336,7 +368,7 @@ export function createShortcutManager(options) {
     document.addEventListener('keydown', handleGlobalKeydown)
   }
 
-  function init() {
+  function init(): void {
     loadShortcutConfig()
     renderShortcutPanel()
     bindDomEvents()
@@ -349,8 +381,9 @@ export function createShortcutManager(options) {
   }
 }
 
-function defaultIsEditableElement(target) {
+function defaultIsEditableElement(target: EventTarget | null): boolean {
   if (!target) return false
+  if (!(target instanceof HTMLElement)) return false
   if (target.isContentEditable) return true
   const tag = target.tagName
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'

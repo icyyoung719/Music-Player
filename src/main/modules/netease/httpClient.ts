@@ -1,4 +1,4 @@
-import type { IncomingHttpHeaders } from 'http'
+import type { IncomingHttpHeaders, IncomingMessage } from 'http'
 import * as https from 'https'
 import * as http from 'http'
 import * as crypto from 'crypto'
@@ -53,38 +53,35 @@ function executeRequest(url: string, options: RequestOptions = {}): Promise<Exec
   const body = options.body || null
   const timeout = Number(options.timeout || 12000)
   const requestHeaders = buildHeaders(options.headers || {})
-  const client = url.startsWith('https:') ? https : http
+  const isHttps = url.startsWith('https:')
   const requestId = createRequestId()
   const startedAt = Date.now()
 
   return new Promise((resolve, reject) => {
-    const req = client.request(
-      url,
-      {
-        method,
-        headers: requestHeaders
-      },
-      (res) => {
-        const chunks: Buffer[] = []
-        res.on('data', (chunk: Buffer) => chunks.push(chunk))
-        res.on('end', () => {
-          const rawBuffer = Buffer.concat(chunks)
-          const durationMs = Date.now() - startedAt
-          resolve({
-            requestId,
-            method,
-            url,
-            requestHeaders,
-            requestBody: body,
-            durationMs,
-            statusCode: Number(res.statusCode || 0),
-            responseHeaders: res.headers || {},
-            rawBuffer,
-            rawText: rawBuffer.toString('utf8')
-          })
+    const handleResponse = (res: IncomingMessage): void => {
+      const chunks: Buffer[] = []
+      res.on('data', (chunk: Buffer) => chunks.push(chunk))
+      res.on('end', () => {
+        const rawBuffer = Buffer.concat(chunks)
+        const durationMs = Date.now() - startedAt
+        resolve({
+          requestId,
+          method,
+          url,
+          requestHeaders,
+          requestBody: body,
+          durationMs,
+          statusCode: Number(res.statusCode || 0),
+          responseHeaders: res.headers || {},
+          rawBuffer,
+          rawText: rawBuffer.toString('utf8')
         })
-      }
-    )
+      })
+    }
+
+    const req = isHttps
+      ? https.request(url, { method, headers: requestHeaders }, handleResponse)
+      : http.request(url, { method, headers: requestHeaders }, handleResponse)
 
     req.on('error', (err: Error) => {
       const durationMs = Date.now() - startedAt
