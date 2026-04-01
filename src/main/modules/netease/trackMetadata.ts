@@ -1,19 +1,69 @@
-// @ts-nocheck
-const fs = require('fs')
-const path = require('path')
-const { app } = require('electron')
-const { requestBuffer } = require('./httpClient')
-const { buildAuthHeaders, md5 } = require('./authManager')
-const { fetchSongLyricsById, resolveCoverExtByUrl, resolveCoverMimeByExt } = require('./neteaseApi')
-const { writeEmbeddedTags } = require('./id3Writer')
-const { logProgramEvent } = require('../logger')
+const fs = require('fs') as typeof import('fs')
+const path = require('path') as typeof import('path')
+const { app } = require('electron') as typeof import('electron')
+const { requestBuffer } = require('./httpClient') as {
+  requestBuffer: (url: string, options?: { headers?: Record<string, string>; timeout?: number }) => Promise<Buffer>
+}
+const { buildAuthHeaders, md5 } = require('./authManager') as {
+  buildAuthHeaders: () => Record<string, string>
+  md5: (value: string) => string
+}
+const { fetchSongLyricsById, resolveCoverExtByUrl, resolveCoverMimeByExt } = require('./neteaseApi') as {
+  fetchSongLyricsById: (songId: string) => Promise<string>
+  resolveCoverExtByUrl: (url: string) => string
+  resolveCoverMimeByExt: (ext: string) => string
+}
+const { writeEmbeddedTags } = require('./id3Writer') as {
+  writeEmbeddedTags: (
+    filePath: string,
+    metadata: TrackMetadataEntry,
+    coverBuffer: Buffer | null,
+    coverMime: string
+  ) => Promise<boolean>
+}
+const { logProgramEvent } = require('../logger') as {
+  logProgramEvent: (payload: {
+    source?: string
+    event?: string
+    message?: string
+    data?: unknown
+    error?: unknown
+  }) => void
+}
 
 const TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
 const TRACK_COVER_DIR_NAME = 'netease-track-covers'
 
+type DownloadTaskLike = {
+  filePath?: string
+  status?: string
+  songId?: string
+  title?: string
+  songMetadata?: {
+    songId?: string
+    title?: string
+    artist?: string
+    album?: string
+    year?: number | string | null
+    coverUrl?: string
+  } | null
+}
+
+type TrackMetadataEntry = {
+  songId: string
+  title: string
+  artist: string
+  album: string
+  year: number | null
+  coverPath: string
+  coverUrl: string
+  updatedAt: number
+  lyrics?: string
+}
+
 let trackMetadataLoaded = false
 // Exported as a live object reference - always mutate properties, never reassign.
-const trackMetadataStore = {}
+const trackMetadataStore: Record<string, TrackMetadataEntry> = {}
 
 function getTrackMetadataStorePath() {
   return path.join(app.getPath('userData'), TRACK_METADATA_STORE_NAME)
@@ -23,7 +73,7 @@ function getTrackCoverDirPath() {
   return path.join(app.getPath('userData'), TRACK_COVER_DIR_NAME)
 }
 
-function normalizeTrackPathKey(filePath) {
+function normalizeTrackPathKey(filePath: string): string {
   const resolved = path.resolve(String(filePath || ''))
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
@@ -39,7 +89,8 @@ async function ensureTrackMetadataLoaded() {
       Object.assign(trackMetadataStore, parsed)
     }
   } catch (err) {
-    if (err.code !== 'ENOENT') {
+    const typedErr = err as NodeJS.ErrnoException
+    if (typedErr.code !== 'ENOENT') {
       logProgramEvent({
         source: 'netease.trackMetadata',
         event: 'read-track-metadata-store-failed',
@@ -55,13 +106,13 @@ async function persistTrackMetadataStore() {
   await fs.promises.writeFile(getTrackMetadataStorePath(), JSON.stringify(trackMetadataStore, null, 2), 'utf8')
 }
 
-async function persistTrackMetadataForTask(task) {
+async function persistTrackMetadataForTask(task: DownloadTaskLike): Promise<void> {
   if (!task || !task.filePath || task.status !== 'succeeded') return
 
   const sourceMetadata = task.songMetadata && typeof task.songMetadata === 'object' ? task.songMetadata : null
   if (!sourceMetadata) return
 
-  const entry = {
+  const entry: TrackMetadataEntry = {
     songId: sourceMetadata.songId || task.songId || '',
     title: sourceMetadata.title || task.title || path.basename(task.filePath),
     artist: sourceMetadata.artist || '',
@@ -79,7 +130,7 @@ async function persistTrackMetadataForTask(task) {
     }
   }
 
-  let coverBuffer = null
+  let coverBuffer: Buffer | null = null
   let coverMime = 'image/jpeg'
 
   if (entry.coverUrl) {

@@ -1,8 +1,26 @@
-// @ts-nocheck
-const fs = require('fs')
-const path = require('path')
+const fs = require('fs') as typeof import('fs')
+const path = require('path') as typeof import('path')
 
-function toSynchsafeInt(value) {
+type EmbeddedTagMetadata = {
+  title?: string
+  artist?: string
+  album?: string
+  year?: number | string | null
+  lyrics?: string
+}
+
+type ParsedFlacBlock = {
+  type: number
+  isLast: boolean
+  payload: Buffer
+}
+
+type ParsedFlacResult = {
+  blocks: ParsedFlacBlock[]
+  audioOffset: number
+}
+
+function toSynchsafeInt(value: number): Buffer {
   const safe = Math.max(0, Number(value) || 0)
   return Buffer.from([
     (safe >> 21) & 0x7f,
@@ -12,7 +30,7 @@ function toSynchsafeInt(value) {
   ])
 }
 
-function fromSynchsafeInt(buffer, startIndex) {
+function fromSynchsafeInt(buffer: Buffer, startIndex: number): number {
   if (!buffer || buffer.length < startIndex + 4) return 0
   return (
     ((buffer[startIndex] & 0x7f) << 21) |
@@ -22,7 +40,7 @@ function fromSynchsafeInt(buffer, startIndex) {
   )
 }
 
-function buildId3v23Frame(frameId, payload) {
+function buildId3v23Frame(frameId: string, payload: Buffer | null | undefined): Buffer {
   const id = String(frameId || '').trim()
   if (!/^[A-Z0-9]{4}$/.test(id)) return Buffer.alloc(0)
   const data = Buffer.isBuffer(payload) ? payload : Buffer.alloc(0)
@@ -35,20 +53,20 @@ function buildId3v23Frame(frameId, payload) {
   return Buffer.concat([header, data])
 }
 
-function encodeUtf16Text(text) {
+function encodeUtf16Text(text: string): Buffer {
   const value = String(text || '')
   const bom = Buffer.from([0xff, 0xfe])
   return Buffer.concat([bom, Buffer.from(value, 'utf16le')])
 }
 
-function buildTextFrame(frameId, value) {
+function buildTextFrame(frameId: string, value: string): Buffer {
   const text = String(value || '').trim()
   if (!text) return Buffer.alloc(0)
   const payload = Buffer.concat([Buffer.from([0x01]), encodeUtf16Text(text)])
   return buildId3v23Frame(frameId, payload)
 }
 
-function buildApicFrame(imageBuffer, mimeType) {
+function buildApicFrame(imageBuffer: Buffer | null, mimeType: string): Buffer {
   if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) return Buffer.alloc(0)
   const mime = String(mimeType || 'image/jpeg').toLowerCase()
   const mimePart = Buffer.from(mime, 'ascii')
@@ -63,7 +81,7 @@ function buildApicFrame(imageBuffer, mimeType) {
   return buildId3v23Frame('APIC', payload)
 }
 
-function buildUsltFrame(lyrics, language = 'XXX') {
+function buildUsltFrame(lyrics: string, language = 'XXX'): Buffer {
   const text = String(lyrics || '').trim()
   if (!text) return Buffer.alloc(0)
 
@@ -79,7 +97,7 @@ function buildUsltFrame(lyrics, language = 'XXX') {
   return buildId3v23Frame('USLT', payload)
 }
 
-function stripLeadingId3Tag(audioBuffer) {
+function stripLeadingId3Tag(audioBuffer: Buffer): Buffer {
   if (!Buffer.isBuffer(audioBuffer) || audioBuffer.length < 10) return audioBuffer
   if (audioBuffer[0] !== 0x49 || audioBuffer[1] !== 0x44 || audioBuffer[2] !== 0x33) return audioBuffer
 
@@ -92,7 +110,12 @@ function stripLeadingId3Tag(audioBuffer) {
   return audioBuffer.slice(totalSize)
 }
 
-async function writeId3TagsToMp3(filePath, metadata, coverBuffer, coverMime) {
+async function writeId3TagsToMp3(
+  filePath: string,
+  metadata: EmbeddedTagMetadata,
+  coverBuffer: Buffer | null,
+  coverMime: string
+): Promise<boolean> {
   const ext = String(path.extname(filePath || '')).toLowerCase()
   if (ext !== '.mp3') return false
 
@@ -128,7 +151,7 @@ async function writeId3TagsToMp3(filePath, metadata, coverBuffer, coverMime) {
   return true
 }
 
-function toUInt24BE(value) {
+function toUInt24BE(value: number): Buffer {
   const safe = Math.max(0, Number(value) || 0)
   return Buffer.from([
     (safe >> 16) & 0xff,
@@ -137,7 +160,7 @@ function toUInt24BE(value) {
   ])
 }
 
-function readUInt24BE(buffer, startIndex) {
+function readUInt24BE(buffer: Buffer, startIndex: number): number {
   if (!buffer || buffer.length < startIndex + 3) return 0
   return (
     ((buffer[startIndex] & 0xff) << 16) |
@@ -146,24 +169,24 @@ function readUInt24BE(buffer, startIndex) {
   )
 }
 
-function toUInt32LE(value) {
+function toUInt32LE(value: number): Buffer {
   const buffer = Buffer.alloc(4)
   buffer.writeUInt32LE(Math.max(0, Number(value) || 0), 0)
   return buffer
 }
 
-function toUInt32BE(value) {
+function toUInt32BE(value: number): Buffer {
   const buffer = Buffer.alloc(4)
   buffer.writeUInt32BE(Math.max(0, Number(value) || 0), 0)
   return buffer
 }
 
-function parseFlacBlocks(fileBuffer) {
+function parseFlacBlocks(fileBuffer: Buffer): ParsedFlacResult | null {
   if (!Buffer.isBuffer(fileBuffer) || fileBuffer.length < 8) return null
   if (fileBuffer.slice(0, 4).toString('ascii') !== 'fLaC') return null
 
   let offset = 4
-  const blocks = []
+  const blocks: ParsedFlacBlock[] = []
   let reachedLast = false
 
   while (offset + 4 <= fileBuffer.length) {
@@ -193,7 +216,7 @@ function parseFlacBlocks(fileBuffer) {
   return { blocks, audioOffset: offset }
 }
 
-function buildFlacBlock(type, payload, isLast) {
+function buildFlacBlock(type: number, payload: Buffer, isLast: boolean): Buffer {
   const data = Buffer.isBuffer(payload) ? payload : Buffer.alloc(0)
   const header = Buffer.concat([
     Buffer.from([(isLast ? 0x80 : 0x00) | (Number(type) & 0x7f)]),
@@ -202,14 +225,14 @@ function buildFlacBlock(type, payload, isLast) {
   return Buffer.concat([header, data])
 }
 
-function buildVorbisPair(key, value) {
+function buildVorbisPair(key: string, value: unknown): string {
   const normalizedKey = String(key || '').trim().toUpperCase()
   const normalizedValue = String(value || '').replace(/\u0000/g, '').trim()
   if (!normalizedKey || !normalizedValue) return ''
   return `${normalizedKey}=${normalizedValue}`
 }
 
-function buildFlacVorbisCommentPayload(metadata) {
+function buildFlacVorbisCommentPayload(metadata: EmbeddedTagMetadata): Buffer {
   const comments = [
     buildVorbisPair('TITLE', metadata?.title),
     buildVorbisPair('ARTIST', metadata?.artist),
@@ -221,7 +244,7 @@ function buildFlacVorbisCommentPayload(metadata) {
   if (!comments.length) return Buffer.alloc(0)
 
   const vendor = Buffer.from('music-player', 'utf8')
-  const parts = [toUInt32LE(vendor.length), vendor, toUInt32LE(comments.length)]
+  const parts: Buffer[] = [toUInt32LE(vendor.length), vendor, toUInt32LE(comments.length)]
 
   for (const item of comments) {
     const buffer = Buffer.from(item, 'utf8')
@@ -231,7 +254,7 @@ function buildFlacVorbisCommentPayload(metadata) {
   return Buffer.concat(parts)
 }
 
-function buildFlacPicturePayload(imageBuffer, mimeType) {
+function buildFlacPicturePayload(imageBuffer: Buffer | null, mimeType: string): Buffer {
   if (!Buffer.isBuffer(imageBuffer) || imageBuffer.length === 0) return Buffer.alloc(0)
 
   const mime = Buffer.from(String(mimeType || 'image/jpeg').toLowerCase(), 'ascii')
@@ -252,7 +275,12 @@ function buildFlacPicturePayload(imageBuffer, mimeType) {
   ])
 }
 
-async function writeFlacTagsToFlac(filePath, metadata, coverBuffer, coverMime) {
+async function writeFlacTagsToFlac(
+  filePath: string,
+  metadata: EmbeddedTagMetadata,
+  coverBuffer: Buffer | null,
+  coverMime: string
+): Promise<boolean> {
   const ext = String(path.extname(filePath || '')).toLowerCase()
   if (ext !== '.flac') return false
 
@@ -263,7 +291,7 @@ async function writeFlacTagsToFlac(filePath, metadata, coverBuffer, coverMime) {
   const streamInfo = parsed.blocks.find((block) => block.type === 0)
   if (!streamInfo) return false
 
-  const preservedBlocks = [
+  const preservedBlocks: Array<{ type: number; payload: Buffer }> = [
     { type: 0, payload: streamInfo.payload },
     ...parsed.blocks
       .filter((block) => block.type !== 0 && block.type !== 4 && block.type !== 6)
@@ -293,7 +321,12 @@ async function writeFlacTagsToFlac(filePath, metadata, coverBuffer, coverMime) {
   return commentPayload.length > 0 || picturePayload.length > 0
 }
 
-async function writeEmbeddedTags(filePath, metadata, coverBuffer, coverMime) {
+async function writeEmbeddedTags(
+  filePath: string,
+  metadata: EmbeddedTagMetadata,
+  coverBuffer: Buffer | null,
+  coverMime: string
+): Promise<boolean> {
   const ext = String(path.extname(filePath || '')).toLowerCase()
   if (ext === '.mp3') {
     return writeId3TagsToMp3(filePath, metadata, coverBuffer, coverMime)

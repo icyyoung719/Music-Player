@@ -1,15 +1,46 @@
-// @ts-nocheck
-const https = require('https')
-const http = require('http')
-const crypto = require('crypto')
-const { logNetworkEvent, buildBinarySummary } = require('../logger')
+const https = require('https') as typeof import('https')
+const http = require('http') as typeof import('http')
+const crypto = require('crypto') as typeof import('crypto')
+import type { IncomingHttpHeaders } from 'http'
+const { logNetworkEvent, buildBinarySummary } = require('../logger') as {
+  logNetworkEvent: (payload: {
+    requestId?: string
+    method?: string
+    url?: string
+    durationMs?: number
+    request?: { headers?: unknown; body?: unknown }
+    response?: { statusCode?: number; headers?: unknown; body?: unknown; binary?: unknown }
+    error?: unknown
+  }) => void
+  buildBinarySummary: (buffer: Buffer, headers: IncomingHttpHeaders) => unknown
+}
+
+type RequestOptions = {
+  method?: string
+  body?: string | Buffer | null
+  timeout?: number
+  headers?: Record<string, string>
+}
+
+type ExecuteResponse = {
+  requestId: string
+  method: string
+  url: string
+  requestHeaders: Record<string, string>
+  requestBody: string | Buffer | null
+  durationMs: number
+  statusCode: number
+  responseHeaders: IncomingHttpHeaders
+  rawBuffer: Buffer
+  rawText: string
+}
 
 function createRequestId() {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function buildHeaders(headers) {
+function buildHeaders(headers: Record<string, string>): Record<string, string> {
   return {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     Referer: 'https://music.163.com/',
@@ -17,7 +48,7 @@ function buildHeaders(headers) {
   }
 }
 
-function executeRequest(url, options = {}) {
+function executeRequest(url: string, options: RequestOptions = {}): Promise<ExecuteResponse> {
   const method = String(options.method || 'GET').toUpperCase()
   const body = options.body || null
   const timeout = Number(options.timeout || 12000)
@@ -34,8 +65,8 @@ function executeRequest(url, options = {}) {
         headers: requestHeaders
       },
       (res) => {
-        const chunks = []
-        res.on('data', (chunk) => chunks.push(chunk))
+        const chunks: Buffer[] = []
+        res.on('data', (chunk: Buffer) => chunks.push(chunk))
         res.on('end', () => {
           const rawBuffer = Buffer.concat(chunks)
           const durationMs = Date.now() - startedAt
@@ -55,7 +86,7 @@ function executeRequest(url, options = {}) {
       }
     )
 
-    req.on('error', (err) => {
+    req.on('error', (err: Error) => {
       const durationMs = Date.now() - startedAt
       logNetworkEvent({
         requestId,
@@ -88,9 +119,9 @@ function executeRequest(url, options = {}) {
   })
 }
 
-function requestJson(url, options = {}) {
+function requestJson(url: string, options: RequestOptions = {}): Promise<unknown> {
   return executeRequest(url, options).then((response) => {
-    let parsed = null
+    let parsed: unknown = null
     try {
       parsed = JSON.parse(response.rawText)
     } catch (err) {
@@ -156,9 +187,12 @@ function requestJson(url, options = {}) {
   })
 }
 
-function requestJsonWithMeta(url, options = {}) {
+function requestJsonWithMeta(
+  url: string,
+  options: RequestOptions = {}
+): Promise<{ statusCode: number; headers: IncomingHttpHeaders; data: unknown; rawText: string }> {
   return executeRequest(url, options).then((response) => {
-    let data = null
+    let data: unknown = null
     try {
       data = JSON.parse(response.rawText)
     } catch {
@@ -191,7 +225,7 @@ function requestJsonWithMeta(url, options = {}) {
   })
 }
 
-function requestBuffer(url, options = {}) {
+function requestBuffer(url: string, options: RequestOptions = {}): Promise<Buffer> {
   return executeRequest(url, options).then((response) => {
     const binary = buildBinarySummary(response.rawBuffer, response.responseHeaders)
 
