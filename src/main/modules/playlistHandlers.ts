@@ -1,17 +1,90 @@
-const { ipcMain, dialog, app } = require('electron')
-const path = require('path')
-const fs = require('fs')
-const crypto = require('crypto')
-const { parseFile } = require('music-metadata')
-const { logProgramEvent } = require('./logger')
+import crypto from 'crypto'
+import fs from 'fs'
+import path from 'path'
+import { app, dialog, ipcMain } from 'electron'
+import { parseFile } from 'music-metadata'
+import { logProgramEvent } from './logger'
 
 const NETEASE_TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
 const PLAYLIST_SCHEMA_VERSION = 2
 
 type PlaylistState = {
   schemaVersion: number
-  playlists: any[]
-  trackLibrary: Record<string, any>
+  playlists: PlaylistItem[]
+  trackLibrary: Record<string, TrackLibraryEntry>
+}
+
+type PlaylistCreator = {
+  userId: string
+  nickname: string
+}
+
+type PlaylistItem = {
+  id: string
+  name: string
+  trackIds: string[]
+  source: string
+  platform: string
+  platformPlaylistId: string
+  creator?: PlaylistCreator
+  coverUrl: string
+  description: string
+  updateTime: string
+  tags: string[]
+}
+
+type MetadataCache = {
+  title?: string
+  artist?: string
+  album?: string
+  duration?: number
+}
+
+type TrackLibraryEntry = {
+  path: string
+  metadataCache: MetadataCache
+}
+
+type NeteaseTrackMetadataRecord = {
+  title?: string
+  artist?: string
+  album?: string
+  year?: number
+  lyrics?: string
+  coverPath?: string
+}
+
+type PlaylistRenamePayload = {
+  playlistId: string
+  name: string
+}
+
+type PlaylistAddTracksPayload = {
+  playlistId: string
+  tracks: unknown[]
+}
+
+type PlaylistRemoveTrackPayload = {
+  playlistId: string
+  trackId: string
+}
+
+type AnyRecord = Record<string, unknown>
+
+function getErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  if (typeof error === 'string') return error
+  return ''
+}
+
+function logPlaylistError(event: string, message: string, error: unknown, data?: AnyRecord): void {
+  logProgramEvent({
+    source: 'playlistHandlers',
+    event,
+    message,
+    error,
+    data
+  })
 }
 
 let playlistState: PlaylistState = {
@@ -36,40 +109,41 @@ function normalizeTrackPathKey(filePath: unknown): string {
 }
 
 function resolveImageMimeByPath(filePath: unknown): string {
-  const ext = String(path.extname(filePath || '')).toLowerCase()
+  const safePath = typeof filePath === 'string' ? filePath : ''
+  const ext = String(path.extname(safePath)).toLowerCase()
   if (ext === '.png') return 'image/png'
   if (ext === '.webp') return 'image/webp'
   return 'image/jpeg'
 }
 
-async function readNeteaseTrackMetadataByPath(filePath: unknown): Promise<any | null> {
+async function readNeteaseTrackMetadataByPath(filePath: unknown): Promise<NeteaseTrackMetadataRecord | undefined> {
   try {
     const content = await fs.promises.readFile(getNeteaseTrackMetadataStorePath(), 'utf8')
     const parsed = JSON.parse(content)
-    if (!parsed || typeof parsed !== 'object') return null
-    const record = parsed[normalizeTrackPathKey(filePath)]
-    return record && typeof record === 'object' ? record : null
+    if (!parsed || typeof parsed !== 'object') return undefined
+    const record = (parsed as Record<string, unknown>)[normalizeTrackPathKey(filePath)]
+    return record && typeof record === 'object' ? (record as NeteaseTrackMetadataRecord) : undefined
   } catch {
-    return null
+    return undefined
   }
 }
 
-async function readCoverDataUrlByPath(coverPath: unknown): Promise<string | null> {
-  if (!coverPath) return null
+async function readCoverDataUrlByPath(coverPath: unknown): Promise<string | undefined> {
+  if (typeof coverPath !== 'string' || !coverPath.trim()) return undefined
   try {
     const buffer = await fs.promises.readFile(coverPath)
-    if (!buffer.length) return null
+    if (!buffer.length) return undefined
     const mime = resolveImageMimeByPath(coverPath)
     return `data:${mime};base64,${buffer.toString('base64')}`
   } catch {
-    return null
+    return undefined
   }
 }
 
-function normalizeLyricsValue(value: any): string | null {
+function normalizeLyricsValue(value: unknown): string | undefined {
   if (typeof value === 'string') {
     const text = value.trim()
-    return text || null
+    return text || undefined
   }
 
   if (Array.isArray(value)) {
@@ -85,15 +159,17 @@ function normalizeLyricsValue(value: any): string | null {
         if (text) return text
       }
     }
-    return null
+    return undefined
   }
 
-  if (value && typeof value === 'object' && typeof value.text === 'string') {
-    const text = value.text.trim()
-    return text || null
+  if (value && typeof value === 'object') {
+    const payload = value as { text?: unknown }
+    if (typeof payload.text !== 'string') return undefined
+    const text = payload.text.trim()
+    return text || undefined
   }
 
-  return null
+  return undefined
 }
 
 function hasLrcTimestamp(lyricsText: unknown): boolean {
@@ -101,13 +177,13 @@ function hasLrcTimestamp(lyricsText: unknown): boolean {
   return /\[\d{1,3}:\d{2}(?:\.\d{1,3})?\]/.test(text)
 }
 
-function chooseBestLyrics(primary: any, fallback: any): string | null {
+function chooseBestLyrics(primary: unknown, fallback: unknown): string | undefined {
   const first = normalizeLyricsValue(primary)
   const second = normalizeLyricsValue(fallback)
 
   if (hasLrcTimestamp(first)) return first
   if (hasLrcTimestamp(second)) return second
-  return first || second || null
+  return first || second || undefined
 }
 
 function createId(): string {
@@ -122,12 +198,12 @@ function normalizePlaylistName(name: unknown): string {
   return value || '未命名歌单'
 }
 
-function makeUniquePlaylistName(baseName: unknown, existingPlaylists: any[], excludeId: string | null = null): string {
+function makeUniquePlaylistName(baseName: unknown, existingPlaylists: PlaylistItem[], excludeId?: string): string {
   const base = normalizePlaylistName(baseName)
   const existing = new Set(
     existingPlaylists
-      .filter((item: any) => item.id !== excludeId)
-      .map((item: any) => (item.name || '').toLowerCase())
+        .filter((item) => item.id !== excludeId)
+        .map((item) => (item.name || '').toLowerCase())
   )
 
   if (!existing.has(base.toLowerCase())) {
@@ -141,15 +217,20 @@ function makeUniquePlaylistName(baseName: unknown, existingPlaylists: any[], exc
   return `${base} (${i})`
 }
 
-function ensureStateShape(rawState: any): PlaylistState {
-  const normalizedVersion = Number(rawState?.schemaVersion)
+function ensureStateShape(rawState: unknown): PlaylistState {
+  const state = (rawState ?? {}) as {
+    schemaVersion?: unknown
+    playlists?: unknown[]
+    trackLibrary?: Record<string, unknown>
+  }
+  const normalizedVersion = Number(state.schemaVersion)
   const schemaVersion = Number.isFinite(normalizedVersion)
     ? Math.max(1, Math.trunc(normalizedVersion))
     : 1
 
-  const normalizeText = (value: any, maxLen: number = 512): string => String(value || '').trim().slice(0, maxLen)
+  const normalizeText = (value: unknown, maxLen: number = 512): string => String(value || '').trim().slice(0, maxLen)
 
-  const normalizeTags = (value: any): string[] => {
+  const normalizeTags = (value: unknown): string[] => {
     if (!Array.isArray(value)) return []
     const deduped = new Set<string>()
     for (const item of value) {
@@ -160,18 +241,19 @@ function ensureStateShape(rawState: any): PlaylistState {
     return Array.from(deduped).slice(0, 20)
   }
 
-  const normalizeCreator = (value: any): any => {
-    if (!value || typeof value !== 'object') return null
-    const userId = normalizeText(value.userId, 64)
-    const nickname = normalizeText(value.nickname, 64)
-    if (!userId && !nickname) return null
+  const normalizeCreator = (value: unknown): PlaylistCreator | undefined => {
+    if (!value || typeof value !== 'object') return undefined
+    const creator = value as { userId?: unknown; nickname?: unknown }
+    const userId = normalizeText(creator.userId, 64)
+    const nickname = normalizeText(creator.nickname, 64)
+    if (!userId && !nickname) return undefined
     return {
       userId,
       nickname
     }
   }
 
-  const normalizeDateText = (value: any): string => {
+  const normalizeDateText = (value: unknown): string => {
     const text = normalizeText(value, 64)
     if (!text) return ''
     const date = new Date(text)
@@ -179,38 +261,51 @@ function ensureStateShape(rawState: any): PlaylistState {
     return date.toISOString()
   }
 
-  const normalizePlaylistMeta = (item: any): any => {
-    const source = normalizeText(item?.source, 24).toLowerCase() || 'local'
-    const platform = normalizeText(item?.platform, 24).toLowerCase() || 'local'
+  const normalizePlaylistMeta = (item: unknown): Omit<PlaylistItem, 'id' | 'name' | 'trackIds'> => {
+    const payload = (item ?? {}) as {
+      source?: unknown
+      platform?: unknown
+      platformPlaylistId?: unknown
+      creator?: unknown
+      coverUrl?: unknown
+      description?: unknown
+      updateTime?: unknown
+      tags?: unknown
+    }
+    const source = normalizeText(payload.source, 24).toLowerCase() || 'local'
+    const platform = normalizeText(payload.platform, 24).toLowerCase() || 'local'
     return {
       source,
       platform,
-      platformPlaylistId: normalizeText(item?.platformPlaylistId, 80),
-      creator: normalizeCreator(item?.creator),
-      coverUrl: normalizeText(item?.coverUrl, 2048),
-      description: normalizeText(item?.description, 1024),
-      updateTime: normalizeDateText(item?.updateTime),
-      tags: normalizeTags(item?.tags)
+      platformPlaylistId: normalizeText(payload.platformPlaylistId, 80),
+      creator: normalizeCreator(payload.creator),
+      coverUrl: normalizeText(payload.coverUrl, 2048),
+      description: normalizeText(payload.description, 1024),
+      updateTime: normalizeDateText(payload.updateTime),
+      tags: normalizeTags(payload.tags)
     }
   }
 
   const safeState: PlaylistState = {
     schemaVersion: PLAYLIST_SCHEMA_VERSION,
-    playlists: Array.isArray(rawState?.playlists) ? rawState.playlists : [],
-    trackLibrary:
-      rawState?.trackLibrary && typeof rawState.trackLibrary === 'object'
-        ? rawState.trackLibrary
-        : {}
+    playlists: [],
+    trackLibrary: {}
   }
 
-  safeState.playlists = safeState.playlists.map((item: any) => ({
-    id: item?.id || createId(),
-    name: normalizePlaylistName(item?.name),
-    trackIds: Array.isArray(item?.trackIds)
-      ? item.trackIds.filter((trackId: any) => typeof trackId === 'string' && trackId)
-      : [],
-    ...normalizePlaylistMeta(item)
-  }))
+  const rawPlaylists = Array.isArray(state.playlists) ? state.playlists : []
+  const rawTrackLibrary = state.trackLibrary && typeof state.trackLibrary === 'object' ? state.trackLibrary : {}
+
+  safeState.playlists = rawPlaylists.map((item: unknown) => {
+    const payload = (item ?? {}) as { id?: unknown; name?: unknown; trackIds?: unknown[] }
+    return {
+      id: typeof payload.id === 'string' && payload.id ? payload.id : createId(),
+      name: normalizePlaylistName(payload.name),
+      trackIds: Array.isArray(payload.trackIds)
+        ? payload.trackIds.filter((trackId): trackId is string => typeof trackId === 'string' && Boolean(trackId))
+        : [],
+      ...normalizePlaylistMeta(item)
+    }
+  })
 
   // Legacy migration path (schemaVersion < 2): fill missing NetEase-aligned optional fields.
   if (schemaVersion < 2) {
@@ -219,7 +314,7 @@ function ensureStateShape(rawState: any): PlaylistState {
       source: item.source || 'local',
       platform: item.platform || 'local',
       platformPlaylistId: item.platformPlaylistId || '',
-      creator: item.creator || null,
+      creator: item.creator,
       coverUrl: item.coverUrl || '',
       description: item.description || '',
       updateTime: item.updateTime || new Date().toISOString(),
@@ -227,14 +322,16 @@ function ensureStateShape(rawState: any): PlaylistState {
     }))
   }
 
-  const normalizedLibrary: Record<string, any> = {}
-  for (const [trackId, track] of Object.entries(safeState.trackLibrary)) {
-    if (!trackId || typeof track !== 'object' || !(track as any).path) continue
+  const normalizedLibrary: Record<string, TrackLibraryEntry> = {}
+  for (const [trackId, track] of Object.entries(rawTrackLibrary)) {
+    if (!trackId || typeof track !== 'object' || !track) continue
+    const typedTrack = track as { path?: unknown; metadataCache?: unknown }
+    if (typeof typedTrack.path !== 'string' || !typedTrack.path.trim()) continue
     normalizedLibrary[trackId] = {
-      path: (track as any).path,
+      path: typedTrack.path,
       metadataCache:
-        (track as any).metadataCache && typeof (track as any).metadataCache === 'object'
-          ? (track as any).metadataCache
+        typedTrack.metadataCache && typeof typedTrack.metadataCache === 'object'
+          ? (typedTrack.metadataCache as MetadataCache)
           : {}
     }
   }
@@ -260,14 +357,10 @@ async function initializePlaylistState(): Promise<void> {
     if (!Number.isFinite(parsedVersion) || Math.trunc(parsedVersion) !== PLAYLIST_SCHEMA_VERSION) {
       await savePlaylistState()
     }
-  } catch (err: any) {
-    if (err.code !== 'ENOENT') {
-      logProgramEvent({
-        source: 'playlistHandlers',
-        event: 'load-playlist-store-failed',
-        message: 'Failed to load playlists.json, reset to default',
-        error: err
-      })
+  } catch (err: unknown) {
+    const errorCode = (err as { code?: string } | undefined)?.code
+    if (errorCode !== 'ENOENT') {
+      logPlaylistError('load-playlist-store-failed', 'Failed to load playlists.json, reset to default', err)
     }
     playlistState = ensureStateShape({ schemaVersion: PLAYLIST_SCHEMA_VERSION, playlists: [], trackLibrary: {} })
     await savePlaylistState()
@@ -281,32 +374,40 @@ function createTrackId(filePath: string, mtimeMs: number): string {
     .digest('hex')
 }
 
-async function upsertTrack(trackInput: any): Promise<string | null> {
-  if (!trackInput || typeof trackInput.path !== 'string' || !trackInput.path.trim()) {
-    return null
+async function upsertTrack(trackInput: unknown): Promise<string | undefined> {
+  const payload = (trackInput ?? {}) as {
+    path?: unknown
+    metadataCache?: unknown
+    title?: unknown
+    artist?: unknown
+    album?: unknown
+    duration?: unknown
+  }
+  if (typeof payload.path !== 'string' || !payload.path.trim()) {
+    return undefined
   }
 
-  const resolvedPath = path.resolve(trackInput.path)
+  const resolvedPath = path.resolve(payload.path)
   let stat
   try {
     stat = await fs.promises.stat(resolvedPath)
   } catch {
-    return null
+    return undefined
   }
 
   const trackId = createTrackId(resolvedPath, stat.mtimeMs)
   const metadataCacheInput =
-    trackInput.metadataCache && typeof trackInput.metadataCache === 'object'
-      ? trackInput.metadataCache
+    payload.metadataCache && typeof payload.metadataCache === 'object'
+      ? (payload.metadataCache as Record<string, unknown>)
       : {}
 
   playlistState.trackLibrary[trackId] = {
     path: resolvedPath,
     metadataCache: {
-      title: metadataCacheInput.title || trackInput.title || path.basename(resolvedPath),
-      artist: metadataCacheInput.artist || trackInput.artist || null,
-      album: metadataCacheInput.album || trackInput.album || null,
-      duration: metadataCacheInput.duration || trackInput.duration || null
+      title: String(metadataCacheInput.title || payload.title || path.basename(resolvedPath)),
+      artist: metadataCacheInput.artist ? String(metadataCacheInput.artist) : payload.artist ? String(payload.artist) : undefined,
+      album: metadataCacheInput.album ? String(metadataCacheInput.album) : payload.album ? String(payload.album) : undefined,
+      duration: Number(metadataCacheInput.duration || payload.duration || 0) || undefined
     }
   }
 
@@ -336,8 +437,11 @@ function getPlaylistListPayload(): PlaylistState {
   }
 }
 
-async function addTracksToPlaylistInternal(playlistId: string, tracks: any[]): Promise<any> {
-  const playlist = playlistState.playlists.find((item: any) => item.id === playlistId)
+async function addTracksToPlaylistInternal(
+  playlistId: string,
+  tracks: unknown[]
+): Promise<{ ok: true; addedCount: number; playlist: PlaylistItem } | { ok: false; error: 'PLAYLIST_NOT_FOUND' }> {
+  const playlist = playlistState.playlists.find((item) => item.id === playlistId)
   if (!playlist) {
     return { ok: false, error: 'PLAYLIST_NOT_FOUND' }
   }
@@ -359,7 +463,7 @@ async function addTracksToPlaylistInternal(playlistId: string, tracks: any[]): P
   return { ok: true, addedCount, playlist }
 }
 
-async function importPlaylistsFromObject(imported: any): Promise<{ importedPlaylistCount: number; importedTrackCount: number }> {
+async function importPlaylistsFromObject(imported: unknown): Promise<{ importedPlaylistCount: number; importedTrackCount: number }> {
   const incoming = ensureStateShape(imported)
   if (incoming.playlists.length === 0) {
     return { importedPlaylistCount: 0, importedTrackCount: 0 }
@@ -370,14 +474,14 @@ async function importPlaylistsFromObject(imported: any): Promise<{ importedPlayl
 
   for (const incomingPlaylist of incoming.playlists) {
     const uniqueName = makeUniquePlaylistName(incomingPlaylist.name, playlistState.playlists)
-    const newPlaylist: any = {
+    const newPlaylist: PlaylistItem = {
       id: createId(),
       name: uniqueName,
-      trackIds: [] as string[],
+      trackIds: [],
       source: incomingPlaylist.source || 'local',
       platform: incomingPlaylist.platform || 'local',
       platformPlaylistId: incomingPlaylist.platformPlaylistId || '',
-      creator: incomingPlaylist.creator || null,
+      creator: incomingPlaylist.creator,
       coverUrl: incomingPlaylist.coverUrl || '',
       description: incomingPlaylist.description || '',
       updateTime: incomingPlaylist.updateTime || new Date().toISOString(),
@@ -410,7 +514,7 @@ function registerPlaylistHandlers(): void {
   if (handlersRegistered) return
   handlersRegistered = true
 
-  ipcMain.handle('play-audio', (event: any, filePath: string) => {
+  ipcMain.handle('play-audio', (_event: unknown, filePath: string) => {
     logProgramEvent({
       source: 'playlistHandlers',
       event: 'play-audio',
@@ -433,25 +537,27 @@ function registerPlaylistHandlers(): void {
         .filter((file: string) => audioExtensions.includes(path.extname(file).toLowerCase()))
         .sort()
         .map((file: string) => path.join(folderPath, file))
-    } catch (err: any) {
-      logProgramEvent({
-        source: 'playlistHandlers',
-        event: 'read-folder-failed',
-        message: 'Failed to read selected folder',
-        error: err,
-        data: { folderPath }
-      })
+    } catch (err: unknown) {
+      logPlaylistError('read-folder-failed', 'Failed to read selected folder', err, { folderPath })
       return []
     }
   })
 
-  ipcMain.handle('get-metadata', async (event: any, filePath: string) => {
-    let parsedMeta = null
+  ipcMain.handle('get-metadata', async (_event: unknown, filePath: string) => {
+    let parsedMeta: {
+      title?: string
+      artist?: string
+      album?: string
+      year?: number
+      lyrics?: string
+      duration?: number
+      coverDataUrl?: string
+    } | undefined
     try {
       const metadata = await parseFile(filePath)
       const { common, format } = metadata
 
-      let coverDataUrl = null
+      let coverDataUrl: string | undefined
       if (common.picture && common.picture.length > 0) {
         const pic = common.picture[0]
         const base64 = Buffer.from(pic.data).toString('base64')
@@ -459,21 +565,17 @@ function registerPlaylistHandlers(): void {
       }
 
       parsedMeta = {
-        title: common.title || null,
-        artist: common.artist || null,
-        album: common.album || null,
-        year: common.year || null,
+        title: common.title || undefined,
+        artist: common.artist || undefined,
+        album: common.album || undefined,
+        year: common.year || undefined,
         lyrics: normalizeLyricsValue(common.lyrics),
-        duration: format.duration || null,
+        duration: format.duration || undefined,
         coverDataUrl
       }
-    } catch (err: any) {
-      logProgramEvent({
-        source: 'playlistHandlers',
-        event: 'parse-metadata-failed',
-        message: 'Failed to parse audio metadata',
-        error: err,
-        data: { filePath: String(filePath || '') }
+    } catch (err: unknown) {
+      logPlaylistError('parse-metadata-failed', 'Failed to parse audio metadata', err, {
+        filePath: String(filePath || '')
       })
     }
 
@@ -481,13 +583,13 @@ function registerPlaylistHandlers(): void {
     const fallbackCoverDataUrl = await readCoverDataUrlByPath(fallback?.coverPath)
 
     const merged = {
-      title: parsedMeta?.title || fallback?.title || null,
-      artist: parsedMeta?.artist || fallback?.artist || null,
-      album: parsedMeta?.album || fallback?.album || null,
-      year: parsedMeta?.year || fallback?.year || null,
+      title: parsedMeta?.title || fallback?.title || undefined,
+      artist: parsedMeta?.artist || fallback?.artist || undefined,
+      album: parsedMeta?.album || fallback?.album || undefined,
+      year: parsedMeta?.year || fallback?.year || undefined,
       lyrics: chooseBestLyrics(parsedMeta?.lyrics, fallback?.lyrics),
-      duration: parsedMeta?.duration || null,
-      coverDataUrl: parsedMeta?.coverDataUrl || fallbackCoverDataUrl || null
+      duration: parsedMeta?.duration || undefined,
+      coverDataUrl: parsedMeta?.coverDataUrl || fallbackCoverDataUrl || undefined
     }
 
     const hasMeaningfulField =
@@ -499,14 +601,14 @@ function registerPlaylistHandlers(): void {
       Boolean(merged.duration) ||
       Boolean(merged.coverDataUrl)
 
-    return hasMeaningfulField ? merged : null
+    return hasMeaningfulField ? merged : undefined
   })
 
   ipcMain.handle('playlist:list', async () => {
     return getPlaylistListPayload()
   })
 
-  ipcMain.handle('playlist:create', async (event: any, name: string) => {
+  ipcMain.handle('playlist:create', async (_event: unknown, name: string) => {
     const uniqueName = makeUniquePlaylistName(name, playlistState.playlists)
     const newPlaylist = {
       id: createId(),
@@ -515,7 +617,7 @@ function registerPlaylistHandlers(): void {
       source: 'local',
       platform: 'local',
       platformPlaylistId: '',
-      creator: null,
+      creator: undefined,
       coverUrl: '',
       description: '',
       updateTime: new Date().toISOString(),
@@ -527,13 +629,13 @@ function registerPlaylistHandlers(): void {
     return { ok: true, playlist: newPlaylist }
   })
 
-  ipcMain.handle('playlist:rename', async (event: any, payloadOrId: any, maybeName: any) => {
+  ipcMain.handle('playlist:rename', async (_event: unknown, payloadOrId: unknown, maybeName: unknown) => {
     const payload =
       payloadOrId && typeof payloadOrId === 'object'
-        ? payloadOrId
+        ? (payloadOrId as PlaylistRenamePayload)
         : { playlistId: payloadOrId, name: maybeName }
 
-    const playlist = playlistState.playlists.find((item: any) => item.id === payload.playlistId)
+    const playlist = playlistState.playlists.find((item) => item.id === payload.playlistId)
     if (!playlist) {
       return { ok: false, error: 'PLAYLIST_NOT_FOUND' }
     }
@@ -544,8 +646,8 @@ function registerPlaylistHandlers(): void {
     return { ok: true, playlist }
   })
 
-  ipcMain.handle('playlist:delete', async (event: any, playlistId: string) => {
-    const index = playlistState.playlists.findIndex((item: any) => item.id === playlistId)
+  ipcMain.handle('playlist:delete', async (_event: unknown, playlistId: string) => {
+    const index = playlistState.playlists.findIndex((item) => item.id === playlistId)
     if (index === -1) {
       return { ok: false, error: 'PLAYLIST_NOT_FOUND' }
     }
@@ -556,14 +658,14 @@ function registerPlaylistHandlers(): void {
     return { ok: true }
   })
 
-  ipcMain.handle('playlist:addTracks', async (event: any, payload: any) => {
-    const playlistId = payload?.playlistId
+  ipcMain.handle('playlist:addTracks', async (_event: unknown, payload: PlaylistAddTracksPayload) => {
+    const playlistId = String(payload?.playlistId || '')
     const tracks = Array.isArray(payload?.tracks) ? payload.tracks : []
     return addTracksToPlaylistInternal(playlistId, tracks)
   })
 
-  ipcMain.handle('playlist:removeTrack', async (event: any, payload: any) => {
-    const playlist = playlistState.playlists.find((item: any) => item.id === payload?.playlistId)
+  ipcMain.handle('playlist:removeTrack', async (_event: unknown, payload: PlaylistRemoveTrackPayload) => {
+    const playlist = playlistState.playlists.find((item) => item.id === payload?.playlistId)
     if (!playlist) {
       return { ok: false, error: 'PLAYLIST_NOT_FOUND' }
     }
@@ -580,8 +682,8 @@ function registerPlaylistHandlers(): void {
     return { ok: true, removed, playlist }
   })
 
-  ipcMain.handle('playlist:export', async (event: any, playlistId: string) => {
-    const playlist = playlistState.playlists.find((item: any) => item.id === playlistId)
+  ipcMain.handle('playlist:export', async (_event: unknown, playlistId: string) => {
+    const playlist = playlistState.playlists.find((item) => item.id === playlistId)
     if (!playlist) {
       return { ok: false, error: 'PLAYLIST_NOT_FOUND' }
     }
@@ -597,11 +699,16 @@ function registerPlaylistHandlers(): void {
       return { ok: false, canceled: true }
     }
 
-    const exportData: any = {
+    const exportData: {
+      schemaVersion: number
+      exportedAt: string
+      playlists: PlaylistItem[]
+      trackLibrary: Record<string, TrackLibraryEntry>
+    } = {
       schemaVersion: PLAYLIST_SCHEMA_VERSION,
       exportedAt: new Date().toISOString(),
       playlists: [playlist],
-      trackLibrary: {} as Record<string, any>
+      trackLibrary: {}
     }
 
     for (const trackId of playlist.trackIds) {
@@ -631,21 +738,14 @@ function registerPlaylistHandlers(): void {
       const parsed = JSON.parse(content)
       const importResult = await importPlaylistsFromObject(parsed)
       return { ok: true, ...importResult }
-    } catch (err: any) {
-      logProgramEvent({
-        source: 'playlistHandlers',
-        event: 'import-playlist-failed',
-        message: 'Failed to import playlist JSON',
-        error: err
-      })
+    } catch (err: unknown) {
+      logPlaylistError('import-playlist-failed', 'Failed to import playlist JSON', err)
       return { ok: false, error: 'IMPORT_FAILED' }
     }
   })
 }
 
-module.exports = {
+export {
   initializePlaylistState,
   registerPlaylistHandlers
 }
-
-export {}

@@ -17,6 +17,31 @@ type SavedPlaylist = {
   trackIds: string[]
 }
 
+type MetadataResponse = {
+  coverDataUrl?: string
+}
+
+type PlaylistListResponse = {
+  playlists?: SavedPlaylist[]
+  trackLibrary?: Record<string, SavedTrack>
+}
+
+type PlaylistCreateResponse = {
+  ok?: boolean
+  playlist?: {
+    id?: string
+  }
+}
+
+type PlaylistMutationResponse = {
+  ok?: boolean
+}
+
+type PlaylistAddTracksResponse = {
+  ok?: boolean
+  addedCount?: number
+}
+
 type SavedState = {
   playlists: SavedPlaylist[]
   trackLibrary: Record<string, SavedTrack>
@@ -39,13 +64,13 @@ type SavedPlaylistDom = {
 }
 
 type ElectronApiLike = {
-  getMetadata?: (filePath: string) => Promise<{ coverDataUrl?: string } | null>
-  playlistList?: () => Promise<{ playlists?: SavedPlaylist[]; trackLibrary?: Record<string, SavedTrack> }>
-  playlistCreate: (name: string) => Promise<{ ok?: boolean; playlist?: { id?: string } }>
-  playlistRename: (playlistId: string, name: string) => Promise<{ ok?: boolean }>
-  playlistDelete: (playlistId: string) => Promise<{ ok?: boolean }>
-  playlistAddTracks: (playlistId: string, tracks: unknown[]) => Promise<{ ok?: boolean; addedCount?: number }>
-  playlistRemoveTrack?: (playlistId: string, trackId: string) => Promise<{ ok?: boolean }>
+  getMetadata?: (filePath: string) => Promise<MetadataResponse | null>
+  playlistList: () => Promise<PlaylistListResponse>
+  playlistCreate: (name: string) => Promise<PlaylistCreateResponse>
+  playlistRename: (playlistId: string, name: string) => Promise<PlaylistMutationResponse>
+  playlistDelete: (playlistId: string) => Promise<PlaylistMutationResponse>
+  playlistAddTracks: (playlistId: string, tracks: unknown[]) => Promise<PlaylistAddTracksResponse>
+  playlistRemoveTrack?: (playlistId: string, trackId: string) => Promise<PlaylistMutationResponse>
 }
 
 type EventBusLike = {

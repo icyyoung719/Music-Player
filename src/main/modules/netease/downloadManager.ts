@@ -799,7 +799,7 @@ function cancelDownloadTask(id: string): any {
   return { ok: false, error: 'TASK_NOT_CANCELABLE' }
 }
 
-module.exports = {
+export {
   downloadTasks,
   pendingTaskIds,
   activeDownloadHandles,
@@ -817,5 +817,3 @@ module.exports = {
   createSongDownloadTaskFromId,
   cancelDownloadTask
 }
-
-export {}

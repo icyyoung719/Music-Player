@@ -1089,7 +1089,7 @@ async function sendNeteasePrivateMessage(payload: any): Promise<SendMessageResul
   }
 }
 
-module.exports = {
+export {
   normalizeAudioExt,
   resolveAudioExtByUrl,
   resolveAudioExtByResolvedUrl,
@@ -1120,5 +1120,3 @@ module.exports = {
   sanitizeUserIds,
   sendNeteasePrivateMessage
 }
-
-export {}

@@ -1,3 +1,6 @@
+import { getElectronAPI } from '../core/electronApi.js'
+import type { AuthStatePayload } from '../core/electronApi.js'
+
 type AuthState = {
   apiBaseUrl?: string
   userName?: string
@@ -6,44 +9,80 @@ type AuthState = {
   hasAccessToken?: boolean
 }
 
+type AuthResultBase = {
+  ok?: boolean
+  message?: string
+  error?: string
+}
+
+type AuthStateResponse = AuthResultBase & {
+  state?: AuthState
+}
+
+type AuthLoginResponse = AuthStateResponse & {
+  profile?: {
+    userName?: string
+  }
+}
+
+type AuthQrCreateResponse = AuthResultBase & {
+  qrKey?: string
+  qrLoginUrl?: string
+  qrDataUrl?: string
+}
+
+type AuthQrCheckResponse = AuthStateResponse & {
+  status?: 'WAIT_SCAN' | 'WAIT_CONFIRM' | 'EXPIRED' | 'AUTHORIZED' | string
+  profile?: {
+    userName?: string
+  }
+}
+
+type AuthVerifyResponse = AuthResultBase & {
+  profile?: {
+    nickname?: string
+    userId?: string
+  }
+}
+
 type ElectronApiLike = {
-  neteaseAuthGetState?: () => Promise<any>
+  neteaseAuthGetState?: () => Promise<AuthStateResponse>
   neteaseAuthLoginEmail?: (payload: {
     email: string
     password: string
     apiBaseUrl: string
-  }) => Promise<any>
+  }) => Promise<AuthLoginResponse>
   neteaseAuthSendCaptcha?: (payload: {
     countryCode: string
     phone: string
     apiBaseUrl: string
-  }) => Promise<any>
+  }) => Promise<AuthResultBase>
   neteaseAuthLoginCaptcha?: (payload: {
     countryCode: string
     phone: string
     captcha: string
     apiBaseUrl: string
-  }) => Promise<any>
-  neteaseAuthQrCreate?: (payload: { apiBaseUrl: string }) => Promise<any>
-  neteaseAuthQrCheck?: (payload: { qrKey: string; apiBaseUrl: string }) => Promise<any>
+  }) => Promise<AuthLoginResponse>
+  neteaseAuthQrCreate?: (payload: { apiBaseUrl: string }) => Promise<AuthQrCreateResponse>
+  neteaseAuthQrCheck?: (payload: { qrKey: string; apiBaseUrl: string }) => Promise<AuthQrCheckResponse>
   neteaseAuthUpdate?: (payload: {
     apiBaseUrl: string
     accessToken?: string
     refreshToken?: string
     userName?: string
     userId?: string
-  }) => Promise<any>
-  neteaseAuthVerify?: () => Promise<any>
-  neteaseAuthClear?: () => Promise<any>
+  }) => Promise<AuthStateResponse>
+  neteaseAuthVerify?: () => Promise<AuthVerifyResponse>
+  neteaseAuthClear?: () => Promise<AuthStateResponse>
   neteaseOpenExternalUrl?: (payload: { url: string }) => void
   neteaseAuthCloseWindow?: () => void
   onNeteaseAuthWindowSetPage?: (handler: (page?: unknown) => void) => void
-  onNeteaseAuthStateUpdate?: (handler: (payload?: { state?: AuthState }) => void) => void
+  onNeteaseAuthStateUpdate?: (handler: (payload?: { state?: AuthStatePayload }) => void) => void
 }
 
 const byId = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null
 const queryAll = <T extends Element>(selector: string): T[] => Array.from(document.querySelectorAll<T>(selector))
-const electronAPI = (window as Window & { electronAPI?: ElectronApiLike }).electronAPI
+const electronAPI = getElectronAPI() as ElectronApiLike | undefined
 
 const dom = {
   status: byId<HTMLElement>('authStatus'),
@@ -454,7 +493,7 @@ function registerEvents(): void {
   if (electronAPI?.onNeteaseAuthStateUpdate) {
     electronAPI.onNeteaseAuthStateUpdate((payload) => {
       if (payload?.state) {
-        applyState(payload.state)
+        applyState(payload.state as AuthState)
       }
     })
   }

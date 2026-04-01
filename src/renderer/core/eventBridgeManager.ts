@@ -1,12 +1,5 @@
-type EventBusLike = {
-  on: (eventName: string, listener: (payload?: any) => void) => void
-  handle: (eventName: string, handler: (payload?: any) => unknown | Promise<unknown>) => void
-}
-
-type ElectronApiLike = {
-  minimizeWindow?: () => void
-  onPlayerControl?: (listener: (action: string) => void) => void
-}
+import type { EventBus } from './eventBus.js'
+import type { ElectronAPI } from './electronApi.js'
 
 type PlaybackControllerLike = {
   togglePlayback?: (options?: { silent?: boolean }) => void
@@ -51,8 +44,8 @@ type PlaylistCacheServiceLike = {
 }
 
 type EventBridgeOptions = {
-  eventBus: EventBusLike
-  electronAPI?: ElectronApiLike
+  eventBus: EventBus
+  electronAPI?: Pick<ElectronAPI, 'minimizeWindow' | 'onPlayerControl'>
   playbackController?: PlaybackControllerLike | null
   savedPlaylistManager?: SavedPlaylistManagerLike | null
   recentlyPlayedManager?: RecentlyPlayedManagerLike | null
@@ -62,6 +55,38 @@ type EventBridgeOptions = {
   playlistCacheService: PlaylistCacheServiceLike
   seekSeconds?: number
   doc?: Document
+}
+
+type QueueAppendPayload = {
+  tracks?: unknown[]
+}
+
+type QueueReplacePayload = {
+  tracks?: unknown[]
+  startIndex?: number
+  options?: unknown
+}
+
+type PlaylistChangedPayload = {
+  playlistId?: string
+}
+
+type ViewPlaylistOpenPayload = {
+  playlistId?: string
+}
+
+type ShortcutActionPayload = {
+  action?: string
+}
+
+type EnsurePlaylistPayload = {
+  name?: string
+  playlistKey?: string
+}
+
+type AddTrackPayload = {
+  playlistId?: string
+  track?: unknown
 }
 
 export function createEventBridgeManager(options: EventBridgeOptions) {
@@ -127,23 +152,27 @@ export function createEventBridgeManager(options: EventBridgeOptions) {
   }
 
   function setupEventBusBridge(): void {
-    eventBus.on('playback:queue.append', (payload) => {
+    eventBus.on<QueueAppendPayload>('playback:queue.append', (payload) => {
       const tracks = Array.isArray(payload?.tracks) ? payload.tracks : []
       if (!tracks.length || !playbackController) return
       playbackController.appendToPlaylist?.(tracks)
     })
 
-    eventBus.on('playback:queue.replace', (payload) => {
+    eventBus.on<QueueReplacePayload>('playback:queue.replace', (payload) => {
       const tracks = Array.isArray(payload?.tracks) ? payload.tracks : []
       if (!tracks.length || !playbackController) return
+      const startIndex =
+        typeof payload?.startIndex === 'number' && Number.isFinite(payload.startIndex)
+          ? payload.startIndex
+          : 0
       playbackController.replaceCurrentQueueWithTracks?.(
         tracks,
-        Number.isFinite(payload?.startIndex) ? payload.startIndex : 0,
+        startIndex,
         payload?.options || {}
       )
     })
 
-    eventBus.on('playlist:saved.changed', (payload) => {
+    eventBus.on<PlaylistChangedPayload>('playlist:saved.changed', (payload) => {
       if (savedPlaylistManager?.refreshSavedPlaylists) {
         savedPlaylistManager.refreshSavedPlaylists(payload?.playlistId || null)
       }
@@ -161,7 +190,7 @@ export function createEventBridgeManager(options: EventBridgeOptions) {
       viewManager?.showSongPage?.()
     })
 
-    eventBus.on('view:playlist.open', (payload) => {
+    eventBus.on<ViewPlaylistOpenPayload>('view:playlist.open', (payload) => {
       viewManager?.openSavedPlaylistDetail?.(payload?.playlistId || '')
     })
 
@@ -169,7 +198,7 @@ export function createEventBridgeManager(options: EventBridgeOptions) {
       toastManager?.pushToast?.(payload)
     })
 
-    eventBus.on('shortcut:action', (payload) => {
+    eventBus.on<ShortcutActionPayload>('shortcut:action', (payload) => {
       handleShortcutAction(payload?.action || '')
     })
 
@@ -177,11 +206,11 @@ export function createEventBridgeManager(options: EventBridgeOptions) {
       recentlyPlayedManager?.render?.()
     })
 
-    eventBus.handle('playlist:ensure-by-name', async (payload) => {
+    eventBus.handle<EnsurePlaylistPayload>('playlist:ensure-by-name', async (payload) => {
       return playlistCacheService.ensureSavedPlaylistByName(payload?.name || '', payload?.playlistKey || '')
     })
 
-    eventBus.handle('playlist:add-track', async (payload) => {
+    eventBus.handle<AddTrackPayload>('playlist:add-track', async (payload) => {
       await playlistCacheService.appendDownloadedTrackToSavedPlaylist(payload?.playlistId || '', payload?.track || null)
       return true
     })

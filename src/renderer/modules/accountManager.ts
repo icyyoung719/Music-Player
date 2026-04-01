@@ -1,3 +1,5 @@
+import type { ElectronAPI } from '../core/electronApi.js'
+
 type AccountPayload = {
   isLoggedIn?: boolean
   userName?: string
@@ -13,13 +15,14 @@ type AccountDom = {
   loginBtnEl: HTMLButtonElement
 }
 
-type ElectronApiLike = {
-  neteaseAuthGetAccountSummary?: (payload: { refresh: boolean }) => Promise<any>
-  onNeteaseAuthStateUpdate?: (listener: (payload: { account?: AccountPayload; state?: AccountPayload }) => void) => (() => void) | void
+type AccountSummaryResponse = {
+  ok?: boolean
+  account?: AccountPayload
+  state?: AccountPayload
 }
 
 type AccountManagerOptions = {
-  electronAPI?: ElectronApiLike
+  electronAPI?: Pick<ElectronAPI, 'neteaseAuthGetAccountSummary' | 'onNeteaseAuthStateUpdate'>
   dom: AccountDom
   onRequestLoginWindow?: () => void
 }
@@ -86,9 +89,9 @@ export function createAccountManager(options: AccountManagerOptions) {
   async function refreshAccountSummary(forceRefresh = false): Promise<void> {
     if (!electronAPI?.neteaseAuthGetAccountSummary) return
 
-    const res = await electronAPI.neteaseAuthGetAccountSummary({
+    const res = (await electronAPI.neteaseAuthGetAccountSummary({
       refresh: forceRefresh
-    })
+    })) as AccountSummaryResponse
 
     if (!res?.ok) {
       applyAccount(null, null)

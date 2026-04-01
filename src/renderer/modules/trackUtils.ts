@@ -1,3 +1,5 @@
+import type { ElectronAPI } from '../core/electronApi.js'
+
 type LazyNeteaseTrack = {
   songId?: string | number
 }
@@ -7,10 +9,6 @@ type TrackLike = {
   path?: string | null
   file?: File | null
   lazyNetease?: LazyNeteaseTrack | null
-}
-
-type ElectronApiLike = {
-  getPathForFile?: (file: File) => string
 }
 
 export function formatTime(seconds: number): string {
@@ -34,7 +32,7 @@ export function normalizePath(filePath: string): string {
   return filePath.replace(/\\/g, '/').toLowerCase()
 }
 
-export function getTrackUniqueKey(track: TrackLike, _electronAPI?: ElectronApiLike): string {
+export function getTrackUniqueKey(track: TrackLike, _electronAPI?: Pick<ElectronAPI, 'getPathForFile'>): string {
   if (track?.lazyNetease?.songId) {
     return `netease:${String(track.lazyNetease.songId)}`
   }
@@ -48,7 +46,7 @@ export function getTrackUniqueKey(track: TrackLike, _electronAPI?: ElectronApiLi
   return `name:${track.name || ''}`
 }
 
-export function getCurrentTrackPath(track: TrackLike, electronAPI?: ElectronApiLike): string | null {
+export function getCurrentTrackPath(track: TrackLike, electronAPI?: Pick<ElectronAPI, 'getPathForFile'>): string | null {
   if (track.path) return track.path
   if (track.file && electronAPI?.getPathForFile) {
     try {

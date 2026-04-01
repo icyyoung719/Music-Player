@@ -198,12 +198,10 @@ function initializeLogger(): void {
   })
 }
 
-module.exports = {
+export {
   initializeLogger,
   logProgramEvent,
   logNetworkEvent,
   serializeError,
   buildBinarySummary
 }
-
-export {}

@@ -21,6 +21,7 @@ import { createViewManager } from './core/viewManager.js'
 import { createNeteaseDatabaseService } from './core/neteaseDatabaseService.js'
 import { createDownloadService } from './core/downloadService.js'
 import { createEventBridgeManager } from './core/eventBridgeManager.js'
+import { getElectronAPI } from './core/electronApi.js'
 
 const SHORTCUT_STORAGE_KEY = 'musicPlayer.shortcuts.v1'
 const SEEK_SECONDS = 5
@@ -52,7 +53,7 @@ function showHomeView(viewManager: any, view: string): void {
   }
 }
 
-function createServices(electronAPI: any): Record<string, any> {
+function createServices(electronAPI: any) {
   const neteaseDatabaseService = createNeteaseDatabaseService({ electronAPI })
   const downloadService = createDownloadService({ electronAPI, eventBus })
   downloadService.init()
@@ -64,7 +65,7 @@ function createServices(electronAPI: any): Record<string, any> {
 }
 
 function setupRenderer(): void {
-  const electronAPI = (window as any).electronAPI
+  const electronAPI: any = getElectronAPI()
   const dom: any = collectRendererDom(document)
   const dialogManager = createDialogManager({ doc: document })
 
@@ -170,7 +171,7 @@ function setupRenderer(): void {
 
   neteasePlaylistDetailManager = createNeteasePlaylistDetailManager({
     electronAPI,
-    neteaseDatabaseService,
+    neteaseDatabaseService: neteaseDatabaseService as any,
     downloadService,
     eventBus,
     dom: dom.neteasePlaylistDetailDom,
@@ -181,7 +182,7 @@ function setupRenderer(): void {
 
   cloudPlaylistManager = createCloudPlaylistManager({
     electronAPI,
-    neteaseDatabaseService,
+    neteaseDatabaseService: neteaseDatabaseService as any,
     eventBus,
     dom: dom.cloudPlaylistDom,
     onOpenPlaylistDetail: (playlistId, playlistName, options: any = {}) => {
@@ -192,7 +193,7 @@ function setupRenderer(): void {
 
   const neteaseSearchManager = createNeteaseSearchManager({
     electronAPI,
-    neteaseDatabaseService,
+    neteaseDatabaseService: neteaseDatabaseService as any,
     downloadService,
     dom: dom.neteaseSearchDom,
     eventBus,

@@ -1,13 +1,10 @@
+import type { ElectronAPI } from '../core/electronApi.js'
+
 type PlaylistCreateResponse = {
   ok?: boolean
   playlist?: {
     id?: string
   }
-}
-
-type ElectronApiLike = {
-  playlistCreate?: (name: string) => Promise<PlaylistCreateResponse>
-  playlistAddTracks?: (playlistId: string, tracks: unknown[]) => Promise<unknown>
 }
 
 type SavedPlaylistManagerLike = {
@@ -23,7 +20,7 @@ type DownloadedTrackLike = {
 }
 
 type PlaylistCacheServiceOptions = {
-  electronAPI?: ElectronApiLike
+  electronAPI?: Pick<ElectronAPI, 'playlistCreate' | 'playlistAddTracks'>
   getSavedPlaylistManager?: () => SavedPlaylistManagerLike | null
 }
 
@@ -51,7 +48,7 @@ export function createPlaylistCacheService(options: PlaylistCacheServiceOptions 
     }
 
     const createPromise = (async () => {
-      const created = await electronAPI.playlistCreate!(cleanName)
+      const created = (await electronAPI.playlistCreate!(cleanName)) as PlaylistCreateResponse
       if (!created?.ok || !created?.playlist?.id) return ''
       const playlistId = created.playlist.id
       if (cacheKey) {
