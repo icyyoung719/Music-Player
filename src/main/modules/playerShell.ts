@@ -1,26 +1,48 @@
-﻿const { BrowserWindow, Tray, Menu, nativeImage, globalShortcut, ipcMain, app } = require('electron')
-const path = require('path')
-const fs = require('fs')
-const { logProgramEvent } = require('./logger')
+const { BrowserWindow, Tray, Menu, nativeImage, globalShortcut, ipcMain, app } = require('electron') as typeof import('electron')
+const path = require('path') as typeof import('path')
+const fs = require('fs') as typeof import('fs')
+const { logProgramEvent } = require('./logger') as {
+  logProgramEvent: (payload: {
+    source?: string
+    event?: string
+    message?: string
+    data?: unknown
+    error?: unknown
+  }) => void
+}
 
-let mainWindow = null
-let authWindow = null
-let tray = null
+type PlaybackState = {
+  hasQueue: boolean
+  isPlaying: boolean
+  title: string
+}
+
+type ShellPreferences = {
+  minimizeToTrayOnClose?: boolean
+}
+
+type AuthWindowPayload = {
+  page?: string
+}
+
+let mainWindow: Electron.BrowserWindow | null = null
+let authWindow: Electron.BrowserWindow | null = null
+let tray: Electron.Tray | null = null
 let isQuitting = false
 let minimizeToTrayOnClose = true
 let shellPreferencesLoaded = false
-let playbackState = {
+let playbackState: PlaybackState = {
   hasQueue: false,
   isPlaying: false,
   title: ''
 }
 let stateListenerRegistered = false
 
-function getShellPreferencesPath() {
+function getShellPreferencesPath(): string {
   return path.join(app.getPath('userData'), 'shell-preferences.json')
 }
 
-function loadShellPreferences() {
+function loadShellPreferences(): void {
   if (shellPreferencesLoaded) return
   shellPreferencesLoaded = true
 
@@ -28,7 +50,7 @@ function loadShellPreferences() {
   try {
     if (!fs.existsSync(storePath)) return
     const content = fs.readFileSync(storePath, 'utf8')
-    const parsed = JSON.parse(content)
+    const parsed = JSON.parse(content) as ShellPreferences
     if (typeof parsed?.minimizeToTrayOnClose === 'boolean') {
       minimizeToTrayOnClose = parsed.minimizeToTrayOnClose
     }
@@ -42,16 +64,16 @@ function loadShellPreferences() {
   }
 }
 
-function saveShellPreferences() {
+function saveShellPreferences(): void {
   const storePath = getShellPreferencesPath()
   const payload = {
     minimizeToTrayOnClose
   }
 
-  fs.promises
+  void fs.promises
     .mkdir(path.dirname(storePath), { recursive: true })
     .then(() => fs.promises.writeFile(storePath, JSON.stringify(payload, null, 2), 'utf8'))
-    .catch((err) => {
+    .catch((err: unknown) => {
       logProgramEvent({
         source: 'playerShell',
         event: 'save-shell-preferences-failed',
@@ -61,26 +83,27 @@ function saveShellPreferences() {
     })
 }
 
-function getActiveWindow() {
+function getActiveWindow(): Electron.BrowserWindow | null {
   const focused = BrowserWindow.getFocusedWindow()
   return focused || mainWindow
 }
 
-function sendPlayerControl(action) {
+function sendPlayerControl(action: string): void {
   const target = getActiveWindow()
   if (!target || target.isDestroyed()) return
   target.webContents.send('player:control', action)
 }
 
-function normalizePlaybackState(nextState) {
+function normalizePlaybackState(nextState: unknown): PlaybackState {
+  const typed = nextState as PlaybackState | null | undefined
   return {
-    hasQueue: !!nextState?.hasQueue,
-    isPlaying: !!nextState?.isPlaying,
-    title: typeof nextState?.title === 'string' ? nextState.title : ''
+    hasQueue: !!typed?.hasQueue,
+    isPlaying: !!typed?.isPlaying,
+    title: typeof typed?.title === 'string' ? typed.title : ''
   }
 }
 
-function getAssetImage(assetFileName, size = null) {
+function getAssetImage(assetFileName: string, size: { width: number; height: number } | null = null): Electron.NativeImage | null {
   const assetPath = path.join(__dirname, '../../../assets/icons', assetFileName)
   if (!fs.existsSync(assetPath)) {
     return null
@@ -98,7 +121,7 @@ function getAssetImage(assetFileName, size = null) {
   return img
 }
 
-function getTrayIcon() {
+function getTrayIcon(): Electron.NativeImage {
   const trayIco = getAssetImage('tray.ico')
   if (trayIco) {
     return trayIco
@@ -114,7 +137,7 @@ function getTrayIcon() {
   )
 }
 
-function getThumbarIcon(action, active = false) {
+function getThumbarIcon(action: string, active = false): Electron.NativeImage | null {
   const size = { width: 16, height: 16 }
 
   if (action === 'previous-track') {
@@ -136,7 +159,11 @@ function getThumbarIcon(action, active = false) {
   return playIcon
 }
 
-function refreshThumbarButtons() {
+function getThumbarIconOrEmpty(action: string, active = false): Electron.NativeImage {
+  return getThumbarIcon(action, active) || nativeImage.createEmpty()
+}
+
+function refreshThumbarButtons(): void {
   if (process.platform !== 'win32') return
   if (!mainWindow || mainWindow.isDestroyed()) return
 
@@ -145,26 +172,26 @@ function refreshThumbarButtons() {
   mainWindow.setThumbarButtons([
     {
       tooltip: '上一首',
-      icon: getThumbarIcon('previous-track'),
+      icon: getThumbarIconOrEmpty('previous-track'),
       click: () => sendPlayerControl('previous-track'),
       flags: []
     },
     {
       tooltip: isPlaying ? '暂停' : '播放',
-      icon: getThumbarIcon(isPlaying ? 'pause' : 'play', true),
+      icon: getThumbarIconOrEmpty(isPlaying ? 'pause' : 'play', true),
       click: () => sendPlayerControl('toggle-play'),
       flags: []
     },
     {
       tooltip: '下一首',
-      icon: getThumbarIcon('next-track'),
+      icon: getThumbarIconOrEmpty('next-track'),
       click: () => sendPlayerControl('next-track'),
       flags: []
     }
   ])
 }
 
-function buildTrayMenu() {
+function buildTrayMenu(): Electron.Menu {
   const playPauseLabel = playbackState.isPlaying ? '暂停' : '播放'
   const playPauseEnabled = playbackState.hasQueue
 
@@ -189,7 +216,7 @@ function buildTrayMenu() {
       label: '点击关闭时最小化到托盘',
       type: 'checkbox',
       checked: minimizeToTrayOnClose,
-      click: (menuItem) => {
+      click: (menuItem: Electron.MenuItem) => {
         minimizeToTrayOnClose = menuItem.checked
         saveShellPreferences()
       }
@@ -212,7 +239,7 @@ function buildTrayMenu() {
   ])
 }
 
-function refreshTrayMenu() {
+function refreshTrayMenu(): void {
   if (!tray) return
   const nowPlaying = playbackState.title || 'Music Player'
   tray.setToolTip(playbackState.hasQueue ? `Music Player - ${nowPlaying}` : 'Music Player')
@@ -220,7 +247,7 @@ function refreshTrayMenu() {
   refreshThumbarButtons()
 }
 
-function createTray() {
+function createTray(): void {
   if (tray) return
 
   tray = new Tray(getTrayIcon())
@@ -237,8 +264,8 @@ function createTray() {
   refreshTrayMenu()
 }
 
-function registerMediaShortcuts() {
-  const bindings = [
+function registerMediaShortcuts(): void {
+  const bindings: Array<[string, string]> = [
     ['MediaPlayPause', 'toggle-play'],
     ['MediaNextTrack', 'next-track'],
     ['MediaPreviousTrack', 'previous-track']
@@ -267,7 +294,7 @@ function registerMediaShortcuts() {
   }
 }
 
-function createMainWindow() {
+function createMainWindow(): Electron.BrowserWindow {
   loadShellPreferences()
 
   const appIconPath = path.join(__dirname, '../../../assets/icons/app-icon.png')
@@ -287,12 +314,11 @@ function createMainWindow() {
     }
   })
 
-  // Remove default Electron menu bar (File/Edit/View...) for a cleaner player UI.
   win.removeMenu()
 
-  win.loadFile(path.join(__dirname, '../../renderer/index.html'))
+  void win.loadFile(path.join(__dirname, '../../renderer/index.html'))
 
-  win.on('close', (event) => {
+  win.on('close', (event: Electron.Event) => {
     if (isQuitting || !minimizeToTrayOnClose) return
     event.preventDefault()
     win.hide()
@@ -309,13 +335,13 @@ function createMainWindow() {
   return win
 }
 
-function getAuthWindowStartPage(payload) {
+function getAuthWindowStartPage(payload: AuthWindowPayload): 'email' | 'phone' | 'qr' | 'token' {
   const page = String(payload?.page || '').trim().toLowerCase()
   const supportedPages = new Set(['email', 'phone', 'qr', 'token'])
-  return supportedPages.has(page) ? page : 'email'
+  return supportedPages.has(page) ? (page as 'email' | 'phone' | 'qr' | 'token') : 'email'
 }
 
-function openNeteaseAuthWindow(payload = {}) {
+function openNeteaseAuthWindow(payload: AuthWindowPayload = {}): { ok: boolean; error?: string } {
   const startPage = getAuthWindowStartPage(payload)
 
   if (authWindow && !authWindow.isDestroyed()) {
@@ -342,7 +368,7 @@ function openNeteaseAuthWindow(payload = {}) {
   })
 
   win.removeMenu()
-  win.loadFile(path.join(__dirname, '../../renderer/auth-window.html'), {
+  void win.loadFile(path.join(__dirname, '../../renderer/auth-window.html'), {
     query: { page: startPage }
   })
 
@@ -356,13 +382,13 @@ function openNeteaseAuthWindow(payload = {}) {
   return { ok: true }
 }
 
-function initializeShell() {
+function initializeShell(): void {
   createTray()
   registerMediaShortcuts()
 
   if (!stateListenerRegistered) {
     stateListenerRegistered = true
-    ipcMain.on('player:state-changed', (event, state) => {
+    ipcMain.on('player:state-changed', (_event: Electron.IpcMainEvent, state: unknown) => {
       playbackState = normalizePlaybackState(state)
       refreshTrayMenu()
     })
@@ -377,7 +403,7 @@ function initializeShell() {
       return { ok: true }
     })
 
-    ipcMain.handle('netease:auth:open-window', (_event, payload) => {
+    ipcMain.handle('netease:auth:open-window', (_event: Electron.IpcMainInvokeEvent, payload: AuthWindowPayload) => {
       try {
         return openNeteaseAuthWindow(payload)
       } catch (err) {
@@ -398,7 +424,7 @@ function initializeShell() {
   }
 }
 
-function handleActivate() {
+function handleActivate(): void {
   if (BrowserWindow.getAllWindows().length === 0) {
     createMainWindow()
   } else if (mainWindow && !mainWindow.isDestroyed()) {
@@ -407,11 +433,11 @@ function handleActivate() {
   }
 }
 
-function shouldKeepAliveOnWindowAllClosed() {
+function shouldKeepAliveOnWindowAllClosed(): boolean {
   return minimizeToTrayOnClose
 }
 
-function handleWillQuit() {
+function handleWillQuit(): void {
   isQuitting = true
   if (authWindow && !authWindow.isDestroyed()) {
     authWindow.destroy()
@@ -427,3 +453,5 @@ module.exports = {
   shouldKeepAliveOnWindowAllClosed,
   handleWillQuit
 }
+
+export {}

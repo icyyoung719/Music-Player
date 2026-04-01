@@ -1,15 +1,19 @@
-﻿const THEME_STORAGE_KEY = 'music-player-theme'
+const THEME_STORAGE_KEY = 'music-player-theme'
 
-export function initTheme(options = {}) {
-  const {
-    target = document.body,
-    toggleSelector = '[data-theme-toggle]'
-  } = options
+type ThemeName = 'light' | 'dark'
+
+type ThemeOptions = {
+  target?: HTMLElement
+  toggleSelector?: string
+}
+
+export function initTheme(options: ThemeOptions = {}): void {
+  const { target = document.body, toggleSelector = '[data-theme-toggle]' } = options
 
   const themeToggleBtns = document.querySelectorAll(toggleSelector)
 
-  function applyTheme(theme) {
-    const normalized = theme === 'dark' ? 'dark' : 'light'
+  function applyTheme(theme: string): void {
+    const normalized: ThemeName = theme === 'dark' ? 'dark' : 'light'
     target.setAttribute('data-theme', normalized)
 
     themeToggleBtns.forEach((btn) => {
@@ -17,7 +21,7 @@ export function initTheme(options = {}) {
     })
   }
 
-  let initialTheme = 'light'
+  let initialTheme: ThemeName = 'light'
   try {
     const saved = localStorage.getItem(THEME_STORAGE_KEY)
     if (saved === 'dark' || saved === 'light') {
@@ -31,8 +35,8 @@ export function initTheme(options = {}) {
 
   themeToggleBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
-      const current = target.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
-      const next = current === 'dark' ? 'light' : 'dark'
+      const current: ThemeName = target.getAttribute('data-theme') === 'dark' ? 'dark' : 'light'
+      const next: ThemeName = current === 'dark' ? 'light' : 'dark'
       applyTheme(next)
       try {
         localStorage.setItem(THEME_STORAGE_KEY, next)

@@ -1,4 +1,27 @@
-export function createNavigationBridge(options = {}) {
+type NavigationDom = {
+  windowMinimizeBtn?: HTMLElement | null
+  homeMenuRecommendEl?: HTMLElement | null
+  homeMenuDownloadEl?: HTMLElement | null
+  homeMenuRecentlyPlayedEl?: HTMLElement | null
+  homeCreatedPlaylistListEl?: HTMLElement | null
+  globalPlayerBarEl?: HTMLElement | null
+}
+
+type NavigationApi = {
+  minimizeWindow?: () => void
+}
+
+type NavigationBridgeOptions = {
+  doc?: Document
+  dom: NavigationDom
+  electronAPI?: NavigationApi
+  onShowSongPage?: () => void
+  onShowHomePage?: () => void
+  onShowHomeView?: (view: string) => void
+  onOpenSavedPlaylistDetail?: (playlistId: string) => void
+}
+
+export function createNavigationBridge(options: NavigationBridgeOptions) {
   const {
     doc = document,
     dom,
@@ -9,7 +32,7 @@ export function createNavigationBridge(options = {}) {
     onOpenSavedPlaylistDetail
   } = options
 
-  function init() {
+  function init(): void {
     doc.querySelectorAll('[data-open-song]').forEach((el) => {
       el.addEventListener('click', () => {
         if (typeof onShowSongPage === 'function') {
@@ -20,9 +43,7 @@ export function createNavigationBridge(options = {}) {
 
     if (dom.windowMinimizeBtn) {
       dom.windowMinimizeBtn.addEventListener('click', () => {
-        if (electronAPI?.minimizeWindow) {
-          electronAPI.minimizeWindow()
-        }
+        electronAPI?.minimizeWindow?.()
       })
     }
 
@@ -48,15 +69,17 @@ export function createNavigationBridge(options = {}) {
     }
 
     if (dom.homeCreatedPlaylistListEl) {
-      dom.homeCreatedPlaylistListEl.addEventListener('click', (event) => {
-        const playlistItem = event.target.closest('[data-playlist-id]')
+      dom.homeCreatedPlaylistListEl.addEventListener('click', (event: Event) => {
+        const target = event.target
+        if (!(target instanceof Element)) return
+        const playlistItem = target.closest('[data-playlist-id]') as HTMLElement | null
         if (!playlistItem) return
         onOpenSavedPlaylistDetail?.(playlistItem.dataset.playlistId || '')
       })
     }
 
     if (dom.globalPlayerBarEl) {
-      dom.globalPlayerBarEl.addEventListener('click', (event) => {
+      dom.globalPlayerBarEl.addEventListener('click', (event: Event) => {
         const target = event.target
         if (!(target instanceof Element)) return
 

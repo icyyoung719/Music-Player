@@ -1,9 +1,24 @@
-export function createToastManager(options) {
+type ToastPayload = {
+  message?: string
+  level?: string
+  durationMs?: number
+}
+
+type ToastApi = {
+  onAppToast?: (listener: (payload: ToastPayload) => void) => void
+}
+
+type ToastOptions = {
+  electronAPI?: ToastApi
+  container?: HTMLElement | null
+}
+
+export function createToastManager(options: ToastOptions) {
   const { electronAPI, container } = options || {}
   const MAX_TOASTS = 6
   const TOAST_DURATION_MS = 3200
 
-  function removeToast(node) {
+  function removeToast(node: HTMLElement | null): void {
     if (!node) return
     node.classList.add('is-leaving')
     window.setTimeout(() => {
@@ -13,7 +28,7 @@ export function createToastManager(options) {
     }, 260)
   }
 
-  function pushToast(payload) {
+  function pushToast(payload: ToastPayload): void {
     if (!container) return
     const message = String(payload?.message || '').trim()
     if (!message) return
@@ -24,11 +39,7 @@ export function createToastManager(options) {
 
     const title = document.createElement('div')
     title.className = 'app-toast-title'
-    title.textContent = level === 'success'
-      ? '下载完成'
-      : level === 'error'
-        ? '下载失败'
-        : '下载提醒'
+    title.textContent = level === 'success' ? '下载完成' : level === 'error' ? '下载失败' : '下载提醒'
 
     const body = document.createElement('div')
     body.className = 'app-toast-body'
@@ -47,8 +58,8 @@ export function createToastManager(options) {
     window.setTimeout(() => removeToast(toast), Number(payload?.durationMs || TOAST_DURATION_MS))
   }
 
-  function init() {
-    if (!electronAPI || !electronAPI.onAppToast) return
+  function init(): void {
+    if (!electronAPI?.onAppToast) return
     electronAPI.onAppToast((payload) => {
       pushToast(payload)
     })

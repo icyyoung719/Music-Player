@@ -1,9 +1,13 @@
-export function createDialogManager(options = {}) {
-  const {
-    doc = document
-  } = options
+type DialogManagerOptions = {
+  doc?: Document
+}
 
-  function requestPlaylistName(title, defaultValue) {
+type DownloadStrategy = 'full-download' | 'lazy-play' | 'cancel'
+
+export function createDialogManager(options: DialogManagerOptions = {}) {
+  const { doc = document } = options
+
+  function requestPlaylistName(title: string, defaultValue?: string): Promise<string | null> {
     return new Promise((resolve) => {
       const overlay = doc.createElement('div')
       overlay.style.position = 'fixed'
@@ -59,18 +63,18 @@ export function createDialogManager(options = {}) {
       okBtn.style.padding = '6px 12px'
       okBtn.style.borderRadius = '6px'
 
-      const close = (value) => {
+      const close = (value: string | null): void => {
         overlay.remove()
         resolve(value)
       }
 
       cancelBtn.addEventListener('click', () => close(null))
       okBtn.addEventListener('click', () => close(input.value))
-      overlay.addEventListener('click', (event) => {
+      overlay.addEventListener('click', (event: Event) => {
         if (event.target === overlay) close(null)
       })
 
-      input.addEventListener('keydown', (event) => {
+      input.addEventListener('keydown', (event: KeyboardEvent) => {
         if (event.key === 'Enter') close(input.value)
         if (event.key === 'Escape') close(null)
       })
@@ -88,7 +92,7 @@ export function createDialogManager(options = {}) {
     })
   }
 
-  function requestCloudDownloadStrategy() {
+  function requestCloudDownloadStrategy(): Promise<DownloadStrategy> {
     return new Promise((resolve) => {
       const overlay = doc.createElement('div')
       overlay.style.position = 'fixed'
@@ -153,7 +157,7 @@ export function createDialogManager(options = {}) {
       cancelBtn.style.color = '#fff'
       cancelBtn.style.cursor = 'pointer'
 
-      const close = (value) => {
+      const close = (value: DownloadStrategy): void => {
         overlay.remove()
         resolve(value)
       }
@@ -161,7 +165,7 @@ export function createDialogManager(options = {}) {
       fullBtn.addEventListener('click', () => close('full-download'))
       lazyBtn.addEventListener('click', () => close('lazy-play'))
       cancelBtn.addEventListener('click', () => close('cancel'))
-      overlay.addEventListener('click', (event) => {
+      overlay.addEventListener('click', (event: Event) => {
         if (event.target === overlay) {
           close('cancel')
         }
