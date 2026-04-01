@@ -137,6 +137,14 @@
 
 ## 2. 架构与分层
 
+### 2.0 构建与运行链路
+
+- 源码位于 `src/**`，构建输出位于 `dist/**`
+- main/preload 采用 CommonJS 输出，renderer 采用 ES module 输出
+- `npm run build` 依次编译 main、preload、renderer，并复制 renderer 静态资源（html/css/partials）到 `dist/renderer`
+- 运行入口为 `dist/main/main.js`
+- 打包流程使用 `npm run build:win`，先构建再交给 electron-builder 打包
+
 ### 2.1 分层职责
 
 - Main 进程
@@ -148,7 +156,8 @@
 
 入口：
 
-- `src/main/main.js`
+- `dist/main/main.js`（运行时）
+- `src/main/main.ts`（源码）
 - `src/preload/preload.js`
 - `src/renderer/bootstrap.js`
 - `src/renderer/renderer.js`

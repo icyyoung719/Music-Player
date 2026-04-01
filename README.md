@@ -38,8 +38,16 @@
 ## 快速开始
 
 1. 安装依赖：`npm install`
-2. 启动应用：`npm run start`
-3. 启动日志可视化：`npm run logviz`
+2. 构建产物：`npm run build`
+3. 启动应用：`npm run start`
+4. 启动日志可视化：`npm run logviz`
+
+## 开发与构建
+
+- 源码目录：`src/**`（逐步迁移至 TypeScript）
+- 构建产物：`dist/**`
+- 类型检查：`npm run typecheck`
+- Windows 打包：`npm run build:win`
 
 ## 架构边界
 
@@ -59,7 +67,8 @@
 
 ## 目录与入口
 
-- 主入口：`src/main/main.js`
+- 运行时主入口：`dist/main/main.js`
+- Main 源码入口：`src/main/main.ts`
 - 预加载：`src/preload/preload.js`
 - 渲染层壳：`src/renderer/index.html`
 - 渲染层启动：`src/renderer/bootstrap.js`
