@@ -93,6 +93,136 @@ type UpsertCloudPlaylistOptions = {
 
 type AnyRecord = Record<string, unknown>
 
+type NeteaseResolveIdPayload = {
+  id?: unknown
+  type?: unknown
+}
+
+type NeteaseOpenPagePayload = {
+  id?: unknown
+  type?: unknown
+}
+
+type NeteaseOpenExternalUrlPayload = {
+  url?: unknown
+}
+
+type NeteaseOpenDownloadDirPayload = {
+  dirType?: unknown
+  playlistName?: unknown
+}
+
+type NeteaseDownloadDirectPayload = {
+  url?: unknown
+  fileName?: unknown
+}
+
+type NeteaseAuthSummaryPayload = {
+  refresh?: unknown
+}
+
+type NeteaseAuthUpdatePayload = {
+  apiBaseUrl?: unknown
+  cookie?: unknown
+  accessToken?: unknown
+  refreshToken?: unknown
+  userName?: unknown
+  userId?: unknown
+}
+
+type NeteaseAuthLoginEmailPayload = {
+  apiBaseUrl?: unknown
+  email?: unknown
+  password?: unknown
+  md5Password?: unknown
+  phone?: unknown
+  countryCode?: unknown
+}
+
+type NeteaseAuthSendCaptchaPayload = {
+  apiBaseUrl?: unknown
+  phone?: unknown
+  countryCode?: unknown
+}
+
+type NeteaseAuthLoginCaptchaPayload = {
+  apiBaseUrl?: unknown
+  phone?: unknown
+  captcha?: unknown
+  countryCode?: unknown
+}
+
+type NeteaseAuthQrPayload = {
+  apiBaseUrl?: unknown
+  qrKey?: unknown
+}
+
+type NeteaseAuthRequestPayload = {
+  path?: unknown
+  data?: unknown
+  method?: unknown
+  timeout?: unknown
+}
+
+type NeteaseCloudPlaylistRefPayload = {
+  platformPlaylistId?: unknown
+  playlistId?: unknown
+  id?: unknown
+  collected?: unknown
+  sourceKinds?: unknown
+  [key: string]: unknown
+}
+
+type NeteaseSearchPayload = {
+  keywords?: unknown
+  type?: unknown
+  limit?: unknown
+  offset?: unknown
+}
+
+type NeteasePlaylistDetailPayload = {
+  playlistId?: unknown
+}
+
+type NeteaseSendPayload = {
+  id?: unknown
+  songId?: unknown
+  albumId?: unknown
+  playlistId?: unknown
+  [key: string]: unknown
+}
+
+type NeteaseResolveSongDownloadUrlPayload = {
+  songId?: unknown
+  level?: unknown
+}
+
+type NeteaseDownloadBySongIdPayload = {
+  targetDirType?: unknown
+  duplicateStrategy?: unknown
+  downloadMode?: unknown
+  addToQueue?: unknown
+  savePlaylistName?: unknown
+  [key: string]: unknown
+}
+
+type NeteaseDownloadSongTaskPayload = {
+  mode?: unknown
+  duplicateStrategy?: unknown
+  [key: string]: unknown
+}
+
+type NeteaseDownloadPlaylistByIdPayload = {
+  playlistId?: unknown
+  mode?: unknown
+  level?: unknown
+  duplicateStrategy?: unknown
+}
+
+type NeteaseDownloadTaskCancelPayload = {
+  id?: unknown
+}
+
 type DailyRecommendationTrack = {
   id: string
   name: string
@@ -398,7 +528,7 @@ function registerNeteaseHandlers(): void {
   })
 
 
-  ipcMain.handle('netease:resolve-id', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:resolve-id', async (_event: unknown, payload: NeteaseResolveIdPayload) => {
     const id = sanitizeId(payload?.id)
     const type = payload?.type === 'playlist' ? 'playlist' : 'song'
 
@@ -467,7 +597,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:open-page', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:open-page', async (_event: unknown, payload: NeteaseOpenPagePayload) => {
     const id = sanitizeId(payload?.id)
     const type = payload?.type === 'playlist' ? 'playlist' : 'song'
     if (!id) return { ok: false, error: 'INVALID_ID' }
@@ -477,7 +607,7 @@ function registerNeteaseHandlers(): void {
     return { ok: true, pageUrl }
   })
 
-  ipcMain.handle('netease:open-external-url', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:open-external-url', async (_event: unknown, payload: NeteaseOpenExternalUrlPayload) => {
     const url = String(payload?.url || '').trim()
     if (!/^https?:\/\//i.test(url)) {
       return { ok: false, error: 'INVALID_URL' }
@@ -517,7 +647,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:open-download-dir', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:open-download-dir', async (_event: unknown, payload: NeteaseOpenDownloadDirPayload) => {
     try {
       const dirResolved = resolveDownloadDir(payload?.dirType || 'songs', payload?.playlistName || '')
       await fs.promises.mkdir(dirResolved.dirPath, { recursive: true })
@@ -552,7 +682,7 @@ function registerNeteaseHandlers(): void {
   })
 
   // Only supports downloading direct, authorized HTTPS links from music.126.net.
-  ipcMain.handle('netease:download-direct', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:download-direct', async (_event: unknown, payload: NeteaseDownloadDirectPayload) => {
     const rawUrl = String(payload?.url || '').trim()
     const fileName = safeFileName(payload?.fileName || 'netease-download')
 
@@ -584,7 +714,7 @@ function registerNeteaseHandlers(): void {
     return { ok: true, state: getPublicAuthState() }
   })
 
-  ipcMain.handle('netease:auth:get-account-summary', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:auth:get-account-summary', async (_event: unknown, payload: NeteaseAuthSummaryPayload) => {
     await ensureAuthStateLoaded()
 
     if (payload?.refresh && (authState.cookie || authState.userId)) {
@@ -602,7 +732,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:auth:update', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:auth:update', async (_event: unknown, payload: NeteaseAuthUpdatePayload) => {
     await ensureAuthStateLoaded()
 
     const nextBase = String(payload?.apiBaseUrl || authState.apiBaseUrl).trim()
@@ -618,7 +748,7 @@ function registerNeteaseHandlers(): void {
     return { ok: true, state: getPublicAuthState() }
   })
 
-  ipcMain.handle('netease:auth:login-email', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:auth:login-email', async (_event: unknown, payload: NeteaseAuthLoginEmailPayload) => {
     await ensureAuthStateLoaded()
 
     const email = sanitizeEmail(payload?.email)
@@ -698,7 +828,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:auth:send-captcha', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:auth:send-captcha', async (_event: unknown, payload: NeteaseAuthSendCaptchaPayload) => {
     await ensureAuthStateLoaded()
 
     const phone = sanitizePhone(payload?.phone)
@@ -767,7 +897,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:auth:login-captcha', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:auth:login-captcha', async (_event: unknown, payload: NeteaseAuthLoginCaptchaPayload) => {
     await ensureAuthStateLoaded()
 
     const phone = sanitizePhone(payload?.phone)
@@ -860,7 +990,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:auth:qr:create', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:auth:qr:create', async (_event: unknown, payload: NeteaseAuthQrPayload) => {
     await ensureAuthStateLoaded()
 
     const apiBaseUrl = String(payload?.apiBaseUrl || authState.apiBaseUrl || '').trim()
@@ -940,7 +1070,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:auth:qr:check', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:auth:qr:check', async (_event: unknown, payload: NeteaseAuthQrPayload) => {
     await ensureAuthStateLoaded()
 
     const qrKey = sanitizeQrKey(payload?.qrKey)
@@ -1109,7 +1239,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:auth:request', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:auth:request', async (_event: unknown, payload: NeteaseAuthRequestPayload) => {
     await ensureAuthStateLoaded()
 
     const pathValue = String(payload?.path || '').trim()
@@ -1247,7 +1377,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:cloud-playlist:save-ref', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:cloud-playlist:save-ref', async (_event: unknown, payload: NeteaseCloudPlaylistRefPayload) => {
     await ensureAuthStateLoaded()
     await loadCloudPlaylistState()
 
@@ -1263,7 +1393,7 @@ function registerNeteaseHandlers(): void {
     return { ok: true, data: saved }
   })
 
-  ipcMain.handle('netease:cloud-playlist:remove-ref', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:cloud-playlist:remove-ref', async (_event: unknown, payload: NeteaseCloudPlaylistRefPayload) => {
     await ensureAuthStateLoaded()
     await loadCloudPlaylistState()
 
@@ -1282,12 +1412,12 @@ function registerNeteaseHandlers(): void {
     return { ok: true, removed }
   })
 
-  ipcMain.handle('netease:search', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:search', async (_event: unknown, payload: NeteaseSearchPayload) => {
     await ensureAuthStateLoaded()
     return searchNeteaseByKeyword(payload)
   })
 
-  ipcMain.handle('netease:search-suggest', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:search-suggest', async (_event: unknown, payload: NeteaseSearchPayload) => {
     await ensureAuthStateLoaded()
     return searchNeteaseSuggest(payload)
   })
@@ -1307,12 +1437,12 @@ function registerNeteaseHandlers(): void {
     return fetchNeteaseSearchHotDetail()
   })
 
-  ipcMain.handle('netease:search-multimatch', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:search-multimatch', async (_event: unknown, payload: NeteaseSearchPayload) => {
     await ensureAuthStateLoaded()
     return searchNeteaseMultimatch(payload)
   })
 
-  ipcMain.handle('netease:playlist-detail', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:playlist-detail', async (_event: unknown, payload: NeteasePlaylistDetailPayload) => {
     await ensureAuthStateLoaded()
 
     const playlistId = sanitizeId(payload?.playlistId)
@@ -1339,7 +1469,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:send-text', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:send-text', async (_event: unknown, payload: NeteaseSendPayload) => {
     await ensureAuthStateLoaded()
     if (!authState.cookie && !authState.userId) {
       return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
@@ -1351,7 +1481,7 @@ function registerNeteaseHandlers(): void {
     })
   })
 
-  ipcMain.handle('netease:send-song', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:send-song', async (_event: unknown, payload: NeteaseSendPayload) => {
     await ensureAuthStateLoaded()
     if (!authState.cookie && !authState.userId) {
       return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
@@ -1364,7 +1494,7 @@ function registerNeteaseHandlers(): void {
     })
   })
 
-  ipcMain.handle('netease:send-album', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:send-album', async (_event: unknown, payload: NeteaseSendPayload) => {
     await ensureAuthStateLoaded()
     if (!authState.cookie && !authState.userId) {
       return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
@@ -1377,7 +1507,7 @@ function registerNeteaseHandlers(): void {
     })
   })
 
-  ipcMain.handle('netease:send-playlist', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:send-playlist', async (_event: unknown, payload: NeteaseSendPayload) => {
     await ensureAuthStateLoaded()
     if (!authState.cookie && !authState.userId) {
       return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
@@ -1390,7 +1520,7 @@ function registerNeteaseHandlers(): void {
     })
   })
 
-  ipcMain.handle('netease:resolve-song-download-url', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:resolve-song-download-url', async (_event: unknown, payload: NeteaseResolveSongDownloadUrlPayload) => {
     await ensureAuthStateLoaded()
 
     const songId = sanitizeSongId(payload?.songId)
@@ -1438,7 +1568,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:download-by-song-id', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:download-by-song-id', async (_event: unknown, payload: NeteaseDownloadBySongIdPayload) => {
     try {
       return await createSongDownloadTaskFromId({
         ...payload,
@@ -1460,7 +1590,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:download-song-task', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:download-song-task', async (_event: unknown, payload: NeteaseDownloadSongTaskPayload) => {
     const mode = String(payload?.mode || 'song-download-only').trim()
     const modeMap: Record<string, { targetDirType: string; addToQueue: boolean }> = {
       'song-download-only': { targetDirType: 'songs', addToQueue: false },
@@ -1484,7 +1614,7 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:download-playlist-by-id', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:download-playlist-by-id', async (_event: unknown, payload: NeteaseDownloadPlaylistByIdPayload) => {
     await ensureAuthStateLoaded()
 
     const playlistId = sanitizeId(payload?.playlistId)
@@ -1583,7 +1713,7 @@ function registerNeteaseHandlers(): void {
     return { ok: true, tasks: listDownloadTasks() }
   })
 
-  ipcMain.handle('netease:download-task:cancel', async (_event: unknown, payload: AnyRecord) => {
+  ipcMain.handle('netease:download-task:cancel', async (_event: unknown, payload: NeteaseDownloadTaskCancelPayload) => {
     const id = String(payload?.id || '').trim()
     if (!id) return { ok: false, error: 'INVALID_TASK_ID' }
 

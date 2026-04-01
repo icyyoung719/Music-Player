@@ -1,13 +1,52 @@
+import type {
+  ApiFailure,
+  NeteaseCloudPlaylistResult,
+  NeteasePlaylistPayload,
+  NeteaseResolveIdPayload,
+  NeteaseSearchPayload,
+  NeteaseSearchResult
+} from './electronApi.js'
+
+type NeteaseResolveIdResult =
+  | ApiFailure
+  | {
+      ok: true
+      type?: string
+      item?: Record<string, unknown>
+    }
+
+type NeteasePlaylistDetailResult =
+  | ApiFailure
+  | {
+      ok: true
+      data?: Record<string, unknown>
+    }
+
+type NeteaseDailyRecommendationResult =
+  | ApiFailure
+  | {
+      ok: true
+      data?: unknown
+    }
+
+type NeteaseCloudPlaylistMutationResult =
+  | ApiFailure
+  | {
+      ok: true
+      data?: unknown
+      removed?: boolean
+    }
+
 type NeteaseApi = {
-  neteaseResolveId?: (payload: { type: string; id: string | number }) => Promise<unknown>
-  neteaseSearch?: (payload: unknown) => Promise<unknown>
-  neteaseSearchSuggest?: (payload: unknown) => Promise<unknown>
-  neteasePlaylistDetail?: (payload: { playlistId: string | number }) => Promise<unknown>
-  neteaseGetDailyRecommendation?: () => Promise<unknown>
-  neteaseUserPlaylists?: () => Promise<unknown>
-  neteaseCloudPlaylistList?: () => Promise<unknown>
-  neteaseCloudPlaylistSaveRef?: (payload: unknown) => Promise<unknown>
-  neteaseCloudPlaylistRemoveRef?: (payload: unknown) => Promise<unknown>
+  neteaseResolveId?: (payload: NeteaseResolveIdPayload) => Promise<NeteaseResolveIdResult>
+  neteaseSearch?: (payload: NeteaseSearchPayload) => Promise<NeteaseSearchResult>
+  neteaseSearchSuggest?: (payload: { keywords: string }) => Promise<NeteaseSearchResult>
+  neteasePlaylistDetail?: (payload: NeteasePlaylistPayload) => Promise<NeteasePlaylistDetailResult>
+  neteaseGetDailyRecommendation?: () => Promise<NeteaseDailyRecommendationResult>
+  neteaseUserPlaylists?: () => Promise<NeteaseCloudPlaylistResult>
+  neteaseCloudPlaylistList?: () => Promise<NeteaseCloudPlaylistResult>
+  neteaseCloudPlaylistSaveRef?: (payload: Record<string, unknown>) => Promise<NeteaseCloudPlaylistMutationResult>
+  neteaseCloudPlaylistRemoveRef?: (payload: { platformPlaylistId?: string; playlistId?: string; id?: string }) => Promise<NeteaseCloudPlaylistMutationResult>
 }
 
 type NeteaseDatabaseServiceOptions = {
@@ -26,47 +65,47 @@ function createApiUnavailable(): ServiceErrorResult {
 export function createNeteaseDatabaseService(options: NeteaseDatabaseServiceOptions = {}) {
   const { electronAPI } = options
 
-  async function resolveById(type: string, id: string | number): Promise<unknown> {
+  async function resolveById(type: 'song' | 'playlist', id: string | number): Promise<NeteaseResolveIdResult | ServiceErrorResult> {
     if (!electronAPI?.neteaseResolveId) return createApiUnavailable()
     return electronAPI.neteaseResolveId({ type, id })
   }
 
-  async function search(payload: unknown): Promise<unknown> {
+  async function search(payload: NeteaseSearchPayload): Promise<NeteaseSearchResult | ServiceErrorResult> {
     if (!electronAPI?.neteaseSearch) return createApiUnavailable()
     return electronAPI.neteaseSearch(payload)
   }
 
-  async function suggest(payload: unknown): Promise<unknown> {
+  async function suggest(payload: { keywords: string }): Promise<NeteaseSearchResult | ServiceErrorResult> {
     if (!electronAPI?.neteaseSearchSuggest) return createApiUnavailable()
     return electronAPI.neteaseSearchSuggest(payload)
   }
 
-  async function getPlaylistDetail(playlistId: string | number): Promise<unknown> {
+  async function getPlaylistDetail(playlistId: string | number): Promise<NeteasePlaylistDetailResult | ServiceErrorResult> {
     if (!electronAPI?.neteasePlaylistDetail) return createApiUnavailable()
     return electronAPI.neteasePlaylistDetail({ playlistId })
   }
 
-  async function getDailyRecommendation(): Promise<unknown> {
+  async function getDailyRecommendation(): Promise<NeteaseDailyRecommendationResult | ServiceErrorResult> {
     if (!electronAPI?.neteaseGetDailyRecommendation) return createApiUnavailable()
     return electronAPI.neteaseGetDailyRecommendation()
   }
 
-  async function getUserPlaylists(): Promise<unknown> {
+  async function getUserPlaylists(): Promise<NeteaseCloudPlaylistResult | ServiceErrorResult> {
     if (!electronAPI?.neteaseUserPlaylists) return createApiUnavailable()
     return electronAPI.neteaseUserPlaylists()
   }
 
-  async function listCloudPlaylists(): Promise<unknown> {
+  async function listCloudPlaylists(): Promise<NeteaseCloudPlaylistResult | ServiceErrorResult> {
     if (!electronAPI?.neteaseCloudPlaylistList) return createApiUnavailable()
     return electronAPI.neteaseCloudPlaylistList()
   }
 
-  async function saveCloudPlaylistRef(payload: unknown): Promise<unknown> {
+  async function saveCloudPlaylistRef(payload: Record<string, unknown>): Promise<NeteaseCloudPlaylistMutationResult | ServiceErrorResult> {
     if (!electronAPI?.neteaseCloudPlaylistSaveRef) return createApiUnavailable()
     return electronAPI.neteaseCloudPlaylistSaveRef(payload)
   }
 
-  async function removeCloudPlaylistRef(payload: unknown): Promise<unknown> {
+  async function removeCloudPlaylistRef(payload: { platformPlaylistId?: string; playlistId?: string; id?: string }): Promise<NeteaseCloudPlaylistMutationResult | ServiceErrorResult> {
     if (!electronAPI?.neteaseCloudPlaylistRemoveRef) return createApiUnavailable()
     return electronAPI.neteaseCloudPlaylistRemoveRef(payload)
   }

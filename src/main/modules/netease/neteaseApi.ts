@@ -1,8 +1,55 @@
 import path from 'path'
 import type { IncomingHttpHeaders } from 'http'
 
+type AnyRecord = Record<string, unknown>
+
+type PostFormWithFallbackResult = {
+  ok?: boolean
+  error?: string
+  result?: {
+    data?: unknown
+  }
+}
+
+type SongDownloadResolvedSource = {
+  type?: unknown
+  url?: unknown
+}
+
+type SongLike = {
+  id?: unknown
+  name?: unknown
+  ar?: unknown
+  artists?: unknown
+  al?: unknown
+  album?: unknown
+  dt?: unknown
+  duration?: unknown
+}
+
+type PlaylistTrackIdLike = {
+  id?: unknown
+}
+
+type SongDownloadItemLike = {
+  id?: unknown
+  url?: unknown
+  level?: unknown
+  type?: unknown
+  size?: unknown
+}
+
+function asRecord(value: unknown): AnyRecord {
+  return value && typeof value === 'object' ? (value as AnyRecord) : {}
+}
+
+function toErrorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message
+  return String(error ?? '')
+}
+
 const { requestJson } = require('./httpClient') as {
-  requestJson: (url: string, options?: any) => Promise<unknown>
+  requestJson: (url: string, options?: Record<string, unknown>) => Promise<unknown>
 }
 const {
   buildAuthHeaders,
@@ -12,11 +59,17 @@ const {
 } = require('./authManager') as {
   buildAuthHeaders: (extra?: Record<string, string>) => Record<string, string>
   requestNeteaseApi: (path: string, params?: Record<string, unknown>) => Promise<unknown>
-  postFormWithFallback: (paths: string[], data: Record<string, unknown>, timeout: number, options?: Record<string, unknown>) => Promise<any>
+  postFormWithFallback: (paths: string[], data: Record<string, unknown>, timeout: number, options?: Record<string, unknown>) => Promise<PostFormWithFallbackResult>
   extractApiErrorMessage: (data: unknown) => string
 }
 const { logProgramEvent } = require('../logger') as {
-  logProgramEvent: (payload: any) => void
+  logProgramEvent: (payload: {
+    source?: string
+    event?: string
+    message?: string
+    data?: unknown
+    error?: unknown
+  }) => void
 }
 
 const PLAYLIST_TRACK_BATCH_SIZE = 200
@@ -41,10 +94,11 @@ function resolveAudioExtByUrl(rawUrl: unknown): string {
   }
 }
 
-function resolveAudioExtByResolvedUrl(resolved: any): string {
-  const fromType = normalizeAudioExt(resolved?.type)
-  if (fromType) return fromType
-  const fromUrl = resolveAudioExtByUrl(resolved?.url)
+function resolveAudioExtByResolvedUrl(resolved: SongDownloadResolvedSource | unknown): string {
+  const payload = asRecord(resolved)
+  const fromTypeValue = normalizeAudioExt(payload.type)
+  if (fromTypeValue) return fromTypeValue
+  const fromUrl = resolveAudioExtByUrl(payload.url)
   if (fromUrl) return fromUrl
   return 'mp3'
 }
@@ -87,12 +141,21 @@ function getPlaylistPageUrl(playlistId: string): string {
   return `https://music.163.com/#/playlist?id=${playlistId}`
 }
 
-function normalizeSongArtists(song: any): string {
-  if (Array.isArray(song?.ar)) {
-    return song.ar.map((item: any) => item?.name).filter(Boolean).join(' / ')
+function normalizeSongArtists(song: SongLike | unknown): string {
+  const payload = asRecord(song)
+  const ar = Array.isArray(payload.ar) ? payload.ar : []
+  if (ar.length > 0) {
+    return ar
+      .map((item: unknown) => String(asRecord(item).name ?? '').trim())
+      .filter(Boolean)
+      .join(' / ')
   }
-  if (Array.isArray(song?.artists)) {
-    return song.artists.map((item: any) => item?.name).filter(Boolean).join(' / ')
+  const artists = Array.isArray(payload.artists) ? payload.artists : []
+  if (artists.length > 0) {
+    return artists
+      .map((item: unknown) => String(asRecord(item).name ?? '').trim())
+      .filter(Boolean)
+      .join(' / ')
   }
   return ''
 }
@@ -146,30 +209,33 @@ interface PlaylistDetail {
   readonly tracks: SongMetadata[]
 }
 
-function extractSongMetadata(song: any, fallbackSongId?: unknown): SongMetadata | null {
+function extractSongMetadata(song: SongLike | unknown, fallbackSongId?: unknown): SongMetadata | null {
   if (!song || typeof song !== 'object') return null
 
+  const payload = song as SongLike
+  const album = asRecord(payload.al ?? payload.album)
+
   const artist = normalizeSongArtists(song)
-  const album = song.al ?? song.album
-  const publishTime = Number(album?.publishTime ?? 0)
+  const publishTime = Number(album.publishTime ?? 0)
   const year = publishTime > 0 ? new Date(publishTime).getFullYear() : null
 
   return {
-    songId: String(song.id ?? fallbackSongId ?? ''),
-    title: String(song.name ?? '').trim(),
+    songId: String(payload.id ?? fallbackSongId ?? ''),
+    title: String(payload.name ?? '').trim(),
     artist: String(artist ?? '').trim(),
-    album: String(album?.name ?? '').trim(),
-    durationMs: toSafeInteger(song.dt ?? song.duration),
+    album: String(album.name ?? '').trim(),
+    durationMs: toSafeInteger(payload.dt ?? payload.duration),
     year: Number.isFinite(year as number) ? year : null,
-    coverUrl: String(album?.picUrl ?? '').trim()
+    coverUrl: String(album.picUrl ?? '').trim()
   }
 }
 
 async function fetchSongMetadataById(songId: string): Promise<SongMetadata | null> {
   try {
     const url = `https://music.163.com/api/song/detail/?ids=[${songId}]`
-    const data = (await requestJson(url)) as any
-    const song = Array.isArray(data?.songs) ? data.songs[0] : null
+    const data = asRecord(await requestJson(url))
+    const songs = Array.isArray(data.songs) ? data.songs : []
+    const song = songs[0] ?? null
     return extractSongMetadata(song, songId)
   } catch (err) {
     logProgramEvent({
@@ -186,9 +252,10 @@ async function fetchSongMetadataById(songId: string): Promise<SongMetadata | nul
 async function fetchSongLyricsById(songId: string): Promise<string> {
   try {
     const url = `https://music.163.com/api/song/lyric?id=${songId}&lv=-1&tv=-1`
-    const data = (await requestJson(url)) as any
-    const lrc = data?.lrc?.lyric ?? ''
-    return lrc.trim()
+    const data = asRecord(await requestJson(url))
+    const lrcPayload = asRecord(data.lrc)
+    const lrc = lrcPayload.lyric ?? ''
+    return String(lrc).trim()
   } catch (err) {
     logProgramEvent({
       source: 'netease.api',
@@ -203,22 +270,24 @@ async function fetchSongLyricsById(songId: string): Promise<string> {
 
 async function fetchPlaylistTracksById(playlistId: string): Promise<PlaylistDetail | null> {
   const url = `https://music.163.com/api/v6/playlist/detail?id=${playlistId}`
-  const data = (await requestJson(url)) as any
-  const playlist = data?.playlist
+  const data = asRecord(await requestJson(url))
+  const playlist = asRecord(data.playlist)
 
-  if (!playlist) return null
+  if (!Object.keys(playlist).length) return null
 
   const name = String(playlist.name ?? `歌单 ${playlistId}`).trim()
-  const creator = String(playlist?.creator?.nickname ?? '').trim()
+  const creator = String(asRecord(playlist.creator).nickname ?? '').trim()
   const trackIds = Array.isArray(playlist.trackIds)
-    ? playlist.trackIds.map((item: any) => sanitizeSongId(item?.id)).filter(Boolean)
+    ? playlist.trackIds
+        .map((item: unknown) => sanitizeSongId((item as PlaylistTrackIdLike)?.id))
+        .filter((id): id is string => Boolean(id))
     : []
 
   let trackList = Array.isArray(playlist.tracks) ? playlist.tracks : []
   const hasCompleteTrackList = trackIds.length > 0 && trackList.length >= trackIds.length
 
   if (trackIds.length > 0 && !hasCompleteTrackList) {
-    const songMap = new Map<string, any>()
+    const songMap = new Map<string, SongLike>()
     const batches = chunkArray(trackIds, PLAYLIST_TRACK_BATCH_SIZE)
 
     for (const batch of batches) {
@@ -227,7 +296,7 @@ async function fetchPlaylistTracksById(playlistId: string): Promise<PlaylistDeta
       )
       const body = encodeFormData({ c })
 
-      const response = (await requestJson('https://music.163.com/api/v3/song/detail', {
+      const response = asRecord(await requestJson('https://music.163.com/api/v3/song/detail', {
         method: 'POST',
         headers: buildAuthHeaders({
           'Content-Type': 'application/x-www-form-urlencoded',
@@ -235,20 +304,21 @@ async function fetchPlaylistTracksById(playlistId: string): Promise<PlaylistDeta
         }),
         body,
         timeout: 20000
-      })) as any
+      }))
 
       const songs = Array.isArray(response?.songs) ? response.songs : []
       for (const song of songs) {
-        const id = sanitizeSongId(song?.id)
-        if (id) songMap.set(id, song)
+        const songPayload = song as SongLike
+        const id = sanitizeSongId(songPayload?.id)
+        if (id) songMap.set(id, songPayload)
       }
     }
 
-    trackList = trackIds.map((id: string) => songMap.get(id)).filter(Boolean)
+    trackList = trackIds.map((id) => songMap.get(id)).filter(Boolean)
   }
 
   const tracks = trackList
-    .map((track: any) => extractSongMetadata(track, track?.id))
+    .map((track: unknown) => extractSongMetadata(track, (track as SongLike)?.id))
     .filter(Boolean) as SongMetadata[]
 
   return {
@@ -258,7 +328,7 @@ async function fetchPlaylistTracksById(playlistId: string): Promise<PlaylistDeta
     description: String(playlist.description ?? '').trim(),
     coverUrl: String(playlist.coverImgUrl ?? '').trim(),
     tags: Array.isArray(playlist.tags)
-      ? playlist.tags.map((item: any) => String(item ?? '').trim()).filter(Boolean)
+      ? playlist.tags.map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
       : [],
     playCount: toSafeInteger(playlist.playCount),
     trackCount: Number(playlist.trackCount ?? tracks.length),
@@ -287,20 +357,22 @@ interface ResolveSongUrlResult {
   message?: string
 }
 
-function resolveSongDownloadUrlResponse(json: any, songId: string): SongDownloadUrlResponse | null {
-  const dataList = Array.isArray(json?.data) ? json.data : []
-  const exact = dataList.find((item: any) => String(item?.id ?? '') === String(songId))
+function resolveSongDownloadUrlResponse(json: unknown, songId: string): SongDownloadUrlResponse | null {
+  const payload = asRecord(json)
+  const dataList = Array.isArray(payload.data) ? payload.data : []
+  const exact = dataList.find((item: unknown) => String((item as SongDownloadItemLike)?.id ?? '') === String(songId))
   const first = exact ?? dataList[0]
-  const url = first?.url ?? ''
+  const firstPayload = first as SongDownloadItemLike | undefined
+  const url = String(firstPayload?.url ?? '').trim()
 
   if (!url) return null
 
   return {
     url,
-    songId: String(first?.id ?? songId),
-    level: first?.level ?? '',
-    type: first?.type ?? '',
-    size: Number(first?.size ?? 0)
+    songId: String(firstPayload?.id ?? songId),
+    level: String(firstPayload?.level ?? ''),
+    type: String(firstPayload?.type ?? ''),
+    size: Number(firstPayload?.size ?? 0)
   }
 }
 
@@ -329,11 +401,11 @@ async function resolveSongUrlWithLevelFallback(
 
   for (const level of levels) {
     try {
-      const data = (await requestNeteaseApi('/api/song/enhance/player/url/v1', {
+      const data = await requestNeteaseApi('/api/song/enhance/player/url/v1', {
         ids: JSON.stringify([Number(songId)]),
         level,
         encodeType: 'flac'
-      })) as any
+      })
 
       const resolved = resolveSongDownloadUrlResponse(data, songId)
       attempts.push({ level, ok: Boolean(resolved?.url) })
@@ -349,7 +421,7 @@ async function resolveSongUrlWithLevelFallback(
 
       lastMessage = extractApiErrorMessage(data) ?? lastMessage
     } catch (err) {
-      const errorMsg = (err as any)?.message ?? 'REQUEST_FAILED'
+      const errorMsg = toErrorMessage(err) || 'REQUEST_FAILED'
       attempts.push({ level, ok: false, error: errorMsg })
       lastMessage = errorMsg
     }
@@ -439,11 +511,12 @@ interface SearchPlaylistItem {
   readonly coverUrl: string
 }
 
-function normalizeSearchSongItem(song: any): SearchSongItem {
-  const metadata = extractSongMetadata(song, song?.id)
+function normalizeSearchSongItem(song: unknown): SearchSongItem {
+  const payload = song as SongLike
+  const metadata = extractSongMetadata(song, payload?.id)
   return {
-    id: String(metadata?.songId ?? song?.id ?? ''),
-    name: metadata?.title ?? String(song?.name ?? '').trim(),
+    id: String(metadata?.songId ?? payload?.id ?? ''),
+    name: metadata?.title ?? String(payload?.name ?? '').trim(),
     artist: metadata?.artist ?? '',
     album: metadata?.album ?? '',
     durationMs: Number(metadata?.durationMs ?? 0),
@@ -451,59 +524,64 @@ function normalizeSearchSongItem(song: any): SearchSongItem {
   }
 }
 
-function normalizeSearchArtistItem(artist: any): SearchArtistItem {
+function normalizeSearchArtistItem(artist: unknown): SearchArtistItem {
+  const payload = asRecord(artist)
   return {
-    id: String(artist?.id ?? ''),
-    name: String(artist?.name ?? '').trim(),
-    alias: Array.isArray(artist?.alias)
-      ? artist.alias.map((item: any) => String(item ?? '').trim()).filter(Boolean)
+    id: String(payload.id ?? ''),
+    name: String(payload.name ?? '').trim(),
+    alias: Array.isArray(payload.alias)
+      ? payload.alias.map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
       : [],
-    albumSize: Number(artist?.albumSize ?? 0),
-    mvSize: Number(artist?.mvSize ?? 0),
-    picUrl: String(artist?.picUrl ?? artist?.img1v1Url ?? '').trim()
+    albumSize: Number(payload.albumSize ?? 0),
+    mvSize: Number(payload.mvSize ?? 0),
+    picUrl: String(payload.picUrl ?? payload.img1v1Url ?? '').trim()
   }
 }
 
-function normalizeSearchPlaylistItem(playlist: any): SearchPlaylistItem {
+function normalizeSearchPlaylistItem(playlist: unknown): SearchPlaylistItem {
+  const payload = asRecord(playlist)
+  const creator = asRecord(payload.creator)
   return {
-    id: String(playlist?.id ?? ''),
-    name: String(playlist?.name ?? '').trim(),
-    creator: String(playlist?.creator?.nickname ?? '').trim(),
-    trackCount: Number(playlist?.trackCount ?? 0),
-    playCount: Number(playlist?.playCount ?? 0),
-    coverUrl: String(playlist?.coverImgUrl ?? '').trim()
+    id: String(payload.id ?? ''),
+    name: String(payload.name ?? '').trim(),
+    creator: String(creator.nickname ?? '').trim(),
+    trackCount: Number(payload.trackCount ?? 0),
+    playCount: Number(payload.playCount ?? 0),
+    coverUrl: String(payload.coverImgUrl ?? '').trim()
   }
 }
 
-function normalizeSearchItems(type: string, result: any): (SearchSongItem | SearchArtistItem | SearchPlaylistItem)[] {
+function normalizeSearchItems(type: string, result: unknown): (SearchSongItem | SearchArtistItem | SearchPlaylistItem)[] {
+  const payload = asRecord(result)
   if (type === '100') {
-    const artists = Array.isArray(result?.artists) ? result.artists : []
+    const artists = Array.isArray(payload.artists) ? payload.artists : []
     return artists
-      .map((artist: any) => normalizeSearchArtistItem(artist))
-      .filter((item: any) => item.id && item.name)
+      .map((artist: unknown) => normalizeSearchArtistItem(artist))
+      .filter((item) => item.id && item.name)
   }
 
   if (type === '1000') {
-    const playlists = Array.isArray(result?.playlists) ? result.playlists : []
+    const playlists = Array.isArray(payload.playlists) ? payload.playlists : []
     return playlists
-      .map((playlist: any) => normalizeSearchPlaylistItem(playlist))
-      .filter((item: any) => item.id && item.name)
+      .map((playlist: unknown) => normalizeSearchPlaylistItem(playlist))
+      .filter((item) => item.id && item.name)
   }
 
-  const songs = Array.isArray(result?.songs) ? result.songs : []
-  return songs.map((song: any) => normalizeSearchSongItem(song)).filter((item: any) => item.id && item.name)
+  const songs = Array.isArray(payload.songs) ? payload.songs : []
+  return songs.map((song: unknown) => normalizeSearchSongItem(song)).filter((item) => item.id && item.name)
 }
 
-function extractSearchTotal(type: string, result: any, items: unknown[]): number {
+function extractSearchTotal(type: string, result: unknown, items: unknown[]): number {
+  const payload = asRecord(result)
   if (type === '100') {
-    return Number(result?.artistCount ?? items.length ?? 0)
+    return Number(payload.artistCount ?? items.length ?? 0)
   }
 
   if (type === '1000') {
-    return Number(result?.playlistCount ?? items.length ?? 0)
+    return Number(payload.playlistCount ?? items.length ?? 0)
   }
 
-  return Number(result?.songCount ?? items.length ?? 0)
+  return Number(payload.songCount ?? items.length ?? 0)
 }
 
 interface SuggestSongItem {
@@ -530,62 +608,6 @@ interface SuggestPayload {
   playlists: SuggestPlaylistItem[]
 }
 
-function normalizeSuggestPayload(data: any): SuggestPayload {
-  const result = data?.result ?? {}
-  const keywords = new Set<string>()
-
-  const pushKeyword = (value: unknown): void => {
-    const text = String(value ?? '').trim()
-    if (text) keywords.add(text)
-  }
-
-  if (Array.isArray(result?.allMatch)) {
-    for (const item of result.allMatch) {
-      pushKeyword(item?.keyword)
-    }
-  }
-
-  const songs: SuggestSongItem[] = Array.isArray(result?.songs)
-    ? result.songs
-        .map((item: any) => ({
-          id: String(item?.id ?? ''),
-          name: String(item?.name ?? '').trim(),
-          artist: normalizeSongArtists(item)
-        }))
-        .filter((item: SuggestSongItem) => item.id && item.name)
-    : []
-
-  const artists: SuggestArtistItem[] = Array.isArray(result?.artists)
-    ? result.artists
-        .map((item: any) => ({
-          id: String(item?.id ?? ''),
-          name: String(item?.name ?? '').trim()
-        }))
-        .filter((item: SuggestArtistItem) => item.id && item.name)
-    : []
-
-  const playlists: SuggestPlaylistItem[] = Array.isArray(result?.playlists)
-    ? result.playlists
-        .map((item: any) => ({
-          id: String(item?.id ?? ''),
-          name: String(item?.name ?? '').trim(),
-          trackCount: Number(item?.trackCount ?? 0)
-        }))
-        .filter((item: SuggestPlaylistItem) => item.id && item.name)
-    : []
-
-  for (const song of songs.slice(0, 4)) pushKeyword(song.name)
-  for (const artist of artists.slice(0, 4)) pushKeyword(artist.name)
-  for (const playlist of playlists.slice(0, 4)) pushKeyword(playlist.name)
-
-  return {
-    keywords: Array.from(keywords).slice(0, 12),
-    songs: songs.slice(0, 6),
-    artists: artists.slice(0, 6),
-    playlists: playlists.slice(0, 6)
-  }
-}
-
 interface SearchResult {
   ok: boolean
   error?: string
@@ -602,7 +624,73 @@ interface SearchResult {
   }
 }
 
-async function searchNeteaseByKeyword(payload: any): Promise<SearchResult> {
+function normalizeSuggestPayload(data: unknown): SuggestPayload {
+  const payload = asRecord(data)
+  const result = asRecord(payload.result)
+  const keywords = new Set<string>()
+
+  const pushKeyword = (value: unknown): void => {
+    const text = String(value ?? '').trim()
+    if (text) keywords.add(text)
+  }
+
+  if (Array.isArray(result?.allMatch)) {
+    for (const item of result.allMatch) {
+      pushKeyword(asRecord(item).keyword)
+    }
+  }
+
+  const songs: SuggestSongItem[] = Array.isArray(result?.songs)
+    ? result.songs
+        .map((item: unknown) => {
+          const source = asRecord(item)
+          return {
+            id: String(source.id ?? ''),
+            name: String(source.name ?? '').trim(),
+            artist: normalizeSongArtists(source)
+          }
+        })
+        .filter((item: SuggestSongItem) => item.id && item.name)
+    : []
+
+  const artists: SuggestArtistItem[] = Array.isArray(result?.artists)
+    ? result.artists
+        .map((item: unknown) => {
+          const source = asRecord(item)
+          return {
+            id: String(source.id ?? ''),
+            name: String(source.name ?? '').trim()
+          }
+        })
+        .filter((item: SuggestArtistItem) => item.id && item.name)
+    : []
+
+  const playlists: SuggestPlaylistItem[] = Array.isArray(result?.playlists)
+    ? result.playlists
+        .map((item: unknown) => {
+          const source = asRecord(item)
+          return {
+            id: String(source.id ?? ''),
+            name: String(source.name ?? '').trim(),
+            trackCount: Number(source.trackCount ?? 0)
+          }
+        })
+        .filter((item: SuggestPlaylistItem) => item.id && item.name)
+    : []
+
+  for (const song of songs.slice(0, 4)) pushKeyword(song.name)
+  for (const artist of artists.slice(0, 4)) pushKeyword(artist.name)
+  for (const playlist of playlists.slice(0, 4)) pushKeyword(playlist.name)
+
+  return {
+    keywords: Array.from(keywords).slice(0, 12),
+    songs: songs.slice(0, 6),
+    artists: artists.slice(0, 6),
+    playlists: playlists.slice(0, 6)
+  }
+}
+
+async function searchNeteaseByKeyword(payload: Record<string, unknown>): Promise<SearchResult> {
   const keywords = sanitizeSearchKeyword(payload?.keywords)
   const type = sanitizeSearchType(payload?.type, '1')
   const limit = sanitizeSearchLimit(payload?.limit)
@@ -613,7 +701,7 @@ async function searchNeteaseByKeyword(payload: any): Promise<SearchResult> {
   }
 
   try {
-    let requestResult = null
+    let requestResult: PostFormWithFallbackResult | null = null
     if (type === '2000') {
       requestResult = await postFormWithFallback(
         ['/api/search/voice/get'],
@@ -648,8 +736,8 @@ async function searchNeteaseByKeyword(payload: any): Promise<SearchResult> {
       }
     }
 
-    const data = requestResult.result.data
-    const code = Number(data?.code ?? 0)
+    const data = asRecord(requestResult.result.data)
+    const code = Number(data.code ?? 0)
     if (code && code !== 200) {
       return {
         ok: false,
@@ -659,7 +747,7 @@ async function searchNeteaseByKeyword(payload: any): Promise<SearchResult> {
       }
     }
 
-    const result = data?.result ?? {}
+    const result = asRecord(data.result)
     const items = normalizeSearchItems(type, result)
     const total = extractSearchTotal(type, result, items)
     const hasMore = offset + items.length < total
@@ -684,7 +772,7 @@ async function searchNeteaseByKeyword(payload: any): Promise<SearchResult> {
       error: err,
       data: { keywords, type, limit, offset }
     })
-    return { ok: false, error: 'REQUEST_FAILED', message: (err as any)?.message ?? '' }
+    return { ok: false, error: 'REQUEST_FAILED', message: toErrorMessage(err) }
   }
 }
 
@@ -696,7 +784,7 @@ interface SuggestResult {
   data?: SuggestPayload
 }
 
-async function searchNeteaseSuggest(payload: any): Promise<SuggestResult> {
+async function searchNeteaseSuggest(payload: Record<string, unknown>): Promise<SuggestResult> {
   const keywords = sanitizeSearchKeyword(payload?.keywords)
   const mobile = payload?.type === 'mobile' || payload?.mobile === true
 
@@ -729,8 +817,8 @@ async function searchNeteaseSuggest(payload: any): Promise<SuggestResult> {
       }
     }
 
-    const data = requestResult.result.data
-    const code = Number(data?.code ?? 0)
+    const data = asRecord(requestResult.result.data)
+    const code = Number(data.code ?? 0)
     if (code && code !== 200) {
       return {
         ok: false,
@@ -752,7 +840,7 @@ async function searchNeteaseSuggest(payload: any): Promise<SuggestResult> {
       error: err,
       data: { keywords, mobile }
     })
-    return { ok: false, error: 'REQUEST_FAILED', message: (err as any)?.message ?? '' }
+    return { ok: false, error: 'REQUEST_FAILED', message: toErrorMessage(err) }
   }
 }
 
@@ -809,8 +897,8 @@ async function fetchNeteaseSearchDefaultKeyword(): Promise<DefaultKeywordResult>
       return { ok: false, error: 'REQUEST_FAILED', message: requestResult?.error ?? 'REQUEST_FAILED' }
     }
 
-    const data = requestResult.result.data
-    const code = Number(data?.code ?? 0)
+    const data = asRecord(requestResult.result.data)
+    const code = Number(data.code ?? 0)
     if (code && code !== 200) {
       return {
         ok: false,
@@ -823,12 +911,12 @@ async function fetchNeteaseSearchDefaultKeyword(): Promise<DefaultKeywordResult>
     return {
       ok: true,
       data: {
-        keyword: String(data?.data?.showKeyword ?? data?.data?.realkeyword ?? '').trim(),
+        keyword: String(asRecord(data.data).showKeyword ?? asRecord(data.data).realkeyword ?? '').trim(),
         raw: data
       }
     }
   } catch (err) {
-    return { ok: false, error: 'REQUEST_FAILED', message: (err as any)?.message ?? '' }
+    return { ok: false, error: 'REQUEST_FAILED', message: toErrorMessage(err) }
   }
 }
 
@@ -845,8 +933,8 @@ async function fetchNeteaseSearchHot(): Promise<HotKeywordResult> {
       return { ok: false, error: 'REQUEST_FAILED', message: requestResult?.error ?? 'REQUEST_FAILED' }
     }
 
-    const data = requestResult.result.data
-    const code = Number(data?.code ?? 0)
+    const data = asRecord(requestResult.result.data)
+    const code = Number(data.code ?? 0)
     if (code && code !== 200) {
       return {
         ok: false,
@@ -856,8 +944,9 @@ async function fetchNeteaseSearchHot(): Promise<HotKeywordResult> {
       }
     }
 
-    const hots = Array.isArray(data?.result?.hots)
-      ? data.result.hots.map((item: any) => String(item?.first ?? '').trim()).filter(Boolean)
+    const result = asRecord(data.result)
+    const hots = Array.isArray(result.hots)
+      ? result.hots.map((item: unknown) => String(asRecord(item).first ?? '').trim()).filter(Boolean)
       : []
 
     return {
@@ -868,7 +957,7 @@ async function fetchNeteaseSearchHot(): Promise<HotKeywordResult> {
       }
     }
   } catch (err) {
-    return { ok: false, error: 'REQUEST_FAILED', message: (err as any)?.message ?? '' }
+    return { ok: false, error: 'REQUEST_FAILED', message: toErrorMessage(err) }
   }
 }
 
@@ -885,8 +974,8 @@ async function fetchNeteaseSearchHotDetail(): Promise<HotDetailResult> {
       return { ok: false, error: 'REQUEST_FAILED', message: requestResult?.error ?? 'REQUEST_FAILED' }
     }
 
-    const data = requestResult.result.data
-    const code = Number(data?.code ?? 0)
+    const data = asRecord(requestResult.result.data)
+    const code = Number(data.code ?? 0)
     if (code && code !== 200) {
       return {
         ok: false,
@@ -896,20 +985,23 @@ async function fetchNeteaseSearchHotDetail(): Promise<HotDetailResult> {
       }
     }
 
-    const list: HotDetailItem[] = Array.isArray(data?.data)
+    const list: HotDetailItem[] = Array.isArray(data.data)
       ? data.data
-          .map((item: any) => ({
-            searchWord: String(item?.searchWord ?? '').trim(),
-            score: Number(item?.score ?? 0),
-            iconType: Number(item?.iconType ?? 0),
-            content: String(item?.content ?? '').trim()
-          }))
+          .map((item: unknown) => {
+            const source = asRecord(item)
+            return {
+              searchWord: String(source.searchWord ?? '').trim(),
+              score: Number(source.score ?? 0),
+              iconType: Number(source.iconType ?? 0),
+              content: String(source.content ?? '').trim()
+            }
+          })
           .filter((item: HotDetailItem) => item.searchWord)
       : []
 
     return { ok: true, data: { list, raw: data } }
   } catch (err) {
-    return { ok: false, error: 'REQUEST_FAILED', message: (err as any)?.message ?? '' }
+    return { ok: false, error: 'REQUEST_FAILED', message: toErrorMessage(err) }
   }
 }
 
@@ -925,7 +1017,7 @@ interface MultimatchResult {
   }
 }
 
-async function searchNeteaseMultimatch(payload: any): Promise<MultimatchResult> {
+async function searchNeteaseMultimatch(payload: Record<string, unknown>): Promise<MultimatchResult> {
   const keywords = sanitizeSearchKeyword(payload?.keywords)
   const type = sanitizeSearchType(payload?.type, '1')
 
@@ -945,8 +1037,8 @@ async function searchNeteaseMultimatch(payload: any): Promise<MultimatchResult> 
       return { ok: false, error: 'REQUEST_FAILED', message: requestResult?.error ?? 'REQUEST_FAILED' }
     }
 
-    const data = requestResult.result.data
-    const code = Number(data?.code ?? 0)
+    const data = asRecord(requestResult.result.data)
+    const code = Number(data.code ?? 0)
     if (code && code !== 200) {
       return {
         ok: false,
@@ -960,12 +1052,12 @@ async function searchNeteaseMultimatch(payload: any): Promise<MultimatchResult> 
       ok: true,
       data: {
         keywords,
-        result: data?.result ?? {},
+        result: asRecord(data.result),
         raw: data
       }
     }
   } catch (err) {
-    return { ok: false, error: 'REQUEST_FAILED', message: (err as any)?.message ?? '' }
+    return { ok: false, error: 'REQUEST_FAILED', message: toErrorMessage(err) }
   }
 }
 
@@ -1006,7 +1098,7 @@ interface SendMessageResult {
   }
 }
 
-async function sendNeteasePrivateMessage(payload: any): Promise<SendMessageResult> {
+async function sendNeteasePrivateMessage(payload: Record<string, unknown>): Promise<SendMessageResult> {
   const sendType = String(payload?.sendType ?? 'text').trim().toLowerCase()
   const userIds = sanitizeUserIds(payload?.userIds)
   const msg = sanitizeMessageText(payload?.msg)
@@ -1057,8 +1149,8 @@ async function sendNeteasePrivateMessage(payload: any): Promise<SendMessageResul
       }
     }
 
-    const result = requestResult.result.data
-    const code = Number(result?.code ?? 0)
+    const result = asRecord(requestResult.result.data)
+    const code = Number(result.code ?? 0)
     if (code && code !== 200) {
       return {
         ok: false,
@@ -1085,7 +1177,7 @@ async function sendNeteasePrivateMessage(payload: any): Promise<SendMessageResul
       error: err,
       data: { sendType, userIdsCount: userIds.length }
     })
-    return { ok: false, error: 'REQUEST_FAILED', message: (err as any)?.message ?? '' }
+    return { ok: false, error: 'REQUEST_FAILED', message: toErrorMessage(err) }
   }
 }
 
