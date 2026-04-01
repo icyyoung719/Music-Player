@@ -1,8 +1,100 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron') as typeof import('electron')
 
 type Unsubscribe = () => void
+type AnyRecord = Record<string, unknown>
+
+type BridgeErrorCode = 'INVALID_PAYLOAD' | 'INVALID_ID' | 'INVALID_URL' | 'INVALID_PLAYLIST_ID' | 'INVALID_TASK_ID'
+
+type BridgeErrorResult = {
+  ok: false
+  error: BridgeErrorCode
+  message: string
+}
+
+type NeteaseResolveIdPayload = {
+  id: string | number
+  type?: 'song' | 'playlist'
+}
+
+type NeteaseOpenPagePayload = {
+  id: string | number
+  type?: 'song' | 'playlist'
+}
+
+type NeteaseOpenExternalPayload = {
+  url: string
+}
+
+type NeteasePlaylistDetailPayload = {
+  playlistId: string | number
+}
+
+type NeteaseDownloadTaskCancelPayload = {
+  id: string
+}
+
+type DownloadTask = {
+  id: string
+  status?: string
+  filePath?: string
+  title?: string
+  songId?: string
+  error?: string
+  [key: string]: unknown
+}
+
+type AuthStateUpdatePayload = {
+  account?: {
+    apiBaseUrl?: string
+    userName?: string
+    userId?: string | number
+    hasCookie?: boolean
+    hasAccessToken?: boolean
+    [key: string]: unknown
+  }
+  state?: {
+    apiBaseUrl?: string
+    userName?: string
+    userId?: string | number
+    hasCookie?: boolean
+    hasAccessToken?: boolean
+    [key: string]: unknown
+  }
+}
+
+type AppToastPayload = {
+  level?: 'info' | 'success' | 'warning' | 'error'
+  message?: string
+  scope?: string
+  [key: string]: unknown
+}
+
+type PlayerStatePayload = {
+  hasQueue?: boolean
+  isPlaying?: boolean
+  title?: string
+}
 
 type GenericListener<T = unknown> = (payload: T) => void
+
+function fail(error: BridgeErrorCode, message: string): BridgeErrorResult {
+  return { ok: false, error, message }
+}
+
+function asRecord(value: unknown): AnyRecord | null {
+  if (!value || typeof value !== 'object') return null
+  return value as AnyRecord
+}
+
+function sanitizeId(value: unknown): string {
+  const text = String(value ?? '').trim()
+  return /^\d{1,20}$/.test(text) ? text : ''
+}
+
+function sanitizeHttpUrl(value: unknown): string {
+  const text = String(value ?? '').trim()
+  return /^https?:\/\//i.test(text) ? text : ''
+}
 
 contextBridge.exposeInMainWorld('electronAPI', {
   playAudio: (filePath: string) => ipcRenderer.invoke('play-audio', filePath),
@@ -17,9 +109,35 @@ contextBridge.exposeInMainWorld('electronAPI', {
   playlistRemoveTrack: (playlistId: string, trackId: string) => ipcRenderer.invoke('playlist:removeTrack', { playlistId, trackId }),
   playlistImport: () => ipcRenderer.invoke('playlist:import'),
   playlistExport: (playlistId: string) => ipcRenderer.invoke('playlist:export', playlistId),
-  neteaseResolveId: (payload: unknown) => ipcRenderer.invoke('netease:resolve-id', payload),
-  neteaseOpenPage: (payload: unknown) => ipcRenderer.invoke('netease:open-page', payload),
-  neteaseOpenExternalUrl: (payload: unknown) => ipcRenderer.invoke('netease:open-external-url', payload),
+  neteaseResolveId: (payload: NeteaseResolveIdPayload | unknown) => {
+    const safePayload = asRecord(payload)
+    const id = sanitizeId(safePayload?.id)
+    if (!id) return Promise.resolve(fail('INVALID_ID', 'Invalid NetEase id payload'))
+    return ipcRenderer.invoke('netease:resolve-id', {
+      ...safePayload,
+      id,
+      type: safePayload?.type === 'playlist' ? 'playlist' : 'song'
+    })
+  },
+  neteaseOpenPage: (payload: NeteaseOpenPagePayload | unknown) => {
+    const safePayload = asRecord(payload)
+    const id = sanitizeId(safePayload?.id)
+    if (!id) return Promise.resolve(fail('INVALID_ID', 'Invalid NetEase page payload'))
+    return ipcRenderer.invoke('netease:open-page', {
+      ...safePayload,
+      id,
+      type: safePayload?.type === 'playlist' ? 'playlist' : 'song'
+    })
+  },
+  neteaseOpenExternalUrl: (payload: NeteaseOpenExternalPayload | unknown) => {
+    const safePayload = asRecord(payload)
+    const url = sanitizeHttpUrl(safePayload?.url)
+    if (!url) return Promise.resolve(fail('INVALID_URL', 'Invalid external URL payload'))
+    return ipcRenderer.invoke('netease:open-external-url', {
+      ...safePayload,
+      url
+    })
+  },
   neteaseGetDownloadDir: () => ipcRenderer.invoke('netease:get-download-dir'),
   neteaseGetDownloadDirs: () => ipcRenderer.invoke('netease:get-download-dirs'),
   neteaseOpenDownloadDir: (payload: unknown) => ipcRenderer.invoke('netease:open-download-dir', payload),
@@ -45,9 +163,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('netease:auth-window:set-page', wrapped)
     return () => ipcRenderer.removeListener('netease:auth-window:set-page', wrapped)
   },
-  onNeteaseAuthStateUpdate: (listener: GenericListener<unknown>): Unsubscribe => {
+  onNeteaseAuthStateUpdate: (listener: GenericListener<AuthStateUpdatePayload>): Unsubscribe => {
     if (typeof listener !== 'function') return () => {}
-    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload)
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: AuthStateUpdatePayload) => listener(payload)
     ipcRenderer.on('netease:auth:state-updated', wrapped)
     return () => ipcRenderer.removeListener('netease:auth:state-updated', wrapped)
   },
@@ -58,7 +176,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   neteaseSearchHot: () => ipcRenderer.invoke('netease:search-hot'),
   neteaseSearchHotDetail: () => ipcRenderer.invoke('netease:search-hot-detail'),
   neteaseSearchMultimatch: (payload: unknown) => ipcRenderer.invoke('netease:search-multimatch', payload),
-  neteasePlaylistDetail: (payload: unknown) => ipcRenderer.invoke('netease:playlist-detail', payload),
+  neteasePlaylistDetail: (payload: NeteasePlaylistDetailPayload | unknown) => {
+    const safePayload = asRecord(payload)
+    const playlistId = sanitizeId(safePayload?.playlistId)
+    if (!playlistId) return Promise.resolve(fail('INVALID_PLAYLIST_ID', 'Invalid playlist detail payload'))
+    return ipcRenderer.invoke('netease:playlist-detail', {
+      ...safePayload,
+      playlistId
+    })
+  },
   neteaseUserPlaylists: () => ipcRenderer.invoke('netease:user-playlists'),
   neteaseCloudPlaylistList: () => ipcRenderer.invoke('netease:cloud-playlist:list'),
   neteaseCloudPlaylistSaveRef: (payload: unknown) => ipcRenderer.invoke('netease:cloud-playlist:save-ref', payload),
@@ -71,21 +197,26 @@ contextBridge.exposeInMainWorld('electronAPI', {
   neteaseResolveSongDownloadUrl: (payload: unknown) => ipcRenderer.invoke('netease:resolve-song-download-url', payload),
   neteaseDownloadBySongId: (payload: unknown) => ipcRenderer.invoke('netease:download-by-song-id', payload),
   neteaseDownloadTaskList: () => ipcRenderer.invoke('netease:download-task:list'),
-  neteaseDownloadTaskCancel: (payload: unknown) => ipcRenderer.invoke('netease:download-task:cancel', payload),
-  onNeteaseDownloadTaskUpdate: (listener: GenericListener<unknown>): Unsubscribe => {
+  neteaseDownloadTaskCancel: (payload: NeteaseDownloadTaskCancelPayload | unknown) => {
+    const safePayload = asRecord(payload)
+    const id = String(safePayload?.id || '').trim()
+    if (!id) return Promise.resolve(fail('INVALID_TASK_ID', 'Invalid download task cancel payload'))
+    return ipcRenderer.invoke('netease:download-task:cancel', { id })
+  },
+  onNeteaseDownloadTaskUpdate: (listener: GenericListener<DownloadTask>): Unsubscribe => {
     if (typeof listener !== 'function') return () => {}
-    const wrapped = (_event: Electron.IpcRendererEvent, task: unknown) => listener(task)
+    const wrapped = (_event: Electron.IpcRendererEvent, task: DownloadTask) => listener(task)
     ipcRenderer.on('netease:download-task-updated', wrapped)
     return () => ipcRenderer.removeListener('netease:download-task-updated', wrapped)
   },
-  onAppToast: (listener: GenericListener<unknown>): Unsubscribe => {
+  onAppToast: (listener: GenericListener<AppToastPayload>): Unsubscribe => {
     if (typeof listener !== 'function') return () => {}
-    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload)
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: AppToastPayload) => listener(payload)
     ipcRenderer.on('app:toast', wrapped)
     return () => ipcRenderer.removeListener('app:toast', wrapped)
   },
   minimizeWindow: () => ipcRenderer.invoke('window:minimize'),
-  reportPlayerState: (state: unknown) => ipcRenderer.send('player:state-changed', state),
+  reportPlayerState: (state: PlayerStatePayload) => ipcRenderer.send('player:state-changed', state),
   onPlayerControl: (listener: GenericListener<string>): Unsubscribe => {
     if (typeof listener !== 'function') return () => {}
     const wrapped = (_event: Electron.IpcRendererEvent, action: string) => listener(action)
