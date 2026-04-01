@@ -56,3 +56,5 @@ app.on('window-all-closed', () => {
 })
 
 app.on('will-quit', handleWillQuit)
+
+export {}

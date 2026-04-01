@@ -158,8 +158,8 @@
 
 - `dist/main/main.js`（运行时）
 - `src/main/main.ts`（源码）
-- `src/preload/preload.js`
-- `src/renderer/bootstrap.js`
+- `src/preload/preload.ts`
+- `src/renderer/bootstrap.ts`
 - `src/renderer/renderer.js`
 
 ### 2.2 启动流程

@@ -1,15 +1,44 @@
-const fs = require('fs')
-const path = require('path')
-const { app } = require('electron')
+const fs = require('fs') as typeof import('fs')
+const path = require('path') as typeof import('path')
+const { app } = require('electron') as typeof import('electron')
 
 const LOG_DIR_NAME = 'logs'
 const NETWORK_FILE_PREFIX = 'network'
 const PROGRAM_FILE_PREFIX = 'program'
 const BINARY_HEX_PREVIEW_BYTES = 64
 
-let writeQueue = Promise.resolve()
+let writeQueue: Promise<void> = Promise.resolve()
 
-function resolveLogDirPath() {
+type PrimitiveObject = Record<string, unknown>
+
+type ProgramEventPayload = {
+  source?: string
+  event?: string
+  message?: string
+  data?: unknown
+  error?: unknown
+}
+
+type NetworkEventPayload = {
+  source?: string
+  requestId?: string
+  method?: string
+  url?: string
+  durationMs?: number
+  request?: {
+    headers?: unknown
+    body?: unknown
+  }
+  response?: {
+    statusCode?: number
+    headers?: unknown
+    body?: unknown
+    binary?: unknown
+  }
+  error?: unknown
+}
+
+function resolveLogDirPath(): string {
   try {
     return path.join(app.getPath('userData'), LOG_DIR_NAME)
   } catch {
@@ -17,11 +46,11 @@ function resolveLogDirPath() {
   }
 }
 
-function resolveLogFilePath(prefix) {
+function resolveLogFilePath(prefix: string): string {
   return path.join(resolveLogDirPath(), `${prefix}.log`)
 }
 
-function enqueueWrite(filePath, line) {
+function enqueueWrite(filePath: string, line: string): Promise<void> {
   writeQueue = writeQueue
     .then(async () => {
       await fs.promises.mkdir(path.dirname(filePath), { recursive: true })
@@ -34,16 +63,17 @@ function enqueueWrite(filePath, line) {
   return writeQueue
 }
 
-function writeJsonLine(prefix, payload) {
+function writeJsonLine(prefix: string, payload: unknown): Promise<void> {
   const line = `${JSON.stringify(payload)}\n`
   const filePath = resolveLogFilePath(prefix)
   return enqueueWrite(filePath, line)
 }
 
-function serializeHeaders(headers) {
+function serializeHeaders(headers: unknown): PrimitiveObject {
   if (!headers || typeof headers !== 'object') return {}
-  const result = {}
-  for (const [key, value] of Object.entries(headers)) {
+
+  const result: PrimitiveObject = {}
+  for (const [key, value] of Object.entries(headers as Record<string, unknown>)) {
     if (Array.isArray(value)) {
       result[key] = value.map((item) => String(item))
       continue
@@ -57,16 +87,26 @@ function serializeHeaders(headers) {
   return result
 }
 
-function serializeError(err) {
+function serializeError(err: unknown): PrimitiveObject | null {
   if (!err) return null
+
+  if (typeof err === 'object') {
+    const typedErr = err as { name?: unknown; message?: unknown; stack?: unknown }
+    return {
+      name: String(typedErr.name || 'Error'),
+      message: String(typedErr.message || ''),
+      stack: typeof typedErr.stack === 'string' ? typedErr.stack : ''
+    }
+  }
+
   return {
-    name: String(err.name || 'Error'),
-    message: String(err.message || ''),
-    stack: typeof err.stack === 'string' ? err.stack : ''
+    name: 'Error',
+    message: String(err),
+    stack: ''
   }
 }
 
-function serializeTextOrJson(value) {
+function serializeTextOrJson(value: unknown): unknown {
   if (value == null) return ''
   if (typeof value === 'string') return value
   if (Buffer.isBuffer(value)) {
@@ -83,18 +123,19 @@ function serializeTextOrJson(value) {
   }
 }
 
-function buildBinarySummary(buffer, headers) {
-  const contentType = String(headers?.['content-type'] || headers?.['Content-Type'] || '').trim()
+function buildBinarySummary(buffer: unknown, headers: unknown): PrimitiveObject {
+  const normalizedHeaders = headers as Record<string, unknown> | undefined
+  const contentType = String(normalizedHeaders?.['content-type'] || normalizedHeaders?.['Content-Type'] || '').trim()
+  const typedBuffer = Buffer.isBuffer(buffer) ? buffer : null
+
   return {
-    bytes: Buffer.isBuffer(buffer) ? buffer.length : 0,
+    bytes: typedBuffer ? typedBuffer.length : 0,
     mimeType: contentType || 'application/octet-stream',
-    hexPreview: Buffer.isBuffer(buffer)
-      ? buffer.subarray(0, BINARY_HEX_PREVIEW_BYTES).toString('hex')
-      : ''
+    hexPreview: typedBuffer ? typedBuffer.subarray(0, BINARY_HEX_PREVIEW_BYTES).toString('hex') : ''
   }
 }
 
-function logProgramEvent(payload) {
+function logProgramEvent(payload: ProgramEventPayload): void {
   const safePayload = {
     ts: new Date().toISOString(),
     category: 'program',
@@ -105,10 +146,10 @@ function logProgramEvent(payload) {
     error: serializeError(payload?.error)
   }
 
-  writeJsonLine(PROGRAM_FILE_PREFIX, safePayload)
+  void writeJsonLine(PROGRAM_FILE_PREFIX, safePayload)
 }
 
-function logNetworkEvent(payload) {
+function logNetworkEvent(payload: NetworkEventPayload): void {
   const safePayload = {
     ts: new Date().toISOString(),
     category: 'network',
@@ -130,10 +171,10 @@ function logNetworkEvent(payload) {
     error: serializeError(payload?.error)
   }
 
-  writeJsonLine(NETWORK_FILE_PREFIX, safePayload)
+  void writeJsonLine(NETWORK_FILE_PREFIX, safePayload)
 }
 
-function initializeLogger() {
+function initializeLogger(): void {
   const logDir = resolveLogDirPath()
   const clearLogsTask = fs.promises
     .mkdir(logDir, { recursive: true })
@@ -147,7 +188,7 @@ function initializeLogger() {
       // Do not block app startup when log directory cannot be created.
     })
 
-  clearLogsTask.finally(() => {
+  void clearLogsTask.finally(() => {
     logProgramEvent({
       source: 'logger',
       event: 'initialized',
@@ -164,3 +205,5 @@ module.exports = {
   serializeError,
   buildBinarySummary
 }
+
+export {}

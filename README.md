@@ -69,9 +69,9 @@
 
 - 运行时主入口：`dist/main/main.js`
 - Main 源码入口：`src/main/main.ts`
-- 预加载：`src/preload/preload.js`
+- 预加载：`src/preload/preload.ts`
 - 渲染层壳：`src/renderer/index.html`
-- 渲染层启动：`src/renderer/bootstrap.js`
+- 渲染层启动：`src/renderer/bootstrap.ts`
 - 渲染层编排：`src/renderer/renderer.js`
 - 渲染层核心：`src/renderer/core/*.js`
 - 功能模块：`src/renderer/modules/*.js`

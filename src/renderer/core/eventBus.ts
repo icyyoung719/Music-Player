@@ -1,17 +1,21 @@
-function createNoopUnsubscribe() {
+type Unsubscribe = () => void
+type EventListener = (payload: unknown) => void
+type EventHandler = (payload: unknown) => unknown | Promise<unknown>
+
+function createNoopUnsubscribe(): Unsubscribe {
   return () => {}
 }
 
 export function createEventBus() {
-  const listenersByEvent = new Map()
-  const handlersByEvent = new Map()
+  const listenersByEvent = new Map<string, Set<EventListener>>()
+  const handlersByEvent = new Map<string, EventHandler>()
 
-  function on(eventName, listener) {
+  function on(eventName: string, listener: EventListener): Unsubscribe {
     if (typeof listener !== 'function') return createNoopUnsubscribe()
     const key = String(eventName || '').trim()
     if (!key) return createNoopUnsubscribe()
 
-    const listeners = listenersByEvent.get(key) || new Set()
+    const listeners = listenersByEvent.get(key) || new Set<EventListener>()
     listeners.add(listener)
     listenersByEvent.set(key, listeners)
 
@@ -25,11 +29,11 @@ export function createEventBus() {
     }
   }
 
-  function once(eventName, listener) {
+  function once(eventName: string, listener: EventListener): Unsubscribe {
     if (typeof listener !== 'function') return createNoopUnsubscribe()
 
-    let unsubscribe = createNoopUnsubscribe()
-    const wrapped = (payload) => {
+    let unsubscribe: Unsubscribe = createNoopUnsubscribe()
+    const wrapped: EventListener = (payload: unknown) => {
       unsubscribe()
       listener(payload)
     }
@@ -37,7 +41,7 @@ export function createEventBus() {
     return unsubscribe
   }
 
-  function emit(eventName, payload) {
+  function emit(eventName: string, payload?: unknown): void {
     const key = String(eventName || '').trim()
     if (!key) return
     const listeners = listenersByEvent.get(key)
@@ -52,7 +56,7 @@ export function createEventBus() {
     }
   }
 
-  function handle(eventName, handler) {
+  function handle(eventName: string, handler: EventHandler): Unsubscribe {
     if (typeof handler !== 'function') return createNoopUnsubscribe()
     const key = String(eventName || '').trim()
     if (!key) return createNoopUnsubscribe()
@@ -66,7 +70,7 @@ export function createEventBus() {
     }
   }
 
-  async function request(eventName, payload) {
+  async function request(eventName: string, payload?: unknown): Promise<unknown> {
     const key = String(eventName || '').trim()
     if (!key) return undefined
     const handler = handlersByEvent.get(key)

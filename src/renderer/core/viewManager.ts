@@ -1,22 +1,48 @@
-function normalizeHomeView(view) {
-  return ['recommend', 'download', 'recently-played', 'playlist-detail'].includes(view) ? view : 'recommend'
+type HomeView = 'recommend' | 'download' | 'recently-played' | 'playlist-detail'
+
+type SavedPlaylistManagerLike = {
+  setActiveView?: (view: HomeView) => void
+  openPlaylist?: (playlistId: string) => void
 }
 
-export function createViewManager(options) {
-  const {
-    dom,
-    savedPlaylistManager = null,
-    onSongPageShown = null
-  } = options || {}
+type ViewDom = {
+  songPageEl?: HTMLElement | null
+  homePageEl?: HTMLElement | null
+  homeRecommendViewEl?: HTMLElement | null
+  homeDownloadViewEl?: HTMLElement | null
+  homeRecentlyPlayedViewEl?: HTMLElement | null
+  homePlaylistDetailViewEl?: HTMLElement | null
+  homeMenuRecommendEl?: HTMLElement | null
+  homeMenuDownloadEl?: HTMLElement | null
+  homeMenuRecentlyPlayedEl?: HTMLElement | null
+  homeNowCoverImgEl?: HTMLImageElement | null
+  homeNowCoverPlaceholderEl?: HTMLElement | null
+  homeFeaturedCoverEl?: HTMLElement | null
+}
 
-  let currentHomeView = 'recommend'
+type ViewManagerOptions = {
+  dom: ViewDom
+  savedPlaylistManager?: SavedPlaylistManagerLike | null
+  onSongPageShown?: (() => void) | null
+}
+
+function normalizeHomeView(view: string): HomeView {
+  return ['recommend', 'download', 'recently-played', 'playlist-detail'].includes(view)
+    ? (view as HomeView)
+    : 'recommend'
+}
+
+export function createViewManager(options: ViewManagerOptions) {
+  const { dom, savedPlaylistManager = null, onSongPageShown = null } = options || {}
+
+  let currentHomeView: HomeView = 'recommend'
   let currentSavedPlaylistManager = savedPlaylistManager
 
-  function getCurrentHomeView() {
+  function getCurrentHomeView(): HomeView {
     return currentHomeView
   }
 
-  function showHomeView(view) {
+  function showHomeView(view: string): void {
     currentHomeView = normalizeHomeView(view)
 
     if (dom.homeRecommendViewEl) {
@@ -47,44 +73,43 @@ export function createViewManager(options) {
       dom.homeMenuRecentlyPlayedEl.classList.toggle('active', currentHomeView === 'recently-played')
     }
 
-    if (currentSavedPlaylistManager && currentSavedPlaylistManager.setActiveView) {
+    if (currentSavedPlaylistManager?.setActiveView) {
       currentSavedPlaylistManager.setActiveView(currentHomeView)
     }
   }
 
-  function showHomeShell() {
+  function showHomeShell(): void {
     if (dom.songPageEl) dom.songPageEl.classList.add('page-hidden')
     if (dom.homePageEl) dom.homePageEl.classList.remove('page-hidden')
   }
 
-  function showHomePage() {
+  function showHomePage(): void {
     showHomeShell()
     showHomeView(currentHomeView)
   }
 
-  function showSongPage() {
+  function showSongPage(): void {
     if (dom.homePageEl) dom.homePageEl.classList.add('page-hidden')
     if (dom.songPageEl) dom.songPageEl.classList.remove('page-hidden')
 
     if (typeof onSongPageShown === 'function') {
-      // Wait for display block to take effect.
       requestAnimationFrame(() => {
         onSongPageShown()
       })
     }
   }
 
-  function openSavedPlaylistDetail(playlistId) {
+  function openSavedPlaylistDetail(playlistId: string): void {
     showHomeShell()
 
-    if (currentSavedPlaylistManager && currentSavedPlaylistManager.openPlaylist) {
+    if (currentSavedPlaylistManager?.openPlaylist) {
       currentSavedPlaylistManager.openPlaylist(playlistId)
     }
 
     showHomeView('playlist-detail')
   }
 
-  function setHomeNowCover(dataUrl) {
+  function setHomeNowCover(dataUrl: string | null | undefined): void {
     if (dom.homeNowCoverImgEl && dom.homeNowCoverPlaceholderEl) {
       if (dataUrl) {
         dom.homeNowCoverImgEl.src = dataUrl
@@ -108,7 +133,7 @@ export function createViewManager(options) {
     }
   }
 
-  function bindSavedPlaylistManager(nextSavedPlaylistManager) {
+  function bindSavedPlaylistManager(nextSavedPlaylistManager: SavedPlaylistManagerLike | null | undefined): void {
     if (!nextSavedPlaylistManager) return
     currentSavedPlaylistManager = nextSavedPlaylistManager
     if (nextSavedPlaylistManager.setActiveView) {
