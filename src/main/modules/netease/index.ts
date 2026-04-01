@@ -188,6 +188,22 @@ function toSafeNumber(value: unknown, fallback = 0): number {
   return Number.isFinite(parsed) ? parsed : fallback
 }
 
+function toSafeIsoString(value: string | number | Date | undefined, fallback = Date.now()): string {
+  if (value instanceof Date) {
+    const timestamp = value.getTime()
+    return Number.isFinite(timestamp) ? value.toISOString() : new Date(fallback).toISOString()
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    const date = new Date(value)
+    if (Number.isFinite(date.getTime())) {
+      return date.toISOString()
+    }
+  }
+
+  return new Date(fallback).toISOString()
+}
+
 function normalizeCloudPlaylistItem(item: unknown): CloudPlaylistItem | undefined {
   const payload = (item ?? {}) as {
     platformPlaylistId?: unknown
@@ -229,11 +245,11 @@ function normalizeCloudPlaylistItem(item: unknown): CloudPlaylistItem | undefine
     sourceKinds: Array.isArray(payload.sourceKinds)
       ? payload.sourceKinds.map((value: unknown) => String(value || '').trim()).filter(Boolean)
       : [],
-    updatedAt: new Date(
-      typeof payload.updatedAt === 'string' || typeof payload.updatedAt === 'number'
+    updatedAt: toSafeIsoString(
+      typeof payload.updatedAt === 'string' || typeof payload.updatedAt === 'number' || payload.updatedAt instanceof Date
         ? payload.updatedAt
-        : Date.now()
-    ).toISOString()
+        : undefined
+    )
   }
 }
 
