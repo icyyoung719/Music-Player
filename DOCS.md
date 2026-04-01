@@ -40,12 +40,12 @@
 
 核心模块：
 
-- `src/renderer/modules/playbackController.js`
-- `src/renderer/modules/playbackUIController.js`
-- `src/renderer/modules/playbackFadeManager.js`
-- `src/renderer/modules/lazyQueueManager.js`
-- `src/renderer/modules/lyricManager.js`
-- `src/renderer/modules/recentlyPlayedManager.js`
+- `src/renderer/modules/playbackController.ts`
+- `src/renderer/modules/playbackUIController.ts`
+- `src/renderer/modules/playbackFadeManager.ts`
+- `src/renderer/modules/lazyQueueManager.ts`
+- `src/renderer/modules/lyricManager.ts`
+- `src/renderer/modules/recentlyPlayedManager.ts`
 
 ### 1.2 快捷键与设置
 
@@ -56,10 +56,10 @@
 
 核心模块：
 
-- `src/renderer/modules/shortcutManager.js`
-- `src/renderer/modules/settingsManager.js`
-- `src/renderer/modules/navigationBridge.js`
-- `src/renderer/modules/dialogManager.js`
+- `src/renderer/modules/shortcutManager.ts`
+- `src/renderer/modules/settingsManager.ts`
+- `src/renderer/modules/navigationBridge.ts`
+- `src/renderer/modules/dialogManager.ts`
 
 ### 1.3 本地歌单
 
@@ -71,8 +71,8 @@
 
 核心模块：
 
-- `src/main/modules/playlistHandlers.js`
-- `src/renderer/modules/savedPlaylistManager.js`
+- `src/main/modules/playlistHandlers.ts`
+- `src/renderer/modules/savedPlaylistManager.ts`
 
 ### 1.4 网易云鉴权与下载
 
@@ -92,14 +92,14 @@
 
 核心模块：
 
-- `src/main/modules/netease/index.js`
-- `src/main/modules/netease/authManager.js`
-- `src/main/modules/netease/downloadManager.js`
-- `src/main/modules/netease/trackMetadata.js`
-- `src/renderer/modules/downloadManager.js`
-- `src/renderer/modules/authWindow.js`
-- `src/renderer/modules/neteaseSearchManager.js`
-- `src/renderer/modules/neteasePlaylistDetailManager.js`
+- `src/main/modules/netease/index.ts`
+- `src/main/modules/netease/authManager.ts`
+- `src/main/modules/netease/downloadManager.ts`
+- `src/main/modules/netease/trackMetadata.ts`
+- `src/renderer/modules/downloadManager.ts`
+- `src/renderer/modules/authWindow.ts`
+- `src/renderer/modules/neteaseSearchManager.ts`
+- `src/renderer/modules/neteasePlaylistDetailManager.ts`
 
 ### 1.5 每日推荐
 
@@ -109,9 +109,9 @@
 
 核心模块：
 
-- `src/main/modules/netease/index.js`
-- `src/renderer/modules/dailyRecommendationManager.js`
-- `src/renderer/modules/playbackController.js`
+- `src/main/modules/netease/index.ts`
+- `src/renderer/modules/dailyRecommendationManager.ts`
+- `src/renderer/modules/playbackController.ts`
 
 ### 1.6 桌面壳层
 
@@ -122,7 +122,7 @@
 
 核心模块：
 
-- `src/main/modules/playerShell.js`
+- `src/main/modules/playerShell.ts`
 
 ### 1.7 日志可视化工具
 
@@ -142,7 +142,7 @@
 - 源码位于 `src/**`，构建输出位于 `dist/**`
 - main/preload 采用 CommonJS 输出，renderer 采用 ES module 输出
 - `npm run build` 依次编译 main、preload、renderer，并复制 renderer 静态资源（html/css/partials）到 `dist/renderer`
-- 运行入口为 `dist/main/main.js`
+- 运行入口为 `dist/main/main.ts`
 - 打包流程使用 `npm run build:win`，先构建再交给 electron-builder 打包
 
 ### 2.1 分层职责
@@ -156,42 +156,42 @@
 
 入口：
 
-- `dist/main/main.js`（运行时）
+- `dist/main/main.ts`（运行时）
 - `src/main/main.ts`（源码）
 - `src/preload/preload.ts`
 - `src/renderer/bootstrap.ts`
-- `src/renderer/renderer.js`
+- `src/renderer/renderer.ts`
 
 ### 2.2 启动流程
 
 1. Main 初始化日志、播放列表处理器与网易云处理器。
 2. 应用就绪后创建主窗口并初始化托盘/媒体键壳层。
-3. Renderer 通过 `bootstrap.js` 装配 partials。
-4. `renderer.js` 初始化业务模块，通过事件总线连接跨模块交互，并注入共享服务。
-5. `renderer.js` 只负责模块装配与初始化顺序，DOM 查询、监听与局部业务状态由 `modules/` 与 `core/` 承接。
+3. Renderer 通过 `bootstrap.ts` 装配 partials。
+4. `renderer.ts` 初始化业务模块，通过事件总线连接跨模块交互，并注入共享服务。
+5. `renderer.ts` 只负责模块装配与初始化顺序，DOM 查询、监听与局部业务状态由 `modules/` 与 `core/` 承接。
 
 ### 2.3 模块组织策略
 
-- `renderer.js` 保持编排层职责。
-- 功能细节放在 `src/renderer/modules/*.(ts|js)`。
-- 跨模块通信与共享状态访问放在 `src/renderer/core/*.(ts|js)`。
+- `renderer.ts` 保持编排层职责。
+- 功能细节放在 `src/renderer/modules/*.ts`。
+- 跨模块通信与共享状态访问放在 `src/renderer/core/*.ts`。
 - main 侧按能力拆分到 `src/main/modules/*`。
 
 渲染层核心模块：
 
-- `src/renderer/core/eventBus.js`：发布/订阅与 request/handle 模式
-- `src/renderer/core/viewManager.js`：页面与子视图切换、封面区域同步
-- `src/renderer/core/neteaseDatabaseService.js`：网易云查询/搜索/建议/歌单详情/日推/云歌单数据访问
-- `src/renderer/core/downloadService.js`：下载任务状态汇聚与任务操作封装
-- `src/renderer/core/eventBridgeManager.js`：事件总线到业务模块的桥接与快捷键动作分发
+- `src/renderer/core/eventBus.ts`：发布/订阅与 request/handle 模式
+- `src/renderer/core/viewManager.ts`：页面与子视图切换、封面区域同步
+- `src/renderer/core/neteaseDatabaseService.ts`：网易云查询/搜索/建议/歌单详情/日推/云歌单数据访问
+- `src/renderer/core/downloadService.ts`：下载任务状态汇聚与任务操作封装
+- `src/renderer/core/eventBridgeManager.ts`：事件总线到业务模块的桥接与快捷键动作分发
 
 渲染层辅助模块：
 
-- `src/renderer/modules/rendererDom.js`：统一 DOM 引用采集
-- `src/renderer/modules/settingsManager.js`：设置页展示、tab 切换、淡入淡出参数同步
-- `src/renderer/modules/navigationBridge.js`：主页菜单、列表点击与全局播放器区域导航监听
-- `src/renderer/modules/dialogManager.js`：歌单命名与云歌单策略弹窗
-- `src/renderer/modules/playlistCacheService.js`：按名称建歌单缓存、并发去重与下载后入歌单
+- `src/renderer/modules/rendererDom.ts`：统一 DOM 引用采集
+- `src/renderer/modules/settingsManager.ts`：设置页展示、tab 切换、淡入淡出参数同步
+- `src/renderer/modules/navigationBridge.ts`：主页菜单、列表点击与全局播放器区域导航监听
+- `src/renderer/modules/dialogManager.ts`：歌单命名与云歌单策略弹窗
+- `src/renderer/modules/playlistCacheService.ts`：按名称建歌单缓存、并发去重与下载后入歌单
 
 ## 3. 关键实现机制
 
@@ -252,7 +252,7 @@
 - 网易云只读数据访问优先经过 `neteaseDatabaseService`
 - 最近播放通过 `playback:track.started` 事件记录本地歌曲快照，并通过 `playback:queue.replace` / `playback:queue.append` 执行快速播放与加队列
 - `eventBridgeManager` 集中维护 `playlist:ensure-by-name`、`playlist:add-track`、`playback:queue.*`、`view:*` 等桥接契约
-- `renderer.js` 负责装配，不承载具体业务细节
+- `renderer.ts` 负责装配，不承载具体业务细节
 
 ## 4. 数据与存储
 
@@ -282,15 +282,15 @@
 ## 5. UI 结构与装配
 
 - `src/renderer/index.html` 只保留壳层与挂载点
-- `src/renderer/bootstrap.js` 负责 partial 装配
-- `src/renderer/renderer.js` 负责模块编排与连接
+- `src/renderer/bootstrap.ts` 负责 partial 装配
+- `src/renderer/renderer.ts` 负责模块编排与连接
 - `src/renderer/auth-window.html` 作为独立授权窗口
 
 相关文件：
 
 - `src/renderer/index.html`
-- `src/renderer/bootstrap.js`
-- `src/renderer/renderer.js`
+- `src/renderer/bootstrap.ts`
+- `src/renderer/renderer.ts`
 - `src/renderer/partials/home-page.html`
 - `src/renderer/partials/song-page.html`
 - `src/renderer/auth-window.html`

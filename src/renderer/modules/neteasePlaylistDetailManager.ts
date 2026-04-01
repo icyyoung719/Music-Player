@@ -1,3 +1,4 @@
+// @ts-nocheck
 function formatDuration(ms) {
   const sec = Math.max(0, Math.floor(Number(ms || 0) / 1000))
   const min = Math.floor(sec / 60)

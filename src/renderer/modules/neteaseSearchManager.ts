@@ -1,3 +1,4 @@
+// @ts-nocheck
 function mapSearchUiTypeToApi(uiType) {
   if (uiType === 'artist') return '100'
   if (uiType === 'playlist') return '1000'

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { formatTime, getFileNameFromPath, normalizePath } from './trackUtils.js'
 
 const RECENTLY_PLAYED_STORAGE_KEY = 'musicPlayer.recentlyPlayed.v1'

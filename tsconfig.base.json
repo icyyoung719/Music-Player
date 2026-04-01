@@ -5,7 +5,7 @@
     "ignoreDeprecations": "6.0",
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "allowJs": true,
+    "allowJs": false,
     "checkJs": false,
     "resolveJsonModule": true
   }

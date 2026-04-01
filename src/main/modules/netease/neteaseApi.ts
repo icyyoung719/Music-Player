@@ -1,3 +1,4 @@
+// @ts-nocheck
 const path = require('path')
 const { requestJson } = require('./httpClient')
 const {
@@ -910,3 +911,5 @@ module.exports = {
   sanitizeUserIds,
   sendNeteasePrivateMessage
 }
+
+export {}

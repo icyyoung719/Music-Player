@@ -1,4 +1,5 @@
-﻿export function createShortcutManager(options) {
+// @ts-nocheck
+export function createShortcutManager(options) {
   const {
     dom,
     storageKey,

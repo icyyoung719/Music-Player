@@ -1,3 +1,4 @@
+// @ts-nocheck
 function formatTaskStatus(status) {
   switch (status) {
     case 'pending':

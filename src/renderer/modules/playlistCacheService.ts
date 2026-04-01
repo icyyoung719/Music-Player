@@ -1,31 +1,57 @@
-export function createPlaylistCacheService(options = {}) {
-  const {
-    electronAPI,
-    getSavedPlaylistManager
-  } = options
+type PlaylistCreateResponse = {
+  ok?: boolean
+  playlist?: {
+    id?: string
+  }
+}
 
-  const createdPlaylistIdsByName = new Map()
-  const pendingPlaylistPromises = new Map()
+type ElectronApiLike = {
+  playlistCreate?: (name: string) => Promise<PlaylistCreateResponse>
+  playlistAddTracks?: (playlistId: string, tracks: unknown[]) => Promise<unknown>
+}
 
-  function getSavedPlaylistManagerSafe() {
+type SavedPlaylistManagerLike = {
+  refreshSavedPlaylists?: (playlistId?: string | null) => void
+}
+
+type DownloadedTrackLike = {
+  path?: string
+  title?: string
+  artist?: string
+  album?: string
+  duration?: number
+}
+
+type PlaylistCacheServiceOptions = {
+  electronAPI?: ElectronApiLike
+  getSavedPlaylistManager?: () => SavedPlaylistManagerLike | null
+}
+
+export function createPlaylistCacheService(options: PlaylistCacheServiceOptions = {}) {
+  const { electronAPI, getSavedPlaylistManager } = options
+
+  const createdPlaylistIdsByName = new Map<string, string>()
+  const pendingPlaylistPromises = new Map<string, Promise<string>>()
+
+  function getSavedPlaylistManagerSafe(): SavedPlaylistManagerLike | null {
     return typeof getSavedPlaylistManager === 'function' ? getSavedPlaylistManager() : null
   }
 
-  async function ensureSavedPlaylistByName(name, playlistKey = '') {
+  async function ensureSavedPlaylistByName(name: string, playlistKey = ''): Promise<string> {
     const cleanName = String(name || '').trim()
     const cacheKey = String(playlistKey || cleanName).trim()
     if (!cleanName || !electronAPI?.playlistCreate) return ''
 
     if (cacheKey && createdPlaylistIdsByName.has(cacheKey)) {
-      return createdPlaylistIdsByName.get(cacheKey)
+      return createdPlaylistIdsByName.get(cacheKey) || ''
     }
 
     if (cacheKey && pendingPlaylistPromises.has(cacheKey)) {
-      return pendingPlaylistPromises.get(cacheKey)
+      return pendingPlaylistPromises.get(cacheKey) || ''
     }
 
     const createPromise = (async () => {
-      const created = await electronAPI.playlistCreate(cleanName)
+      const created = await electronAPI.playlistCreate!(cleanName)
       if (!created?.ok || !created?.playlist?.id) return ''
       const playlistId = created.playlist.id
       if (cacheKey) {
@@ -45,7 +71,7 @@ export function createPlaylistCacheService(options = {}) {
     return playlistId
   }
 
-  async function appendDownloadedTrackToSavedPlaylist(playlistId, track) {
+  async function appendDownloadedTrackToSavedPlaylist(playlistId: string, track: DownloadedTrackLike | null): Promise<boolean> {
     if (!playlistId || !track?.path || !electronAPI?.playlistAddTracks) return false
 
     await electronAPI.playlistAddTracks(playlistId, [
@@ -67,7 +93,7 @@ export function createPlaylistCacheService(options = {}) {
     return true
   }
 
-  function clearCache() {
+  function clearCache(): void {
     createdPlaylistIdsByName.clear()
     pendingPlaylistPromises.clear()
   }

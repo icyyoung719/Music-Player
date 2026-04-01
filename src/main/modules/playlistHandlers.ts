@@ -1,4 +1,5 @@
-﻿const { ipcMain, dialog, app } = require('electron')
+// @ts-nocheck
+const { ipcMain, dialog, app } = require('electron')
 const path = require('path')
 const fs = require('fs')
 const crypto = require('crypto')
@@ -641,3 +642,5 @@ module.exports = {
   initializePlaylistState,
   registerPlaylistHandlers
 }
+
+export {}

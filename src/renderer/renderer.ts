@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { initTheme } from './modules/theme.js'
 import { createShortcutManager } from './modules/shortcutManager.js'
 import { createSavedPlaylistManager } from './modules/savedPlaylistManager.js'

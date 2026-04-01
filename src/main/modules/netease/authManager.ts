@@ -1,3 +1,4 @@
+// @ts-nocheck
 const fs = require('fs')
 const path = require('path')
 const crypto = require('crypto')
@@ -410,3 +411,5 @@ module.exports = {
   isRiskControlMessage,
   getCandidateApiPaths
 }
+
+export {}

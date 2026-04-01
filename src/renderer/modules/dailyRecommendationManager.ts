@@ -1,8 +1,44 @@
-function safeText(value) {
+function safeText(value: unknown): string {
   return String(value || '').trim()
 }
 
-function normalizeTrack(track) {
+type DailyTrack = {
+  id: string
+  name: string
+  artist: string
+  album: string
+  durationMs: number
+  coverUrl: string
+  reason: string
+}
+
+type DailyRecommendationDom = {
+  coverEl: HTMLElement
+  metaEl: HTMLElement
+}
+
+type EventBusLike = {
+  emit?: (eventName: string, payload?: unknown) => void
+}
+
+type DailyApi = {
+  neteaseGetDailyRecommendation?: () => Promise<any>
+  neteaseAuthGetAccountSummary?: (payload: { refresh: boolean }) => Promise<any>
+  onNeteaseAuthStateUpdate?: (listener: (payload: any) => void) => void
+}
+
+type NeteaseDatabaseServiceLike = {
+  getDailyRecommendation?: () => Promise<any>
+}
+
+type DailyRecommendationOptions = {
+  electronAPI?: DailyApi
+  neteaseDatabaseService?: NeteaseDatabaseServiceLike
+  dom: DailyRecommendationDom
+  eventBus?: EventBusLike
+}
+
+function normalizeTrack(track: any): DailyTrack | null {
   if (!track || typeof track !== 'object') return null
   const id = safeText(track.id)
   if (!id) return null
@@ -18,26 +54,27 @@ function normalizeTrack(track) {
   }
 }
 
-function truncate(value, maxLen = 18) {
+function truncate(value: unknown, maxLen = 18): string {
   const text = safeText(value)
   if (!text) return ''
   if (text.length <= maxLen) return text
   return `${text.slice(0, maxLen - 1)}…`
 }
 
-export function createDailyRecommendationManager(options) {
-  const {
-    electronAPI,
-    neteaseDatabaseService,
-    dom,
-    eventBus
-  } = options
+export function createDailyRecommendationManager(options: DailyRecommendationOptions) {
+  const { electronAPI, neteaseDatabaseService, dom, eventBus } = options
 
   if (!dom?.coverEl || !dom?.metaEl) {
     return { init() {} }
   }
 
-  let state = {
+  const state: {
+    loading: boolean
+    isLoggedIn: boolean
+    tracks: DailyTrack[]
+    playlist: any
+    lastError: string
+  } = {
     loading: false,
     isLoggedIn: false,
     tracks: [],
@@ -45,13 +82,13 @@ export function createDailyRecommendationManager(options) {
     lastError: ''
   }
 
-  function normalizeCoverUrl(url) {
+  function normalizeCoverUrl(url: unknown): string {
     const text = safeText(url)
     if (!text) return ''
     return text.replace(/^http:\/\//i, 'https://')
   }
 
-  function resolvePreferredCover(tracks) {
+  function resolvePreferredCover(tracks: DailyTrack[]): string {
     for (const track of tracks) {
       const url = normalizeCoverUrl(track?.coverUrl)
       if (url) return url
@@ -59,7 +96,7 @@ export function createDailyRecommendationManager(options) {
     return ''
   }
 
-  function renderCover(url) {
+  function renderCover(url: string): void {
     if (!url) {
       dom.coverEl.style.backgroundImage = ''
       return
@@ -70,7 +107,7 @@ export function createDailyRecommendationManager(options) {
     dom.coverEl.style.backgroundPosition = 'center'
   }
 
-  function renderState() {
+  function renderState(): void {
     if (!state.isLoggedIn) {
       dom.metaEl.textContent = '每日推荐 | 登录后可同步今日歌曲'
       renderCover('')
@@ -99,16 +136,16 @@ export function createDailyRecommendationManager(options) {
     renderCover(resolvePreferredCover(state.tracks))
   }
 
-  async function refreshDailyRecommendation() {
+  async function refreshDailyRecommendation(): Promise<void> {
     if (!neteaseDatabaseService && !electronAPI?.neteaseGetDailyRecommendation) return
 
     state.loading = true
     state.lastError = ''
     renderState()
 
-    const res = neteaseDatabaseService
+    const res = neteaseDatabaseService?.getDailyRecommendation
       ? await neteaseDatabaseService.getDailyRecommendation()
-      : await electronAPI.neteaseGetDailyRecommendation()
+      : await electronAPI!.neteaseGetDailyRecommendation!()
 
     state.loading = false
     if (!res?.ok) {
@@ -126,12 +163,12 @@ export function createDailyRecommendationManager(options) {
       ? res.data.tracks.map(normalizeTrack).filter(Boolean)
       : []
 
-    state.tracks = tracks
+    state.tracks = tracks as DailyTrack[]
     state.playlist = res?.data?.playlist || null
     state.lastError = ''
 
     if (state.playlist && eventBus) {
-      eventBus.emit('cloud-playlist:encountered', {
+      eventBus.emit?.('cloud-playlist:encountered', {
         sourceKind: 'daily',
         playlist: {
           ...state.playlist,
@@ -144,7 +181,7 @@ export function createDailyRecommendationManager(options) {
     renderState()
   }
 
-  async function refreshAuthSummary(force = false) {
+  async function refreshAuthSummary(force = false): Promise<void> {
     if (!electronAPI?.neteaseAuthGetAccountSummary) return
     const res = await electronAPI.neteaseAuthGetAccountSummary({ refresh: force })
     state.isLoggedIn = Boolean(res?.ok && (res?.state?.isLoggedIn || res?.account?.isLoggedIn))
@@ -159,7 +196,7 @@ export function createDailyRecommendationManager(options) {
     await refreshDailyRecommendation()
   }
 
-  function buildTaskPayload(track) {
+  function buildTaskPayload(track: DailyTrack) {
     return {
       songId: String(track.id),
       title: safeText(track.name) || `歌曲 ${track.id}`,
@@ -170,7 +207,7 @@ export function createDailyRecommendationManager(options) {
     }
   }
 
-  function createLazyQueueTrack(item) {
+  function createLazyQueueTrack(item: DailyTrack) {
     const base = buildTaskPayload(item)
     return {
       name: base.title,
@@ -196,20 +233,22 @@ export function createDailyRecommendationManager(options) {
     }
   }
 
-  async function playFirst() {
+  async function playFirst(): Promise<void> {
     if (!state.tracks.length || !eventBus) return
 
     const queueTracks = state.tracks.map(createLazyQueueTrack)
-    eventBus.emit('playback:queue.replace', {
+    eventBus.emit?.('playback:queue.replace', {
       tracks: queueTracks,
       startIndex: 0,
       options: { source: 'daily-recommendation-lazy' }
     })
-    eventBus.emit('view:song.open')
+    eventBus.emit?.('view:song.open')
   }
 
-  function bindEvents() {
-    dom.coverEl.addEventListener('click', playFirst)
+  function bindEvents(): void {
+    dom.coverEl.addEventListener('click', () => {
+      void playFirst()
+    })
 
     if (electronAPI?.onNeteaseAuthStateUpdate) {
       electronAPI.onNeteaseAuthStateUpdate((payload) => {
@@ -222,12 +261,12 @@ export function createDailyRecommendationManager(options) {
           return
         }
 
-        refreshDailyRecommendation()
+        void refreshDailyRecommendation()
       })
     }
   }
 
-  async function init() {
+  async function init(): Promise<void> {
     bindEvents()
     renderState()
     await refreshAuthSummary(true)

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { formatTime } from './trackUtils.js'
 
 export function createPlaybackUIController(options = {}) {

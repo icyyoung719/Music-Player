@@ -1,3 +1,4 @@
+// @ts-nocheck
 const fs = require('fs')
 const path = require('path')
 const https = require('https')
@@ -799,3 +800,5 @@ module.exports = {
   createSongDownloadTaskFromId,
   cancelDownloadTask
 }
+
+export {}

@@ -1,3 +1,4 @@
+// @ts-nocheck
 const dom = {
   status: document.getElementById('authStatus'),
   closeBtn: document.getElementById('authWindowCloseBtn'),

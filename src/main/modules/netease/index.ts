@@ -1,3 +1,4 @@
+// @ts-nocheck
 const { ipcMain, shell } = require('electron')
 const fs = require('fs')
 const path = require('path')
@@ -1487,3 +1488,5 @@ function registerNeteaseHandlers() {
 }
 
 module.exports = { registerNeteaseHandlers }
+
+export {}

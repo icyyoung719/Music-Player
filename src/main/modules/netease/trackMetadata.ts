@@ -1,3 +1,4 @@
+// @ts-nocheck
 const fs = require('fs')
 const path = require('path')
 const { app } = require('electron')
@@ -11,7 +12,7 @@ const TRACK_METADATA_STORE_NAME = 'netease-track-metadata.json'
 const TRACK_COVER_DIR_NAME = 'netease-track-covers'
 
 let trackMetadataLoaded = false
-// Exported as a live object reference — always mutate properties, never reassign.
+// Exported as a live object reference - always mutate properties, never reassign.
 const trackMetadataStore = {}
 
 function getTrackMetadataStorePath() {
@@ -57,9 +58,7 @@ async function persistTrackMetadataStore() {
 async function persistTrackMetadataForTask(task) {
   if (!task || !task.filePath || task.status !== 'succeeded') return
 
-  const sourceMetadata = task.songMetadata && typeof task.songMetadata === 'object'
-    ? task.songMetadata
-    : null
+  const sourceMetadata = task.songMetadata && typeof task.songMetadata === 'object' ? task.songMetadata : null
   if (!sourceMetadata) return
 
   const entry = {
@@ -135,3 +134,5 @@ module.exports = {
   getTrackMetadataStorePath,
   getTrackCoverDirPath
 }
+
+export {}

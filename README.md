@@ -44,7 +44,7 @@
 
 ## 开发与构建
 
-- 源码目录：`src/**`（逐步迁移至 TypeScript）
+- 源码目录：`src/**`（TypeScript）
 - 构建产物：`dist/**`
 - 类型检查：`npm run typecheck`
 - Windows 打包：`npm run build:win`
@@ -53,7 +53,7 @@
 
 - Main (`src/main/**`)
   - 生命周期、窗口/托盘壳层、IPC 注册、持久化与网络访问
-- Preload (`src/preload/preload.js`)
+- Preload (`src/preload/preload.ts`)
   - 通过 `contextBridge` 暴露受控 API
 - Renderer (`src/renderer/**`)
   - 页面装配、事件编排、交互逻辑
@@ -72,9 +72,9 @@
 - 预加载：`src/preload/preload.ts`
 - 渲染层壳：`src/renderer/index.html`
 - 渲染层启动：`src/renderer/bootstrap.ts`
-- 渲染层编排：`src/renderer/renderer.js`
-- 渲染层核心：`src/renderer/core/*.(ts|js)`
-- 功能模块：`src/renderer/modules/*.(ts|js)`
+- 渲染层编排：`src/renderer/renderer.ts`
+- 渲染层核心：`src/renderer/core/*.ts`
+- 功能模块：`src/renderer/modules/*.ts`
 
 ## 数据与存储
 

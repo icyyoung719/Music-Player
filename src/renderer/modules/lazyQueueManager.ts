@@ -1,12 +1,56 @@
-function isLazyNeteaseTrack(track) {
+type TrackLike = {
+  name?: string
+  path?: string | null
+  file?: File | null
+  metadataCache?: {
+    title?: string | null
+    artist?: string | null
+    album?: string | null
+    duration?: number | null
+  }
+  lazyNetease?: {
+    songId?: string | number
+    level?: string
+    title?: string
+    artist?: string
+    album?: string
+    coverUrl?: string
+    durationMs?: number
+    state?: string
+    taskId?: string
+  }
+}
+
+type DownloadTaskLike = {
+  id?: string
+  status?: string
+  filePath?: string
+  songMetadata?: {
+    title?: string
+    artist?: string
+    album?: string
+  }
+}
+
+type LazyQueueApi = {
+  neteaseDownloadSongTask?: (payload: unknown) => Promise<any>
+}
+
+type LazyQueueManagerOptions = {
+  electronAPI?: LazyQueueApi
+  getPlaylist: () => TrackLike[]
+  getCurrentIndex: () => number
+  onTrackReady?: (index: number) => void
+}
+
+function isLazyNeteaseTrack(track: TrackLike | null | undefined): boolean {
   return Boolean(track?.lazyNetease?.songId)
 }
 
-function buildLazySongTaskPayload(track) {
+function buildLazySongTaskPayload(track: TrackLike) {
   const source = track?.lazyNetease || {}
   const level = String(source.level || 'exhigh')
-  const safeName = String(source.title || track?.name || source.songId || 'netease-track')
-    .replace(/[\\/:*?"<>|]/g, '_')
+  const safeName = String(source.title || track?.name || source.songId || 'netease-track').replace(/[\\/:*?"<>|]/g, '_')
 
   return {
     songId: String(source.songId || ''),
@@ -18,27 +62,22 @@ function buildLazySongTaskPayload(track) {
   }
 }
 
-export function createLazyQueueManager(options = {}) {
-  const {
-    electronAPI,
-    getPlaylist,
-    getCurrentIndex,
-    onTrackReady
-  } = options
+export function createLazyQueueManager(options: LazyQueueManagerOptions) {
+  const { electronAPI, getPlaylist, getCurrentIndex, onTrackReady } = options
 
-  const taskIndexMap = new Map()
-  const waitersByIndex = new Map()
+  const taskIndexMap = new Map<string, number>()
+  const waitersByIndex = new Map<number, Array<(ok: boolean) => void>>()
 
-  function markTrackState(index, nextState, taskId = '') {
+  function markTrackState(index: number, nextState: string, taskId = ''): void {
     const playlist = getPlaylist()
     const track = playlist[index]
     if (!isLazyNeteaseTrack(track)) return
 
-    track.lazyNetease.state = String(nextState || track.lazyNetease.state || 'idle')
-    track.lazyNetease.taskId = taskId ? String(taskId) : String(track.lazyNetease.taskId || '')
+    track.lazyNetease!.state = String(nextState || track.lazyNetease!.state || 'idle')
+    track.lazyNetease!.taskId = taskId ? String(taskId) : String(track.lazyNetease!.taskId || '')
   }
 
-  function resolveWaiters(index, ok) {
+  function resolveWaiters(index: number, ok: boolean): void {
     const waiters = waitersByIndex.get(index)
     if (!waiters || !waiters.length) {
       waitersByIndex.delete(index)
@@ -56,13 +95,13 @@ export function createLazyQueueManager(options = {}) {
     waitersByIndex.delete(index)
   }
 
-  function waitForTrackReady(index, timeoutMs = 60000) {
+  function waitForTrackReady(index: number, timeoutMs = 60000): Promise<boolean> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
         resolve(false)
       }, timeoutMs)
 
-      const wrappedResolve = (ok) => {
+      const wrappedResolve = (ok: boolean) => {
         clearTimeout(timer)
         resolve(Boolean(ok))
       }
@@ -73,7 +112,7 @@ export function createLazyQueueManager(options = {}) {
     })
   }
 
-  function applyResolvedTask(index, task) {
+  function applyResolvedTask(index: number, task: DownloadTaskLike): boolean {
     const playlist = getPlaylist()
     const track = playlist[index]
     if (!track || !isLazyNeteaseTrack(track)) return false
@@ -95,7 +134,7 @@ export function createLazyQueueManager(options = {}) {
     return true
   }
 
-  async function ensureTrackReadyForPlayback(index, options = {}) {
+  async function ensureTrackReadyForPlayback(index: number, options: { waitForReady?: boolean } = {}): Promise<boolean> {
     const playlist = getPlaylist()
     const track = playlist[index]
     if (!track) return false
@@ -104,19 +143,19 @@ export function createLazyQueueManager(options = {}) {
     }
 
     if (track.path || track.file) {
-      markTrackState(index, 'succeeded', track.lazyNetease.taskId || '')
+      markTrackState(index, 'succeeded', track.lazyNetease?.taskId || '')
       return true
     }
 
     if (!electronAPI?.neteaseDownloadSongTask) return false
 
     const waitForReady = options.waitForReady !== false
-    if (track.lazyNetease.state === 'downloading') {
+    if (track.lazyNetease?.state === 'downloading') {
       if (!waitForReady) return false
       return waitForTrackReady(index)
     }
 
-    if (track.lazyNetease.state === 'failed' && !waitForReady) {
+    if (track.lazyNetease?.state === 'failed' && !waitForReady) {
       return false
     }
 
@@ -128,13 +167,13 @@ export function createLazyQueueManager(options = {}) {
       return false
     }
 
-    const task = taskRes.task
-    markTrackState(index, task.status === 'failed' ? 'failed' : 'downloading', task.id)
-    taskIndexMap.set(task.id, index)
+    const task = taskRes.task as DownloadTaskLike
+    markTrackState(index, task.status === 'failed' ? 'failed' : 'downloading', task.id || '')
+    taskIndexMap.set(String(task.id), index)
 
     if (task.status === 'succeeded' || task.status === 'skipped') {
       const ok = applyResolvedTask(index, task)
-      taskIndexMap.delete(task.id)
+      taskIndexMap.delete(String(task.id))
       resolveWaiters(index, ok)
       if (ok && typeof onTrackReady === 'function') {
         onTrackReady(index)
@@ -149,7 +188,7 @@ export function createLazyQueueManager(options = {}) {
     return waitForTrackReady(index)
   }
 
-  function maybePrefetchNextLazyTrack() {
+  function maybePrefetchNextLazyTrack(): void {
     const playlist = getPlaylist()
     const nextIndex = getCurrentIndex() + 1
     if (nextIndex < 0 || nextIndex >= playlist.length) return
@@ -157,17 +196,17 @@ export function createLazyQueueManager(options = {}) {
     const nextTrack = playlist[nextIndex]
     if (!isLazyNeteaseTrack(nextTrack)) return
     if (nextTrack.path || nextTrack.file) return
-    if (nextTrack.lazyNetease.state === 'downloading' || nextTrack.lazyNetease.state === 'succeeded') return
+    if (nextTrack.lazyNetease?.state === 'downloading' || nextTrack.lazyNetease?.state === 'succeeded') return
 
-    ensureTrackReadyForPlayback(nextIndex, { waitForReady: false }).catch(() => {})
+    void ensureTrackReadyForPlayback(nextIndex, { waitForReady: false }).catch(() => {})
   }
 
-  function handleLazyDownloadTaskUpdate(task) {
+  function handleLazyDownloadTaskUpdate(task: DownloadTaskLike): void {
     const taskId = String(task?.id || '')
     if (!taskId) return
     if (!taskIndexMap.has(taskId)) return
 
-    const index = taskIndexMap.get(taskId)
+    const index = taskIndexMap.get(taskId) as number
     const playlist = getPlaylist()
     const track = playlist[index]
     if (!track || !isLazyNeteaseTrack(track)) {
@@ -193,14 +232,14 @@ export function createLazyQueueManager(options = {}) {
     }
   }
 
-  function reset() {
+  function reset(): void {
     for (const index of Array.from(waitersByIndex.keys())) {
       resolveWaiters(index, false)
     }
     taskIndexMap.clear()
   }
 
-  function removeTrack(index) {
+  function removeTrack(index: number): void {
     resolveWaiters(index, false)
   }
 

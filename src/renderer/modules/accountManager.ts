@@ -1,26 +1,52 @@
-function truncateText(text, max = 24) {
+type AccountPayload = {
+  isLoggedIn?: boolean
+  userName?: string
+  userId?: string | number
+  avatarUrl?: string
+  signature?: string
+}
+
+type AccountDom = {
+  userNameEl: HTMLElement
+  userDetailEl: HTMLElement
+  avatarEl: HTMLElement
+  loginBtnEl: HTMLButtonElement
+}
+
+type ElectronApiLike = {
+  neteaseAuthGetAccountSummary?: (payload: { refresh: boolean }) => Promise<any>
+  onNeteaseAuthStateUpdate?: (listener: (payload: { account?: AccountPayload; state?: AccountPayload }) => void) => (() => void) | void
+}
+
+type AccountManagerOptions = {
+  electronAPI?: ElectronApiLike
+  dom: AccountDom
+  onRequestLoginWindow?: () => void
+}
+
+function truncateText(text: unknown, max = 24): string {
   const value = String(text || '').trim()
   if (!value) return ''
   if (value.length <= max) return value
   return `${value.slice(0, max - 1)}…`
 }
 
-function normalizeAvatarUrl(value) {
+function normalizeAvatarUrl(value: unknown): string {
   const text = String(value || '').trim()
   if (!text) return ''
   return text.replace(/^http:\/\//i, 'https://')
 }
 
-export function createAccountManager(options) {
+export function createAccountManager(options: AccountManagerOptions) {
   const { electronAPI, dom, onRequestLoginWindow } = options
 
   if (!dom || !dom.userNameEl || !dom.userDetailEl || !dom.avatarEl || !dom.loginBtnEl) {
     return { init() {} }
   }
 
-  let unsubscribe = null
+  let unsubscribe: (() => void) | null = null
 
-  function applyAccount(account, state) {
+  function applyAccount(account?: AccountPayload | null, state?: AccountPayload | null): void {
     const isLoggedIn = Boolean(account?.isLoggedIn || state?.isLoggedIn)
     const userName = String(account?.userName || state?.userName || '').trim()
     const userId = String(account?.userId || state?.userId || '').trim()
@@ -39,7 +65,7 @@ export function createAccountManager(options) {
 
     dom.userNameEl.textContent = userName || `网易云用户 ${userId || ''}`.trim()
 
-    const detailParts = []
+    const detailParts: string[] = []
 
     if (userId) detailParts.push(`UID ${userId}`)
     if (signature) detailParts.push(signature)
@@ -57,7 +83,7 @@ export function createAccountManager(options) {
     dom.loginBtnEl.title = '打开网易云登录窗口切换账号'
   }
 
-  async function refreshAccountSummary(forceRefresh = false) {
+  async function refreshAccountSummary(forceRefresh = false): Promise<void> {
     if (!electronAPI?.neteaseAuthGetAccountSummary) return
 
     const res = await electronAPI.neteaseAuthGetAccountSummary({
@@ -72,7 +98,7 @@ export function createAccountManager(options) {
     applyAccount(res.account, res.state)
   }
 
-  function bindEvents() {
+  function bindEvents(): void {
     dom.loginBtnEl.addEventListener('click', () => {
       if (typeof onRequestLoginWindow === 'function') {
         onRequestLoginWindow()
@@ -80,18 +106,19 @@ export function createAccountManager(options) {
     })
 
     if (electronAPI?.onNeteaseAuthStateUpdate) {
-      unsubscribe = electronAPI.onNeteaseAuthStateUpdate((payload) => {
+      const maybeUnsubscribe = electronAPI.onNeteaseAuthStateUpdate((payload) => {
         applyAccount(payload?.account, payload?.state)
       })
+      unsubscribe = typeof maybeUnsubscribe === 'function' ? maybeUnsubscribe : null
     }
   }
 
-  async function init() {
+  async function init(): Promise<void> {
     bindEvents()
     await refreshAccountSummary(true)
   }
 
-  function dispose() {
+  function dispose(): void {
     if (typeof unsubscribe === 'function') {
       unsubscribe()
       unsubscribe = null

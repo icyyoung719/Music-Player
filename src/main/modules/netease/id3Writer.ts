@@ -1,3 +1,4 @@
+// @ts-nocheck
 const fs = require('fs')
 const path = require('path')
 
@@ -308,3 +309,5 @@ module.exports = {
   writeFlacTagsToFlac,
   writeEmbeddedTags
 }
+
+export {}

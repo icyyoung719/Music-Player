@@ -1,3 +1,4 @@
+// @ts-nocheck
 export function createNeteaseManager(options) {
   const {
     electronAPI,

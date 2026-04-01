@@ -1,3 +1,4 @@
+// @ts-nocheck
 const https = require('https')
 const http = require('http')
 const crypto = require('crypto')
@@ -238,3 +239,5 @@ function requestBuffer(url, options = {}) {
 }
 
 module.exports = { requestJson, requestJsonWithMeta, requestBuffer }
+
+export {}

@@ -3,32 +3,39 @@ const DEFAULT_FADE_SETTINGS = {
   fadeOutMs: 350
 }
 
-function clampFadeDuration(value, fallbackValue) {
+type FadeSettings = {
+  fadeInMs: number
+  fadeOutMs: number
+}
+
+type FadeOptions = {
+  audio?: HTMLAudioElement | null
+  storageKey?: string
+}
+
+function clampFadeDuration(value: number, fallbackValue: number): number {
   if (!Number.isFinite(value)) return fallbackValue
   return Math.max(0, Math.min(5000, Math.round(value)))
 }
 
-function sanitizeFadeSettings(input = {}) {
+function sanitizeFadeSettings(input: Partial<FadeSettings> = {}): FadeSettings {
   return {
     fadeInMs: clampFadeDuration(Number(input.fadeInMs), DEFAULT_FADE_SETTINGS.fadeInMs),
     fadeOutMs: clampFadeDuration(Number(input.fadeOutMs), DEFAULT_FADE_SETTINGS.fadeOutMs)
   }
 }
 
-export function createPlaybackFadeManager(options = {}) {
-  const {
-    audio,
-    storageKey = 'musicPlayer.playbackFade.v1'
-  } = options
+export function createPlaybackFadeManager(options: FadeOptions = {}) {
+  const { audio, storageKey = 'musicPlayer.playbackFade.v1' } = options
 
-  let fadeTimer = null
+  let fadeTimer: ReturnType<typeof setInterval> | null = null
   let fadeToken = 0
 
-  function loadSettings() {
+  function loadSettings(): FadeSettings {
     try {
       const raw = localStorage.getItem(storageKey)
       if (!raw) return { ...DEFAULT_FADE_SETTINGS }
-      const parsed = JSON.parse(raw)
+      const parsed = JSON.parse(raw) as Partial<FadeSettings>
       return sanitizeFadeSettings(parsed || {})
     } catch (err) {
       console.warn('Failed to load fade settings:', err)
@@ -38,7 +45,7 @@ export function createPlaybackFadeManager(options = {}) {
 
   let settings = loadSettings()
 
-  function persistSettings() {
+  function persistSettings(): void {
     try {
       localStorage.setItem(storageKey, JSON.stringify(settings))
     } catch (err) {
@@ -46,7 +53,7 @@ export function createPlaybackFadeManager(options = {}) {
     }
   }
 
-  function stopFade(options = {}) {
+  function stopFade(options: { resetVolume?: boolean } = {}): void {
     const { resetVolume = false } = options
     if (fadeTimer) {
       clearInterval(fadeTimer)
@@ -58,7 +65,7 @@ export function createPlaybackFadeManager(options = {}) {
     }
   }
 
-  function runFadeTo(targetVolume, durationMs) {
+  function runFadeTo(targetVolume: number, durationMs: number): Promise<boolean> {
     if (!audio) return Promise.resolve(false)
 
     const safeTarget = Math.max(0, Math.min(1, Number(targetVolume) || 0))
@@ -88,7 +95,7 @@ export function createPlaybackFadeManager(options = {}) {
         audio.volume = Math.max(0, Math.min(1, startVolume + delta * progress))
 
         if (progress >= 1) {
-          clearInterval(fadeTimer)
+          clearInterval(fadeTimer!)
           fadeTimer = null
           resolve(true)
         }
@@ -96,13 +103,13 @@ export function createPlaybackFadeManager(options = {}) {
     })
   }
 
-  function updateSettings(nextSettings = {}) {
+  function updateSettings(nextSettings: Partial<FadeSettings> = {}): FadeSettings {
     settings = sanitizeFadeSettings({ ...settings, ...nextSettings })
     persistSettings()
     return { ...settings }
   }
 
-  function getSettings() {
+  function getSettings(): FadeSettings {
     return { ...settings }
   }
 

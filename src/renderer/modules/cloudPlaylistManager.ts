@@ -1,3 +1,4 @@
+// @ts-nocheck
 function safeText(value) {
   return String(value || '').trim()
 }
