@@ -1,53 +1,99 @@
-// @ts-nocheck
+type AuthState = {
+  apiBaseUrl?: string
+  userName?: string
+  userId?: string
+  hasCookie?: boolean
+  hasAccessToken?: boolean
+}
+
+type ElectronApiLike = {
+  neteaseAuthGetState?: () => Promise<any>
+  neteaseAuthLoginEmail?: (payload: {
+    email: string
+    password: string
+    apiBaseUrl: string
+  }) => Promise<any>
+  neteaseAuthSendCaptcha?: (payload: {
+    countryCode: string
+    phone: string
+    apiBaseUrl: string
+  }) => Promise<any>
+  neteaseAuthLoginCaptcha?: (payload: {
+    countryCode: string
+    phone: string
+    captcha: string
+    apiBaseUrl: string
+  }) => Promise<any>
+  neteaseAuthQrCreate?: (payload: { apiBaseUrl: string }) => Promise<any>
+  neteaseAuthQrCheck?: (payload: { qrKey: string; apiBaseUrl: string }) => Promise<any>
+  neteaseAuthUpdate?: (payload: {
+    apiBaseUrl: string
+    accessToken?: string
+    refreshToken?: string
+    userName?: string
+    userId?: string
+  }) => Promise<any>
+  neteaseAuthVerify?: () => Promise<any>
+  neteaseAuthClear?: () => Promise<any>
+  neteaseOpenExternalUrl?: (payload: { url: string }) => void
+  neteaseAuthCloseWindow?: () => void
+  onNeteaseAuthWindowSetPage?: (handler: (page?: unknown) => void) => void
+  onNeteaseAuthStateUpdate?: (handler: (payload?: { state?: AuthState }) => void) => void
+}
+
+const byId = <T extends HTMLElement>(id: string): T | null => document.getElementById(id) as T | null
+const queryAll = <T extends Element>(selector: string): T[] => Array.from(document.querySelectorAll<T>(selector))
+const electronAPI = (window as Window & { electronAPI?: ElectronApiLike }).electronAPI
+
 const dom = {
-  status: document.getElementById('authStatus'),
-  closeBtn: document.getElementById('authWindowCloseBtn'),
-  tabs: Array.from(document.querySelectorAll('.auth-tab')),
-  pages: Array.from(document.querySelectorAll('.auth-page')),
+  status: byId<HTMLElement>('authStatus'),
+  closeBtn: byId<HTMLButtonElement>('authWindowCloseBtn'),
+  tabs: queryAll<HTMLElement>('.auth-tab'),
+  pages: queryAll<HTMLElement>('.auth-page'),
 
-  apiBase: document.getElementById('authApiBase'),
-  apiBasePhone: document.getElementById('authApiBasePhone'),
-  apiBaseQr: document.getElementById('authApiBaseQr'),
-  email: document.getElementById('authEmail'),
-  password: document.getElementById('authPassword'),
-  emailLoginBtn: document.getElementById('authEmailLoginBtn'),
+  apiBase: byId<HTMLInputElement>('authApiBase'),
+  apiBasePhone: byId<HTMLInputElement>('authApiBasePhone'),
+  apiBaseQr: byId<HTMLInputElement>('authApiBaseQr'),
+  email: byId<HTMLInputElement>('authEmail'),
+  password: byId<HTMLInputElement>('authPassword'),
+  emailLoginBtn: byId<HTMLButtonElement>('authEmailLoginBtn'),
 
-  countryCode: document.getElementById('authCountryCode'),
-  phone: document.getElementById('authPhone'),
-  captcha: document.getElementById('authCaptcha'),
-  sendCaptchaBtn: document.getElementById('authSendCaptchaBtn'),
-  phoneLoginBtn: document.getElementById('authPhoneCaptchaLoginBtn'),
+  countryCode: byId<HTMLInputElement>('authCountryCode'),
+  phone: byId<HTMLInputElement>('authPhone'),
+  captcha: byId<HTMLInputElement>('authCaptcha'),
+  sendCaptchaBtn: byId<HTMLButtonElement>('authSendCaptchaBtn'),
+  phoneLoginBtn: byId<HTMLButtonElement>('authPhoneCaptchaLoginBtn'),
 
-  qrImg: document.getElementById('authQrImg'),
-  qrPlaceholder: document.getElementById('authQrPlaceholder'),
-  qrLink: document.getElementById('authQrLink'),
-  qrCreateBtn: document.getElementById('authQrCreateBtn'),
-  qrOpenBtn: document.getElementById('authQrOpenBtn'),
-  qrStartPollBtn: document.getElementById('authQrStartPollBtn'),
-  qrStopPollBtn: document.getElementById('authQrStopPollBtn'),
+  qrImg: byId<HTMLImageElement>('authQrImg'),
+  qrPlaceholder: byId<HTMLElement>('authQrPlaceholder'),
+  qrLink: byId<HTMLElement>('authQrLink'),
+  qrCreateBtn: byId<HTMLButtonElement>('authQrCreateBtn'),
+  qrOpenBtn: byId<HTMLButtonElement>('authQrOpenBtn'),
+  qrStartPollBtn: byId<HTMLButtonElement>('authQrStartPollBtn'),
+  qrStopPollBtn: byId<HTMLButtonElement>('authQrStopPollBtn'),
 
-  userName: document.getElementById('authUserName'),
-  userId: document.getElementById('authUserId'),
-  accessToken: document.getElementById('authAccessToken'),
-  refreshToken: document.getElementById('authRefreshToken'),
-  saveBtn: document.getElementById('authSaveBtn'),
-  verifyBtn: document.getElementById('authVerifyBtn'),
-  clearBtn: document.getElementById('authClearBtn')
+  userName: byId<HTMLInputElement>('authUserName'),
+  userId: byId<HTMLInputElement>('authUserId'),
+  accessToken: byId<HTMLInputElement>('authAccessToken'),
+  refreshToken: byId<HTMLInputElement>('authRefreshToken'),
+  saveBtn: byId<HTMLButtonElement>('authSaveBtn'),
+  verifyBtn: byId<HTMLButtonElement>('authVerifyBtn'),
+  clearBtn: byId<HTMLButtonElement>('authClearBtn')
 }
 
 const SUPPORTED_PAGES = new Set(['email', 'phone', 'qr', 'token'])
-let authState = null
+let authState: AuthState | null = null
 let qrKey = ''
 let qrLoginUrl = ''
-let qrPollTimer = null
+let qrPollTimer: ReturnType<typeof setInterval> | null = null
 
-function setStatus(text, isError = false) {
+function setStatus(text: string, isError = false): void {
   if (!dom.status) return
   dom.status.textContent = text
   dom.status.style.color = isError ? '#b93a2d' : ''
 }
 
-function activePage(page) {
+function activePage(page: string): void {
   const nextPage = SUPPORTED_PAGES.has(page) ? page : 'email'
 
   dom.tabs.forEach((tab) => {
@@ -59,24 +105,24 @@ function activePage(page) {
   })
 }
 
-function getApiBaseFromPage(page) {
+function getApiBaseFromPage(page: string): string {
   if (page === 'phone') return String(dom.apiBasePhone?.value || '').trim()
   if (page === 'qr') return String(dom.apiBaseQr?.value || '').trim()
   return String(dom.apiBase?.value || '').trim()
 }
 
-function setApiBaseAll(apiBaseUrl) {
+function setApiBaseAll(apiBaseUrl: string): void {
   const text = String(apiBaseUrl || '').trim() || 'https://music.163.com'
   if (dom.apiBase) dom.apiBase.value = text
   if (dom.apiBasePhone) dom.apiBasePhone.value = text
   if (dom.apiBaseQr) dom.apiBaseQr.value = text
 }
 
-function applyState(state) {
+function applyState(state: AuthState | null | undefined): void {
   if (!state) return
   authState = state
 
-  setApiBaseAll(state.apiBaseUrl)
+  setApiBaseAll(state.apiBaseUrl || '')
   if (dom.userName) dom.userName.value = state.userName || ''
   if (dom.userId) dom.userId.value = state.userId || ''
 
@@ -87,8 +133,8 @@ function applyState(state) {
 }
 
 async function refreshState() {
-  if (!window.electronAPI?.neteaseAuthGetState) return
-  const res = await window.electronAPI.neteaseAuthGetState()
+  if (!electronAPI?.neteaseAuthGetState) return
+  const res = await electronAPI.neteaseAuthGetState()
   if (!res?.ok || !res.state) {
     setStatus('读取授权状态失败，请重试。', true)
     return
@@ -97,7 +143,7 @@ async function refreshState() {
 }
 
 async function loginByEmail() {
-  if (!window.electronAPI?.neteaseAuthLoginEmail) return
+  if (!electronAPI?.neteaseAuthLoginEmail) return
 
   const email = String(dom.email?.value || '').trim()
   const password = String(dom.password?.value || '')
@@ -109,7 +155,7 @@ async function loginByEmail() {
   }
 
   setStatus('正在登录...')
-  const res = await window.electronAPI.neteaseAuthLoginEmail({
+  const res = await electronAPI.neteaseAuthLoginEmail({
     email,
     password,
     apiBaseUrl
@@ -126,7 +172,7 @@ async function loginByEmail() {
 }
 
 async function sendPhoneCaptcha() {
-  if (!window.electronAPI?.neteaseAuthSendCaptcha) return
+  if (!electronAPI?.neteaseAuthSendCaptcha) return
 
   const countryCode = String(dom.countryCode?.value || '86').trim()
   const phone = String(dom.phone?.value || '').trim()
@@ -138,7 +184,7 @@ async function sendPhoneCaptcha() {
   }
 
   setStatus('正在发送验证码...')
-  const res = await window.electronAPI.neteaseAuthSendCaptcha({
+  const res = await electronAPI.neteaseAuthSendCaptcha({
     countryCode,
     phone,
     apiBaseUrl
@@ -153,7 +199,7 @@ async function sendPhoneCaptcha() {
 }
 
 async function loginByPhoneCaptcha() {
-  if (!window.electronAPI?.neteaseAuthLoginCaptcha) return
+  if (!electronAPI?.neteaseAuthLoginCaptcha) return
 
   const countryCode = String(dom.countryCode?.value || '86').trim()
   const phone = String(dom.phone?.value || '').trim()
@@ -166,7 +212,7 @@ async function loginByPhoneCaptcha() {
   }
 
   setStatus('正在登录...')
-  const res = await window.electronAPI.neteaseAuthLoginCaptcha({
+  const res = await electronAPI.neteaseAuthLoginCaptcha({
     countryCode,
     phone,
     captcha,
@@ -183,7 +229,7 @@ async function loginByPhoneCaptcha() {
   setStatus(`登录成功: ${res.profile?.userName || res.state?.userName || phone}`)
 }
 
-function renderQrPreview(dataUrl, link) {
+function renderQrPreview(dataUrl: string, link: string): void {
   if (dom.qrLink) {
     dom.qrLink.textContent = link || '二维码登录链接将在这里显示'
   }
@@ -202,10 +248,10 @@ function renderQrPreview(dataUrl, link) {
 }
 
 async function createQrLogin() {
-  if (!window.electronAPI?.neteaseAuthQrCreate) return
+  if (!electronAPI?.neteaseAuthQrCreate) return
 
   setStatus('正在生成二维码...')
-  const res = await window.electronAPI.neteaseAuthQrCreate({
+  const res = await electronAPI.neteaseAuthQrCreate({
     apiBaseUrl: getApiBaseFromPage('qr')
   })
 
@@ -222,9 +268,9 @@ async function createQrLogin() {
 }
 
 async function checkQrStatusOnce() {
-  if (!window.electronAPI?.neteaseAuthQrCheck || !qrKey) return
+  if (!electronAPI?.neteaseAuthQrCheck || !qrKey) return
 
-  const res = await window.electronAPI.neteaseAuthQrCheck({
+  const res = await electronAPI.neteaseAuthQrCheck({
     qrKey,
     apiBaseUrl: getApiBaseFromPage('qr')
   })
@@ -257,7 +303,7 @@ async function checkQrStatusOnce() {
   }
 }
 
-function startQrPolling() {
+function startQrPolling(): void {
   if (qrPollTimer || !qrKey) return
   qrPollTimer = setInterval(() => {
     checkQrStatusOnce()
@@ -265,16 +311,16 @@ function startQrPolling() {
   checkQrStatusOnce()
 }
 
-function stopQrPolling() {
+function stopQrPolling(): void {
   if (!qrPollTimer) return
   clearInterval(qrPollTimer)
   qrPollTimer = null
 }
 
 async function saveAuthState() {
-  if (!window.electronAPI?.neteaseAuthUpdate) return
+  if (!electronAPI?.neteaseAuthUpdate) return
 
-  const res = await window.electronAPI.neteaseAuthUpdate({
+  const res = await electronAPI.neteaseAuthUpdate({
     apiBaseUrl: getApiBaseFromPage('email'),
     accessToken: dom.accessToken?.value,
     refreshToken: dom.refreshToken?.value,
@@ -294,10 +340,10 @@ async function saveAuthState() {
 }
 
 async function verifyAuthState() {
-  if (!window.electronAPI?.neteaseAuthVerify) return
+  if (!electronAPI?.neteaseAuthVerify) return
 
   setStatus('正在验证授权...')
-  const res = await window.electronAPI.neteaseAuthVerify()
+  const res = await electronAPI.neteaseAuthVerify()
   if (!res?.ok) {
     setStatus('授权校验失败，请先登录或检查配置。', true)
     return
@@ -315,9 +361,9 @@ async function verifyAuthState() {
 }
 
 async function clearAuthState() {
-  if (!window.electronAPI?.neteaseAuthClear) return
+  if (!electronAPI?.neteaseAuthClear) return
 
-  const res = await window.electronAPI.neteaseAuthClear()
+  const res = await electronAPI.neteaseAuthClear()
   if (!res?.ok) {
     setStatus('清空授权失败。', true)
     return
@@ -332,23 +378,23 @@ async function clearAuthState() {
   setStatus('授权信息已清空。')
 }
 
-function openQrLink() {
-  if (!qrLoginUrl || !window.electronAPI?.neteaseOpenExternalUrl) {
+function openQrLink(): void {
+  if (!qrLoginUrl || !electronAPI?.neteaseOpenExternalUrl) {
     setStatus('请先生成二维码。', true)
     return
   }
-  window.electronAPI.neteaseOpenExternalUrl({ url: qrLoginUrl })
+  electronAPI.neteaseOpenExternalUrl({ url: qrLoginUrl })
 }
 
-function closeWindow() {
-  if (window.electronAPI?.neteaseAuthCloseWindow) {
-    window.electronAPI.neteaseAuthCloseWindow()
+function closeWindow(): void {
+  if (electronAPI?.neteaseAuthCloseWindow) {
+    electronAPI.neteaseAuthCloseWindow()
     return
   }
   window.close()
 }
 
-function getInitialPage() {
+function getInitialPage(): string {
   const params = new URLSearchParams(window.location.search)
   const queryPage = String(params.get('page') || '').trim().toLowerCase()
   if (SUPPORTED_PAGES.has(queryPage)) return queryPage
@@ -359,7 +405,7 @@ function getInitialPage() {
   return 'email'
 }
 
-function registerEvents() {
+function registerEvents(): void {
   dom.tabs.forEach((tab) => {
     tab.addEventListener('click', () => {
       activePage(tab.dataset.page || 'email')
@@ -399,14 +445,14 @@ function registerEvents() {
     })
   })
 
-  if (window.electronAPI?.onNeteaseAuthWindowSetPage) {
-    window.electronAPI.onNeteaseAuthWindowSetPage((page) => {
+  if (electronAPI?.onNeteaseAuthWindowSetPage) {
+    electronAPI.onNeteaseAuthWindowSetPage((page) => {
       activePage(String(page || '').toLowerCase())
     })
   }
 
-  if (window.electronAPI?.onNeteaseAuthStateUpdate) {
-    window.electronAPI.onNeteaseAuthStateUpdate((payload) => {
+  if (electronAPI?.onNeteaseAuthStateUpdate) {
+    electronAPI.onNeteaseAuthStateUpdate((payload) => {
       if (payload?.state) {
         applyState(payload.state)
       }

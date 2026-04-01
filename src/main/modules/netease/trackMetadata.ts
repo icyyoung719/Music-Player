@@ -1,6 +1,6 @@
-const fs = require('fs') as typeof import('fs')
-const path = require('path') as typeof import('path')
-const { app } = require('electron') as typeof import('electron')
+import * as fs from 'fs'
+import * as path from 'path'
+import { app } from 'electron'
 const { requestBuffer } = require('./httpClient') as {
   requestBuffer: (url: string, options?: { headers?: Record<string, string>; timeout?: number }) => Promise<Buffer>
 }
@@ -78,7 +78,7 @@ function normalizeTrackPathKey(filePath: string): string {
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
-async function ensureTrackMetadataLoaded() {
+export async function ensureTrackMetadataLoaded(): Promise<void> {
   if (trackMetadataLoaded) return
   trackMetadataLoaded = true
 
@@ -101,12 +101,12 @@ async function ensureTrackMetadataLoaded() {
   }
 }
 
-async function persistTrackMetadataStore() {
+export async function persistTrackMetadataStore(): Promise<void> {
   await fs.promises.mkdir(path.dirname(getTrackMetadataStorePath()), { recursive: true })
   await fs.promises.writeFile(getTrackMetadataStorePath(), JSON.stringify(trackMetadataStore, null, 2), 'utf8')
 }
 
-async function persistTrackMetadataForTask(task: DownloadTaskLike): Promise<void> {
+export async function persistTrackMetadataForTask(task: DownloadTaskLike): Promise<void> {
   if (!task || !task.filePath || task.status !== 'succeeded') return
 
   const sourceMetadata = task.songMetadata && typeof task.songMetadata === 'object' ? task.songMetadata : null
@@ -176,14 +176,4 @@ async function persistTrackMetadataForTask(task: DownloadTaskLike): Promise<void
   await persistTrackMetadataStore()
 }
 
-module.exports = {
-  trackMetadataStore,
-  ensureTrackMetadataLoaded,
-  persistTrackMetadataStore,
-  persistTrackMetadataForTask,
-  normalizeTrackPathKey,
-  getTrackMetadataStorePath,
-  getTrackCoverDirPath
-}
-
-export {}
+export { trackMetadataStore, normalizeTrackPathKey, getTrackMetadataStorePath, getTrackCoverDirPath }

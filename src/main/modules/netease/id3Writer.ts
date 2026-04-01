@@ -1,5 +1,5 @@
-const fs = require('fs') as typeof import('fs')
-const path = require('path') as typeof import('path')
+import * as fs from 'fs'
+import * as path from 'path'
 
 type EmbeddedTagMetadata = {
   title?: string
@@ -110,7 +110,7 @@ function stripLeadingId3Tag(audioBuffer: Buffer): Buffer {
   return audioBuffer.slice(totalSize)
 }
 
-async function writeId3TagsToMp3(
+export async function writeId3TagsToMp3(
   filePath: string,
   metadata: EmbeddedTagMetadata,
   coverBuffer: Buffer | null,
@@ -275,7 +275,7 @@ function buildFlacPicturePayload(imageBuffer: Buffer | null, mimeType: string): 
   ])
 }
 
-async function writeFlacTagsToFlac(
+export async function writeFlacTagsToFlac(
   filePath: string,
   metadata: EmbeddedTagMetadata,
   coverBuffer: Buffer | null,
@@ -321,7 +321,7 @@ async function writeFlacTagsToFlac(
   return commentPayload.length > 0 || picturePayload.length > 0
 }
 
-async function writeEmbeddedTags(
+export async function writeEmbeddedTags(
   filePath: string,
   metadata: EmbeddedTagMetadata,
   coverBuffer: Buffer | null,
@@ -337,10 +337,3 @@ async function writeEmbeddedTags(
   return false
 }
 
-module.exports = {
-  writeId3TagsToMp3,
-  writeFlacTagsToFlac,
-  writeEmbeddedTags
-}
-
-export {}

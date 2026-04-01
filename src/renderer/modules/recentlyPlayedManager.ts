@@ -1,10 +1,58 @@
-// @ts-nocheck
 import { formatTime, getFileNameFromPath, normalizePath } from './trackUtils.js'
 
 const RECENTLY_PLAYED_STORAGE_KEY = 'musicPlayer.recentlyPlayed.v1'
 const RECENTLY_PLAYED_LIMIT = 50
 
-function safeReadStorage() {
+type RecentlyPlayedRecord = {
+  key: string
+  filePath: string
+  title: string
+  artist: string
+  album: string
+  duration: number | null
+  coverDataUrl: string
+  playedAt: number
+}
+
+type PlaybackStartedPayload = {
+  filePath?: string
+  trackKey?: string
+  playedAt?: number
+  metadata?: {
+    title?: string
+    artist?: string
+    album?: string
+    duration?: number
+    coverDataUrl?: string
+  }
+  track?: {
+    name?: string
+    metadataCache?: {
+      artist?: string
+      album?: string
+      duration?: number
+      coverDataUrl?: string
+    }
+  }
+}
+
+type EventBusLike = {
+  emit: (eventName: string, payload?: unknown) => void
+  on: (eventName: string, handler: (payload?: unknown) => void) => void
+}
+
+type RecentlyPlayedDom = {
+  listEl?: HTMLElement | null
+  countEl?: HTMLElement | null
+  clearBtn?: HTMLElement | null
+}
+
+type RecentlyPlayedManagerOptions = {
+  dom?: RecentlyPlayedDom
+  eventBus?: EventBusLike
+}
+
+function safeReadStorage(): RecentlyPlayedRecord[] {
   try {
     const raw = localStorage.getItem(RECENTLY_PLAYED_STORAGE_KEY)
     if (!raw) return []
@@ -15,7 +63,7 @@ function safeReadStorage() {
   }
 }
 
-function safeWriteStorage(items) {
+function safeWriteStorage(items: RecentlyPlayedRecord[]): void {
   try {
     localStorage.setItem(RECENTLY_PLAYED_STORAGE_KEY, JSON.stringify(items))
   } catch {
@@ -23,24 +71,25 @@ function safeWriteStorage(items) {
   }
 }
 
-function sanitizeDuration(value) {
+function sanitizeDuration(value: unknown): number | null {
   const parsed = Number(value)
   return Number.isFinite(parsed) && parsed > 0 ? parsed : null
 }
 
-function normalizeRecord(item) {
+function normalizeRecord(item: unknown): RecentlyPlayedRecord | null {
   if (!item || typeof item !== 'object') return null
-  const filePath = String(item.filePath || '').trim()
+  const source = item as Record<string, unknown>
+  const filePath = String(source.filePath || '').trim()
   if (!filePath) return null
 
-  const key = String(item.key || `path:${normalizePath(filePath)}`).trim()
+  const key = String(source.key || `path:${normalizePath(filePath)}`).trim()
   if (!key) return null
 
-  const title = String(item.title || '').trim() || getFileNameFromPath(filePath)
-  const artist = String(item.artist || '').trim()
-  const album = String(item.album || '').trim()
-  const coverDataUrl = String(item.coverDataUrl || '').trim()
-  const playedAt = Number(item.playedAt)
+  const title = String(source.title || '').trim() || getFileNameFromPath(filePath)
+  const artist = String(source.artist || '').trim()
+  const album = String(source.album || '').trim()
+  const coverDataUrl = String(source.coverDataUrl || '').trim()
+  const playedAt = Number(source.playedAt)
 
   return {
     key,
@@ -48,15 +97,15 @@ function normalizeRecord(item) {
     title,
     artist,
     album,
-    duration: sanitizeDuration(item.duration),
+    duration: sanitizeDuration(source.duration),
     coverDataUrl,
     playedAt: Number.isFinite(playedAt) && playedAt > 0 ? playedAt : Date.now()
   }
 }
 
-function dedupeAndTrim(records) {
-  const result = []
-  const seen = new Set()
+function dedupeAndTrim(records: unknown[]): RecentlyPlayedRecord[] {
+  const result: RecentlyPlayedRecord[] = []
+  const seen = new Set<string>()
 
   for (const item of records) {
     const normalized = normalizeRecord(item)
@@ -70,17 +119,17 @@ function dedupeAndTrim(records) {
   return result
 }
 
-export function createRecentlyPlayedManager(options) {
+export function createRecentlyPlayedManager(options: RecentlyPlayedManagerOptions) {
   const {
     dom,
     eventBus
   } = options || {}
 
-  let records = dedupeAndTrim(
+  let records: RecentlyPlayedRecord[] = dedupeAndTrim(
     safeReadStorage().sort((a, b) => (Number(b?.playedAt) || 0) - (Number(a?.playedAt) || 0))
   )
 
-  function emit(eventName, payload) {
+  function emit(eventName: string, payload?: unknown): void {
     if (!eventBus) return
     eventBus.emit(eventName, payload)
   }
@@ -90,27 +139,28 @@ export function createRecentlyPlayedManager(options) {
     emit('recently-played:updated', { count: records.length })
   }
 
-  function getAll() {
+  function getAll(): RecentlyPlayedRecord[] {
     return records.slice()
   }
 
-  function recordFromPlayback(payload) {
-    const filePath = String(payload?.filePath || '').trim()
+  function recordFromPlayback(payload?: unknown): void {
+    const typedPayload = (payload || {}) as PlaybackStartedPayload
+    const filePath = String(typedPayload.filePath || '').trim()
     if (!filePath) return
 
-    const key = String(payload?.trackKey || `path:${normalizePath(filePath)}`).trim()
+    const key = String(typedPayload.trackKey || `path:${normalizePath(filePath)}`).trim()
     if (!key) return
 
-    const metadata = payload?.metadata || {}
+    const metadata = typedPayload.metadata || {}
     const nextRecord = normalizeRecord({
       key,
       filePath,
-      title: metadata.title || payload?.track?.name || getFileNameFromPath(filePath),
-      artist: metadata.artist || payload?.track?.metadataCache?.artist || '',
-      album: metadata.album || payload?.track?.metadataCache?.album || '',
-      duration: metadata.duration || payload?.track?.metadataCache?.duration,
-      coverDataUrl: metadata.coverDataUrl || payload?.track?.metadataCache?.coverDataUrl || '',
-      playedAt: payload?.playedAt || Date.now()
+      title: metadata.title || typedPayload.track?.name || getFileNameFromPath(filePath),
+      artist: metadata.artist || typedPayload.track?.metadataCache?.artist || '',
+      album: metadata.album || typedPayload.track?.metadataCache?.album || '',
+      duration: metadata.duration || typedPayload.track?.metadataCache?.duration,
+      coverDataUrl: metadata.coverDataUrl || typedPayload.track?.metadataCache?.coverDataUrl || '',
+      playedAt: typedPayload.playedAt || Date.now()
     })
 
     if (!nextRecord) return
@@ -119,7 +169,7 @@ export function createRecentlyPlayedManager(options) {
     persistAndNotify()
   }
 
-  function removeByKey(key) {
+  function removeByKey(key: string): void {
     const normalizedKey = String(key || '').trim()
     if (!normalizedKey) return
     const before = records.length
@@ -128,13 +178,13 @@ export function createRecentlyPlayedManager(options) {
     persistAndNotify()
   }
 
-  function clear() {
+  function clear(): void {
     if (!records.length) return
     records = []
     persistAndNotify()
   }
 
-  function render() {
+  function render(): void {
     if (!dom?.listEl) return
 
     dom.listEl.innerHTML = ''
@@ -198,7 +248,7 @@ export function createRecentlyPlayedManager(options) {
       appendBtn.className = 'playlist-track-remove-btn'
       appendBtn.textContent = '加入当前列表'
       appendBtn.title = '加入当前播放列表'
-      appendBtn.addEventListener('click', (event) => {
+      appendBtn.addEventListener('click', (event: Event) => {
         event.stopPropagation()
         emit('playback:queue.append', {
           tracks: [
@@ -222,7 +272,7 @@ export function createRecentlyPlayedManager(options) {
       removeBtn.className = 'playlist-track-remove-btn danger'
       removeBtn.textContent = '移除'
       removeBtn.title = '从最近播放移除'
-      removeBtn.addEventListener('click', (event) => {
+      removeBtn.addEventListener('click', (event: Event) => {
         event.stopPropagation()
         removeByKey(item.key)
       })
@@ -266,7 +316,7 @@ export function createRecentlyPlayedManager(options) {
     dom.listEl.appendChild(fragment)
   }
 
-  function init() {
+  function init(): void {
     records = dedupeAndTrim(
       safeReadStorage().sort((a, b) => (Number(b?.playedAt) || 0) - (Number(a?.playedAt) || 0))
     )

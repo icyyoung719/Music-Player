@@ -1,7 +1,7 @@
-const https = require('https') as typeof import('https')
-const http = require('http') as typeof import('http')
-const crypto = require('crypto') as typeof import('crypto')
 import type { IncomingHttpHeaders } from 'http'
+import * as https from 'https'
+import * as http from 'http'
+import * as crypto from 'crypto'
 const { logNetworkEvent, buildBinarySummary } = require('../logger') as {
   logNetworkEvent: (payload: {
     requestId?: string
@@ -35,7 +35,7 @@ type ExecuteResponse = {
   rawText: string
 }
 
-function createRequestId() {
+function createRequestId(): string {
   if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
   return `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
@@ -119,7 +119,7 @@ function executeRequest(url: string, options: RequestOptions = {}): Promise<Exec
   })
 }
 
-function requestJson(url: string, options: RequestOptions = {}): Promise<unknown> {
+export function requestJson<T = unknown>(url: string, options: RequestOptions = {}): Promise<T> {
   return executeRequest(url, options).then((response) => {
     let parsed: unknown = null
     try {
@@ -183,18 +183,18 @@ function requestJson(url: string, options: RequestOptions = {}): Promise<unknown
         binary: null
       }
     })
-    return parsed
+    return parsed as T
   })
 }
 
-function requestJsonWithMeta(
+export function requestJsonWithMeta<T = unknown>(
   url: string,
   options: RequestOptions = {}
-): Promise<{ statusCode: number; headers: IncomingHttpHeaders; data: unknown; rawText: string }> {
+): Promise<{ statusCode: number; headers: IncomingHttpHeaders; data: T | null; rawText: string }> {
   return executeRequest(url, options).then((response) => {
-    let data: unknown = null
+    let data: T | null = null
     try {
-      data = JSON.parse(response.rawText)
+      data = JSON.parse(response.rawText) as T
     } catch {
       data = null
     }
@@ -225,7 +225,7 @@ function requestJsonWithMeta(
   })
 }
 
-function requestBuffer(url: string, options: RequestOptions = {}): Promise<Buffer> {
+export function requestBuffer(url: string, options: RequestOptions = {}): Promise<Buffer> {
   return executeRequest(url, options).then((response) => {
     const binary = buildBinarySummary(response.rawBuffer, response.responseHeaders)
 
@@ -272,6 +272,3 @@ function requestBuffer(url: string, options: RequestOptions = {}): Promise<Buffe
   })
 }
 
-module.exports = { requestJson, requestJsonWithMeta, requestBuffer }
-
-export {}
