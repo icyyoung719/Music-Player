@@ -1,13 +1,39 @@
-export function createDownloadService(options = {}) {
-  const {
-    electronAPI,
-    eventBus
-  } = options
+type Unsubscribe = () => void
 
-  const taskStateMap = new Map()
-  const listeners = new Set()
+type DownloadTask = {
+  id?: string
+  [key: string]: unknown
+}
 
-  function notify(task) {
+type DownloadServiceListener = (task: DownloadTask) => void
+
+type DownloadApi = {
+  neteaseDownloadTaskList?: () => Promise<any>
+  neteaseDownloadSongTask?: (payload: unknown) => Promise<any>
+  neteaseDownloadBySongId?: (payload: unknown) => Promise<any>
+  neteaseDownloadPlaylistById?: (payload: unknown) => Promise<any>
+  neteaseDownloadTaskCancel?: (payload: { id: string }) => Promise<any>
+  neteaseOpenDownloadDir?: (payload: { dirType: string }) => Promise<any>
+  neteaseClearTempDownloads?: () => Promise<any>
+  onNeteaseDownloadTaskUpdate?: (listener: (task: DownloadTask) => void) => void
+}
+
+type EventBusLike = {
+  emit?: (eventName: string, payload?: unknown) => void
+}
+
+type DownloadServiceOptions = {
+  electronAPI?: DownloadApi
+  eventBus?: EventBusLike
+}
+
+export function createDownloadService(options: DownloadServiceOptions = {}) {
+  const { electronAPI, eventBus } = options
+
+  const taskStateMap = new Map<string, DownloadTask>()
+  const listeners = new Set<DownloadServiceListener>()
+
+  function notify(task: DownloadTask): void {
     if (!task?.id) return
     taskStateMap.set(task.id, task)
 
@@ -19,12 +45,10 @@ export function createDownloadService(options = {}) {
       }
     }
 
-    if (eventBus) {
-      eventBus.emit('download:task.updated', { task })
-    }
+    eventBus?.emit?.('download:task.updated', { task })
   }
 
-  function onTaskUpdate(listener) {
+  function onTaskUpdate(listener: DownloadServiceListener): Unsubscribe {
     if (typeof listener !== 'function') return () => {}
     listeners.add(listener)
     return () => {
@@ -32,11 +56,11 @@ export function createDownloadService(options = {}) {
     }
   }
 
-  function getTasks() {
+  function getTasks(): DownloadTask[] {
     return Array.from(taskStateMap.values())
   }
 
-  async function loadTasks() {
+  async function loadTasks(): Promise<any> {
     if (!electronAPI?.neteaseDownloadTaskList) return { ok: false, error: 'API_UNAVAILABLE' }
     const res = await electronAPI.neteaseDownloadTaskList()
     if (res?.ok && Array.isArray(res.tasks)) {
@@ -48,7 +72,7 @@ export function createDownloadService(options = {}) {
     return res
   }
 
-  async function createSongTask(payload) {
+  async function createSongTask(payload: unknown): Promise<any> {
     if (!electronAPI?.neteaseDownloadSongTask) return { ok: false, error: 'API_UNAVAILABLE' }
     const res = await electronAPI.neteaseDownloadSongTask(payload)
     if (res?.task) {
@@ -57,7 +81,7 @@ export function createDownloadService(options = {}) {
     return res
   }
 
-  async function createSongTaskById(payload) {
+  async function createSongTaskById(payload: unknown): Promise<any> {
     if (!electronAPI?.neteaseDownloadBySongId) return { ok: false, error: 'API_UNAVAILABLE' }
     const res = await electronAPI.neteaseDownloadBySongId(payload)
     if (res?.task) {
@@ -66,7 +90,7 @@ export function createDownloadService(options = {}) {
     return res
   }
 
-  async function createPlaylistTasks(payload) {
+  async function createPlaylistTasks(payload: unknown): Promise<any> {
     if (!electronAPI?.neteaseDownloadPlaylistById) return { ok: false, error: 'API_UNAVAILABLE' }
     const res = await electronAPI.neteaseDownloadPlaylistById(payload)
     if (Array.isArray(res?.tasks)) {
@@ -77,7 +101,7 @@ export function createDownloadService(options = {}) {
     return res
   }
 
-  async function cancelTask(taskId) {
+  async function cancelTask(taskId: string): Promise<any> {
     if (!electronAPI?.neteaseDownloadTaskCancel) return { ok: false, error: 'API_UNAVAILABLE' }
     const res = await electronAPI.neteaseDownloadTaskCancel({ id: taskId })
     if (res?.task) {
@@ -86,22 +110,20 @@ export function createDownloadService(options = {}) {
     return res
   }
 
-  async function openDir(dirType) {
+  async function openDir(dirType: string): Promise<any> {
     if (!electronAPI?.neteaseOpenDownloadDir) return { ok: false, error: 'API_UNAVAILABLE' }
     return electronAPI.neteaseOpenDownloadDir({ dirType })
   }
 
-  async function clearTemp() {
+  async function clearTemp(): Promise<any> {
     if (!electronAPI?.neteaseClearTempDownloads) return { ok: false, error: 'API_UNAVAILABLE' }
     return electronAPI.neteaseClearTempDownloads()
   }
 
-  function init() {
-    if (electronAPI?.onNeteaseDownloadTaskUpdate) {
-      electronAPI.onNeteaseDownloadTaskUpdate((task) => {
-        notify(task)
-      })
-    }
+  function init(): void {
+    electronAPI?.onNeteaseDownloadTaskUpdate?.((task) => {
+      notify(task)
+    })
   }
 
   return {

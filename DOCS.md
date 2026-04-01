@@ -173,8 +173,8 @@
 ### 2.3 模块组织策略
 
 - `renderer.js` 保持编排层职责。
-- 功能细节放在 `src/renderer/modules/*.js`。
-- 跨模块通信与共享状态访问放在 `src/renderer/core/*.js`。
+- 功能细节放在 `src/renderer/modules/*.(ts|js)`。
+- 跨模块通信与共享状态访问放在 `src/renderer/core/*.(ts|js)`。
 - main 侧按能力拆分到 `src/main/modules/*`。
 
 渲染层核心模块：

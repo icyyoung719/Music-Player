@@ -73,8 +73,8 @@
 - 渲染层壳：`src/renderer/index.html`
 - 渲染层启动：`src/renderer/bootstrap.ts`
 - 渲染层编排：`src/renderer/renderer.js`
-- 渲染层核心：`src/renderer/core/*.js`
-- 功能模块：`src/renderer/modules/*.js`
+- 渲染层核心：`src/renderer/core/*.(ts|js)`
+- 功能模块：`src/renderer/modules/*.(ts|js)`
 
 ## 数据与存储
 

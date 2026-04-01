@@ -1,4 +1,4 @@
-export function collectRendererDom(doc = document) {
+export function collectRendererDom(doc: Document = document) {
   const homePageEl = doc.getElementById('homePage')
   const songPageEl = doc.getElementById('songPage')
   const homeNowCoverImgEl = doc.getElementById('homeNowCoverImg')
