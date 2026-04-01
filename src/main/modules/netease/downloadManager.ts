@@ -1,24 +1,27 @@
-// @ts-nocheck
-const fs = require('fs')
-const path = require('path')
-const https = require('https')
-const http = require('http')
-const crypto = require('crypto')
-const os = require('os')
-const { BrowserWindow } = require('electron')
-const { buildAuthHeaders, ensureAuthStateLoaded } = require('./authManager')
+import fs from 'fs'
+import path from 'path'
+import https from 'https'
+import http from 'http'
+import crypto from 'crypto'
+import os from 'os'
+import { BrowserWindow } from 'electron'
+
+const { buildAuthHeaders, ensureAuthStateLoaded } = require('./authManager') as {
+  buildAuthHeaders: (extra?: Record<string, string>) => Record<string, string>
+  ensureAuthStateLoaded: () => Promise<void>
+}
 const {
   resolveSongUrlWithLevelFallback,
   fetchSongMetadataById,
   isNeteaseAudioHost,
   sanitizeSongId,
   resolveAudioExtByResolvedUrl
-} = require('./neteaseApi')
+} = require('./neteaseApi') as any
 const {
   trackMetadataStore,
   ensureTrackMetadataLoaded,
   persistTrackMetadataForTask
-} = require('./trackMetadata')
+} = require('./trackMetadata') as any
 
 const MAX_DOWNLOAD_CONCURRENCY = 2
 const DEFAULT_DOWNLOAD_DIR = path.join(os.homedir(), 'Music', 'MyPlayerDownloads')
@@ -26,58 +29,57 @@ const DOWNLOAD_DIR_SONGS = 'Songs'
 const DOWNLOAD_DIR_TEMP = 'Temp'
 const DOWNLOAD_DIR_LISTS = 'Lists'
 
-const downloadTasks = new Map()
-const pendingTaskIds = []
-const activeDownloadHandles = new Map()
+const downloadTasks = new Map<string, any>()
+const pendingTaskIds: string[] = []
+const activeDownloadHandles = new Map<string, any>()
 let activeDownloadCount = 0
 
 // ---------------------------------------------------------------------------
 // Utilities
 // ---------------------------------------------------------------------------
 
-function createTaskId() {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID()
-  return `${Date.now()}-${Math.random().toString(16).slice(2)}`
+function createTaskId(): string {
+  return typeof crypto.randomUUID === 'function' ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
-function safeFileName(name) {
-  return String(name || 'download')
+function safeFileName(name: unknown): string {
+  return String(name ?? 'download')
     .replace(/[\\/:*?"<>|]/g, '_')
     .trim() || 'download'
 }
 
-function safeFolderName(name, fallback = 'default') {
-  const value = safeFileName(name || fallback)
+function safeFolderName(name: unknown, fallback: string = 'default'): string {
+  const value = safeFileName(name ?? fallback)
   return value || fallback
 }
 
-function maybeAddFileExt(fileName, url) {
+function maybeAddFileExt(fileName: string, url: string): string {
   const hasExt = /\.[a-z0-9]{2,5}$/i.test(fileName)
   if (hasExt) return fileName
   try {
-    const pathname = new URL(url).pathname || ''
+    const pathname = new URL(url).pathname ?? ''
     const ext = path.extname(pathname)
     if (ext) return `${fileName}${ext}`
   } catch {
-    return fileName
+    // fall through
   }
   return fileName
 }
 
-function forceFileExt(fileName, ext) {
-  const normalizedExt = String(ext || '').replace(/^\./, '').trim().toLowerCase()
+function forceFileExt(fileName: string, ext: unknown): string {
+  const normalizedExt = String(ext ?? '').replace(/^\./, '').trim().toLowerCase()
   if (!normalizedExt) return fileName
 
-  const parsed = path.parse(String(fileName || '').trim())
-  const safeBase = parsed.name || parsed.base || 'download'
+  const parsed = path.parse(String(fileName ?? '').trim())
+  const safeBase = parsed.name ?? parsed.base ?? 'download'
   return `${safeBase}.${normalizedExt}`
 }
 
-function isAllowedDownloadHost(rawUrl) {
+function isAllowedDownloadHost(rawUrl: string): boolean {
   return isNeteaseAudioHost(rawUrl)
 }
 
-function shouldEmitTaskToast(task) {
+function shouldEmitTaskToast(task: any): boolean {
   return !Boolean(task?.silentToast)
 }
 
@@ -85,14 +87,14 @@ function shouldEmitTaskToast(task) {
 // Broadcast helpers
 // ---------------------------------------------------------------------------
 
-function emitGlobalToast(payload) {
-  const message = String(payload?.message || '').trim()
+function emitGlobalToast(payload: any): void {
+  const message = String(payload?.message ?? '').trim()
   if (!message) return
 
   const toastPayload = {
     id: createTaskId(),
     message,
-    level: String(payload?.level || 'info'),
+    level: String(payload?.level ?? 'info'),
     createdAt: Date.now(),
     ...payload
   }
@@ -104,7 +106,7 @@ function emitGlobalToast(payload) {
   }
 }
 
-function emitDownloadTaskUpdate(task) {
+function emitDownloadTaskUpdate(task: any): void {
   const payload = { ...task }
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
@@ -113,20 +115,26 @@ function emitDownloadTaskUpdate(task) {
   }
 }
 
-function listDownloadTasks() {
-  return Array.from(downloadTasks.values()).sort((a, b) => b.createdAt - a.createdAt)
+function listDownloadTasks(): any[] {
+  return Array.from(downloadTasks.values()).sort((a: any, b: any) => b.createdAt - a.createdAt)
 }
 
 // ---------------------------------------------------------------------------
 // Directory helpers
 // ---------------------------------------------------------------------------
 
-function getDownloadRootDir() {
+function getDownloadRootDir(): string {
   return DEFAULT_DOWNLOAD_DIR
 }
 
-function resolveDownloadDir(dirType, playlistName) {
-  const type = String(dirType || 'songs').trim().toLowerCase()
+interface DownloadDirInfo {
+  dirType: string
+  dirPath: string
+  playlistFolder?: string
+}
+
+function resolveDownloadDir(dirType: unknown, playlistName?: unknown): DownloadDirInfo {
+  const type = String(dirType ?? 'songs').trim().toLowerCase()
   const rootDir = getDownloadRootDir()
 
   if (type === 'temp') {
@@ -134,7 +142,7 @@ function resolveDownloadDir(dirType, playlistName) {
   }
 
   if (type === 'lists') {
-    const child = safeFolderName(playlistName || '未命名歌单', '未命名歌单')
+    const child = safeFolderName(playlistName ?? '未命名歌单', '未命名歌单')
     return {
       dirType: 'lists',
       dirPath: path.join(rootDir, DOWNLOAD_DIR_LISTS, child),
@@ -145,7 +153,7 @@ function resolveDownloadDir(dirType, playlistName) {
   return { dirType: 'songs', dirPath: path.join(rootDir, DOWNLOAD_DIR_SONGS) }
 }
 
-async function ensureDownloadBaseDirs() {
+async function ensureDownloadBaseDirs(): Promise<Record<string, string>> {
   const root = getDownloadRootDir()
   const songsDir = resolveDownloadDir('songs').dirPath
   const tempDir = resolveDownloadDir('temp').dirPath
@@ -164,12 +172,13 @@ async function ensureDownloadBaseDirs() {
   }
 }
 
-async function countFilesRecursive(targetDir) {
+async function countFilesRecursive(targetDir: string): Promise<number> {
   let count = 0
-  const stack = [targetDir]
+  const stack: string[] = [targetDir]
   while (stack.length > 0) {
     const current = stack.pop()
-    let entries = []
+    if (!current) continue
+    let entries: any[] = []
     try {
       entries = await fs.promises.readdir(current, { withFileTypes: true })
     } catch {
@@ -188,42 +197,43 @@ async function countFilesRecursive(targetDir) {
   return count
 }
 
-function normalizeFsPath(filePath) {
-  const resolved = path.resolve(String(filePath || ''))
+function normalizeFsPath(filePath: unknown): string {
+  const resolved = path.resolve(String(filePath ?? ''))
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
 }
 
-function isPathInside(basePath, targetPath) {
+function isPathInside(basePath: string, targetPath: string): boolean {
   const base = normalizeFsPath(basePath)
   const target = normalizeFsPath(targetPath)
   if (base === target) return true
   return target.startsWith(`${base}${path.sep}`)
 }
 
-function resolveDirTypeForPath(filePath, dirs) {
+function resolveDirTypeForPath(filePath: unknown, dirs: any): string {
   if (!filePath || !dirs) return ''
-  if (isPathInside(dirs.songs, filePath)) return 'songs'
-  if (isPathInside(dirs.temp, filePath)) return 'temp'
-  if (isPathInside(dirs.lists, filePath)) return 'lists'
+  if (isPathInside(String(filePath), dirs.songs)) return 'songs'
+  if (isPathInside(String(filePath), dirs.temp)) return 'temp'
+  if (isPathInside(String(filePath), dirs.lists)) return 'lists'
   return ''
 }
 
-async function fileExists(filePath) {
+async function fileExists(filePath: unknown): Promise<boolean> {
   if (!filePath) return false
   try {
-    await fs.promises.access(filePath, fs.constants.F_OK)
+    await fs.promises.access(String(filePath), fs.constants.F_OK)
     return true
   } catch {
     return false
   }
 }
 
-async function listFilesRecursive(rootDir) {
-  const files = []
-  const stack = [rootDir]
+async function listFilesRecursive(rootDir: string): Promise<string[]> {
+  const files: string[] = []
+  const stack: string[] = [rootDir]
   while (stack.length > 0) {
     const current = stack.pop()
-    let entries = []
+    if (!current) continue
+    let entries: any[] = []
     try {
       entries = await fs.promises.readdir(current, { withFileTypes: true })
     } catch {
@@ -242,8 +252,8 @@ async function listFilesRecursive(rootDir) {
   return files
 }
 
-async function locateSongBySongId(songId, dirs, options = {}) {
-  const id = String(songId || '').trim()
+async function locateSongBySongId(songId: unknown, dirs: any, options: any = {}): Promise<any> {
+  const id = String(songId ?? '').trim()
   if (!id) return null
 
   const includeTemp = options.includeTemp !== false
@@ -252,7 +262,7 @@ async function locateSongBySongId(songId, dirs, options = {}) {
 
   await ensureTrackMetadataLoaded()
   for (const [storedPath, metadata] of Object.entries(trackMetadataStore)) {
-    if (!metadata || String(metadata.songId || '').trim() !== id) continue
+    if (!metadata || String((metadata as any).songId ?? '').trim() !== id) continue
     if (!(await fileExists(storedPath))) continue
 
     const dirType = resolveDirTypeForPath(storedPath, dirs)
@@ -270,8 +280,8 @@ async function locateSongBySongId(songId, dirs, options = {}) {
   return null
 }
 
-async function locateSongByFileName(fileName, dirs, options = {}) {
-  const normalizedName = String(fileName || '').trim()
+async function locateSongByFileName(fileName: unknown, dirs: any, options: any = {}): Promise<any> {
+  const normalizedName = String(fileName ?? '').trim()
   if (!normalizedName) return null
 
   const includeTemp = options.includeTemp !== false
@@ -297,14 +307,14 @@ async function locateSongByFileName(fileName, dirs, options = {}) {
   return null
 }
 
-async function moveFileSafely(sourcePath, targetPath) {
+async function moveFileSafely(sourcePath: string, targetPath: string): Promise<string> {
   if (normalizeFsPath(sourcePath) === normalizeFsPath(targetPath)) return targetPath
 
   await fs.promises.mkdir(path.dirname(targetPath), { recursive: true })
   try {
     await fs.promises.rename(sourcePath, targetPath)
     return targetPath
-  } catch (err) {
+  } catch (err: any) {
     if (err?.code !== 'EXDEV' && err?.code !== 'EEXIST') {
       throw err
     }
@@ -319,7 +329,7 @@ async function moveFileSafely(sourcePath, targetPath) {
   return targetPath
 }
 
-async function copyFileSafely(sourcePath, targetPath) {
+async function copyFileSafely(sourcePath: string, targetPath: string): Promise<string> {
   if (normalizeFsPath(sourcePath) === normalizeFsPath(targetPath)) return targetPath
   await fs.promises.mkdir(path.dirname(targetPath), { recursive: true })
   if (!(await fileExists(targetPath))) {
@@ -328,7 +338,7 @@ async function copyFileSafely(sourcePath, targetPath) {
   return targetPath
 }
 
-function publishSkippedTask(task, infoMessage) {
+function publishSkippedTask(task: any, infoMessage: unknown): void {
   downloadTasks.set(task.id, task)
   emitDownloadTaskUpdate(task)
   if (infoMessage && shouldEmitTaskToast(task)) {
@@ -341,7 +351,13 @@ function publishSkippedTask(task, infoMessage) {
   }
 }
 
-async function reuseLocalSongForTask(payload, finalFileName, targetFilePath, dirs, dirResolved) {
+async function reuseLocalSongForTask(
+  payload: any,
+  finalFileName: string,
+  targetFilePath: string,
+  dirs: any,
+  dirResolved: DownloadDirInfo
+): Promise<any> {
   const mode = String(payload.downloadMode || 'song-download-only').trim()
   const isPlaySong = mode === 'song-temp-queue-only'
   const isSongDownload = mode === 'song-download-only' || mode === 'song-download-and-queue'
@@ -442,7 +458,7 @@ async function reuseLocalSongForTask(payload, finalFileName, targetFilePath, dir
 // Task creation helpers
 // ---------------------------------------------------------------------------
 
-function createSkippedTask(payload) {
+function createSkippedTask(payload: any): any {
   const id = createTaskId()
   const now = Date.now()
   return {
@@ -482,11 +498,11 @@ function createSkippedTask(payload) {
 // Download execution
 // ---------------------------------------------------------------------------
 
-function startDownloadWithProgress(task) {
+function startDownloadWithProgress(task: any): Promise<string> {
   return new Promise((resolve, reject) => {
     let redirected = 0
 
-    const run = (targetUrl) => {
+    const run = (targetUrl: string) => {
       const client = targetUrl.startsWith('https:') ? https : http
       const req = client.get(
         targetUrl,
@@ -550,7 +566,7 @@ function startDownloadWithProgress(task) {
   })
 }
 
-async function runSingleTask(taskId) {
+async function runSingleTask(taskId: string): Promise<void> {
   const task = downloadTasks.get(taskId)
   if (!task || task.status !== 'pending') return
 
@@ -577,7 +593,7 @@ async function runSingleTask(taskId) {
         taskStatus: task.status
       })
     }
-  } catch (err) {
+  } catch (err: any) {
     const isCanceled = task.status === 'canceled'
     if (!isCanceled) {
       task.status = 'failed'
@@ -603,6 +619,7 @@ async function runSingleTask(taskId) {
 async function consumeDownloadQueue() {
   while (activeDownloadCount < MAX_DOWNLOAD_CONCURRENCY && pendingTaskIds.length > 0) {
     const nextTaskId = pendingTaskIds.shift()
+    if (!nextTaskId) continue
     activeDownloadCount++
 
     runSingleTask(nextTaskId)
@@ -614,7 +631,7 @@ async function consumeDownloadQueue() {
   }
 }
 
-async function createDownloadTask(payload) {
+async function createDownloadTask(payload: any): Promise<any> {
   await ensureDownloadBaseDirs()
 
   const fileNameInput = safeFileName(payload.fileName || `song-${payload.songId || Date.now()}`)
@@ -691,7 +708,7 @@ async function createDownloadTask(payload) {
   return { ok: true, task }
 }
 
-async function createSongDownloadTaskFromId(payload) {
+async function createSongDownloadTaskFromId(payload: any): Promise<any> {
   await ensureAuthStateLoaded()
 
   const songId = sanitizeSongId(payload?.songId)
@@ -701,7 +718,7 @@ async function createSongDownloadTaskFromId(payload) {
 
   const level = String(payload?.level || 'exhigh').trim() || 'exhigh'
 
-  const resolveResult = await resolveSongUrlWithLevelFallback(songId, level)
+  const resolveResult: any = await resolveSongUrlWithLevelFallback(songId, level)
   if (!resolveResult.ok || !resolveResult.resolved?.url) {
     return {
       ok: false,
@@ -752,7 +769,7 @@ async function createSongDownloadTaskFromId(payload) {
   }
 }
 
-function cancelDownloadTask(id) {
+function cancelDownloadTask(id: string): any {
   const task = downloadTasks.get(id)
   if (!task) return { ok: false, error: 'TASK_NOT_FOUND' }
 

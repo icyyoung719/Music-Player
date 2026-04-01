@@ -1,5 +1,4 @@
-// @ts-nocheck
-function formatTaskStatus(status) {
+function formatTaskStatus(status: unknown): string {
   switch (status) {
     case 'pending':
       return '排队中'
@@ -14,16 +13,16 @@ function formatTaskStatus(status) {
     case 'canceled':
       return '已取消'
     default:
-      return status || '未知'
+      return String(status ?? '未知')
   }
 }
 
-function normalizeId(raw) {
-  const text = String(raw || '').trim()
+function normalizeId(raw: unknown): string | null {
+  const text = String(raw ?? '').trim()
   return /^\d{1,20}$/.test(text) ? text : null
 }
 
-export function createDownloadManager(options) {
+export function createDownloadManager(options: any): { init: () => void } {
   const {
     electronAPI,
     neteaseDatabaseService,
@@ -41,21 +40,21 @@ export function createDownloadManager(options) {
   const handledQueueTaskIds = new Set()
   const handledSaveTaskIds = new Set()
 
-  let resolvedSong = null
-  let resolvedPlaylist = null
+  let resolvedSong: any = null
+  let resolvedPlaylist: any = null
 
-  function emit(eventName, payload) {
+  function emit(eventName: string, payload: any): void {
     if (!eventBus) return
     eventBus.emit(eventName, payload)
   }
 
-  async function request(eventName, payload) {
+  async function request(eventName: string, payload: any): Promise<any> {
     if (!eventBus) return undefined
     return eventBus.request(eventName, payload)
   }
 
-  function escapeHtml(value) {
-    return String(value || '')
+  function escapeHtml(value: unknown): string {
+    return String(value ?? '')
       .replace(/&/g, '&amp;')
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
@@ -63,37 +62,37 @@ export function createDownloadManager(options) {
       .replace(/'/g, '&#39;')
   }
 
-  function formatDuration(durationMs) {
-    const totalSeconds = Math.max(0, Math.floor(Number(durationMs || 0) / 1000))
+  function formatDuration(durationMs: unknown): string {
+    const totalSeconds = Math.max(0, Math.floor(Number(durationMs ?? 0) / 1000))
     const minutes = Math.floor(totalSeconds / 60)
     const seconds = totalSeconds % 60
     return totalSeconds > 0 ? `${minutes}:${String(seconds).padStart(2, '0')}` : '--:--'
   }
 
-  function formatCount(value) {
-    const numeric = Number(value || 0)
+  function formatCount(value: unknown): string {
+    const numeric = Number(value ?? 0)
     if (!Number.isFinite(numeric) || numeric <= 0) return '0'
     return new Intl.NumberFormat('zh-CN').format(numeric)
   }
 
-  function renderPreviewMessage(container, text, isError = false) {
+  function renderPreviewMessage(container: any, text: unknown, isError: boolean = false): void {
     if (!container) return
     container.classList.remove('download-preview-rich')
     container.classList.toggle('is-error', isError)
     container.innerHTML = `<div class="download-preview-message">${escapeHtml(text)}</div>`
   }
 
-  function buildMetaChips(values) {
+  function buildMetaChips(values: any[]): string {
     return values
-      .filter((value) => String(value || '').trim())
-      .map((value) => `<span class="download-preview-chip">${escapeHtml(value)}</span>`)
+      .filter((value: any) => String(value || '').trim())
+      .map((value: any) => `<span class="download-preview-chip">${escapeHtml(value)}</span>`)
       .join('')
   }
 
-  function buildDetailRows(rows) {
+  function buildDetailRows(rows: any[]): string {
     return rows
-      .filter((row) => row && String(row.value || '').trim())
-      .map((row) => `
+      .filter((row: any) => row && String(row.value || '').trim())
+      .map((row: any) => `
         <div class="download-preview-detail-row">
           <span class="download-preview-detail-label">${escapeHtml(row.label)}</span>
           <span class="download-preview-detail-value">${escapeHtml(row.value)}</span>
@@ -102,13 +101,13 @@ export function createDownloadManager(options) {
       .join('')
   }
 
-  function buildTrackRows(tracks, maxItems = 8) {
+  function buildTrackRows(tracks: any[], maxItems: number = 8): string {
     const items = Array.isArray(tracks) ? tracks.slice(0, maxItems) : []
     if (!items.length) return ''
 
     return `
       <div class="download-preview-track-list">
-        ${items.map((track, index) => {
+        ${items.map((track: any, index: number) => {
           const meta = [track.artist || '未知歌手', track.album || '未知专辑', formatDuration(track.durationMs)]
             .filter((value) => String(value || '').trim())
             .join(' · ')
@@ -127,7 +126,7 @@ export function createDownloadManager(options) {
     `
   }
 
-  function renderRichPreview(container, payload) {
+  function renderRichPreview(container: any, payload: any): void {
     if (!container) return
 
     const {
@@ -165,7 +164,7 @@ export function createDownloadManager(options) {
     `
   }
 
-  function renderSongPreviewCard(item) {
+  function renderSongPreviewCard(item: any): void {
     renderRichPreview(dom.songPreview, {
       title: item.name || `歌曲 ${item.id || ''}`,
       subtitle: item.artist || '未知歌手',
@@ -180,7 +179,7 @@ export function createDownloadManager(options) {
     })
   }
 
-  function renderPlaylistPreviewCard(item) {
+  function renderPlaylistPreviewCard(item: any): void {
     const remainingCount = Math.max(0, Number(item.trackCount || 0) - Math.min(Array.isArray(item.tracks) ? item.tracks.length : 0, 8))
     const tagText = Array.isArray(item.tags) ? item.tags.join(' / ') : ''
 
@@ -204,32 +203,32 @@ export function createDownloadManager(options) {
     })
   }
 
-  function setSongPreview(text, isError = false) {
+  function setSongPreview(text: unknown, isError: boolean = false): void {
     renderPreviewMessage(dom.songPreview, text, isError)
   }
 
-  function setPlaylistPreview(text, isError = false) {
+  function setPlaylistPreview(text: unknown, isError: boolean = false): void {
     renderPreviewMessage(dom.playlistPreview, text, isError)
   }
 
-  function getCurrentQuality() {
+  function getCurrentQuality(): string {
     return dom.qualitySelect ? String(dom.qualitySelect.value || 'exhigh') : 'exhigh'
   }
 
-  function persistQuality() {
+  function persistQuality(): void {
     if (!dom.qualitySelect) return
     localStorage.setItem(QUALITY_STORAGE_KEY, getCurrentQuality())
   }
 
-  function restoreQuality() {
+  function restoreQuality(): void {
     if (!dom.qualitySelect) return
     const cached = String(localStorage.getItem(QUALITY_STORAGE_KEY) || '').trim()
     if (!cached) return
-    const hasOption = Array.from(dom.qualitySelect.options).some((item) => item.value === cached)
+    const hasOption = Array.from(dom.qualitySelect.options).some((item: any) => item.value === cached)
     if (hasOption) dom.qualitySelect.value = cached
   }
 
-  async function resolveSong() {
+  async function resolveSong(): Promise<void> {
     const songId = normalizeId(dom.songIdInput?.value)
     if (!songId) {
       setSongPreview('请输入有效歌曲 ID。', true)
@@ -250,7 +249,7 @@ export function createDownloadManager(options) {
     renderSongPreviewCard(res.item)
   }
 
-  async function resolvePlaylist() {
+  async function resolvePlaylist(): Promise<void> {
     const playlistId = normalizeId(dom.playlistIdInput?.value)
     if (!playlistId) {
       setPlaylistPreview('请输入有效歌单 ID。', true)
@@ -271,14 +270,14 @@ export function createDownloadManager(options) {
     renderPlaylistPreviewCard(res.item)
   }
 
-  function updateTask(task) {
+  function updateTask(task: any): void {
     if (!task?.id) return
     taskStateMap.set(task.id, task)
     renderTasks()
     handlePostTaskHooks(task)
   }
 
-  async function handlePostTaskHooks(task) {
+  async function handlePostTaskHooks(task: any): Promise<void> {
     if (task.status !== 'succeeded') return
 
     if (task.addToQueue && !handledQueueTaskIds.has(task.id)) {
@@ -315,7 +314,7 @@ export function createDownloadManager(options) {
     })
   }
 
-  function shouldShowTask(task, filter) {
+  function shouldShowTask(task: any, filter: string): boolean {
     if (filter === 'all') return true
     if (filter === 'active') {
       return task.status === 'pending' || task.status === 'downloading'
@@ -323,20 +322,20 @@ export function createDownloadManager(options) {
     return task.status === filter
   }
 
-  function renderTasks() {
+  function renderTasks(): void {
     if (!dom.taskList) return
 
     const filter = dom.taskFilterSelect ? dom.taskFilterSelect.value : 'all'
     const tasks = Array.from(taskStateMap.values())
-      .sort((a, b) => b.createdAt - a.createdAt)
-      .filter((item) => shouldShowTask(item, filter))
+      .sort((a: any, b: any) => b.createdAt - a.createdAt)
+      .filter((item: any) => shouldShowTask(item, filter))
 
     if (!tasks.length) {
       dom.taskList.innerHTML = '<div class="netease-task-empty">暂无下载任务</div>'
       return
     }
 
-    dom.taskList.innerHTML = tasks.map((task) => {
+    dom.taskList.innerHTML = tasks.map((task: any) => {
       const progress = task.totalBytes > 0
         ? `${Math.round((task.receivedBytes / task.totalBytes) * 100)}%`
         : `${Math.round((task.progress || 0) * 100)}%`
@@ -360,7 +359,7 @@ export function createDownloadManager(options) {
     }).join('')
   }
 
-  async function loadTasks() {
+  async function loadTasks(): Promise<void> {
     const res = downloadService
       ? await downloadService.loadTasks()
       : await electronAPI.neteaseDownloadTaskList()
@@ -374,7 +373,7 @@ export function createDownloadManager(options) {
     renderTasks()
   }
 
-  async function createSongTask(mode) {
+  async function createSongTask(mode: string): Promise<void> {
     const songId = normalizeId(dom.songIdInput?.value)
     if (!songId) {
       setSongPreview('请输入有效歌曲 ID。', true)
@@ -405,7 +404,7 @@ export function createDownloadManager(options) {
     setSongPreview(`任务已创建: ${res.task.id}`)
   }
 
-  async function createPlaylistTasks(mode) {
+  async function createPlaylistTasks(mode: string): Promise<void> {
     const playlistId = normalizeId(dom.playlistIdInput?.value)
     if (!playlistId) {
       setPlaylistPreview('请输入有效歌单 ID。', true)
@@ -439,7 +438,7 @@ export function createDownloadManager(options) {
     setPlaylistPreview(`已创建 ${res.createdCount || 0} 个任务${res.failedCount ? `，失败 ${res.failedCount}` : ''}`)
   }
 
-  async function cancelTask(taskId) {
+  async function cancelTask(taskId: string): Promise<void> {
     if (!taskId) return
     const res = downloadService
       ? await downloadService.cancelTask(taskId)
@@ -449,7 +448,7 @@ export function createDownloadManager(options) {
     }
   }
 
-  async function openDir(dirType) {
+  async function openDir(dirType: string): Promise<void> {
     const res = downloadService
       ? await downloadService.openDir(dirType)
       : await electronAPI.neteaseOpenDownloadDir({ dirType })
@@ -458,7 +457,7 @@ export function createDownloadManager(options) {
     }
   }
 
-  async function clearTemp() {
+  async function clearTemp(): Promise<void> {
     const res = downloadService
       ? await downloadService.clearTemp()
       : await electronAPI.neteaseClearTempDownloads()
@@ -470,7 +469,7 @@ export function createDownloadManager(options) {
     emit('toast:push', { level: 'info', message: `已清理缓存歌曲 ${res.removedFiles || 0} 首` })
   }
 
-  function bindEvents() {
+  function bindEvents(): void {
     dom.songResolveBtn?.addEventListener('click', resolveSong)
     dom.playlistResolveBtn?.addEventListener('click', resolvePlaylist)
 
@@ -490,21 +489,21 @@ export function createDownloadManager(options) {
     dom.qualitySelect?.addEventListener('change', persistQuality)
     dom.taskFilterSelect?.addEventListener('change', renderTasks)
 
-    dom.songIdInput?.addEventListener('keydown', (event) => {
+    dom.songIdInput?.addEventListener('keydown', (event: KeyboardEvent) => {
       if (event.key === 'Enter') {
         event.preventDefault()
         resolveSong()
       }
     })
 
-    dom.playlistIdInput?.addEventListener('keydown', (event) => {
+    dom.playlistIdInput?.addEventListener('keydown', (event: KeyboardEvent) => {
       if (event.key === 'Enter') {
         event.preventDefault()
         resolvePlaylist()
       }
     })
 
-    dom.taskList?.addEventListener('click', (event) => {
+    dom.taskList?.addEventListener('click', (event: Event) => {
       const target = event.target
       if (!(target instanceof HTMLElement)) return
       if (target.dataset.action !== 'cancel-task') return
@@ -515,17 +514,17 @@ export function createDownloadManager(options) {
     })
   }
 
-  function init() {
+  function init(): void {
     restoreQuality()
     bindEvents()
     loadTasks()
 
     if (downloadService) {
-      downloadService.onTaskUpdate((task) => {
+      downloadService.onTaskUpdate((task: any) => {
         updateTask(task)
       })
     } else if (electronAPI?.onNeteaseDownloadTaskUpdate) {
-      electronAPI.onNeteaseDownloadTaskUpdate((task) => {
+      electronAPI.onNeteaseDownloadTaskUpdate((task: any) => {
         updateTask(task)
       })
     }

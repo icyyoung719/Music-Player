@@ -1,39 +1,85 @@
-// @ts-nocheck
-function safeText(value) {
+type CloudPlaylist = {
+  id: string
+  platform: string
+  source: string
+  platformPlaylistId: string
+  name: string
+  creator: {
+    userId: string
+    nickname: string
+  }
+  coverUrl: string
+  description: string
+  trackCount: number
+  playCount: number
+  tags: string[]
+  collected: boolean
+  sourceKinds: string[]
+  updatedAt: string
+}
+
+type CloudPlaylistManagerOptions = {
+  electronAPI?: {
+    neteaseAuthGetAccountSummary?: (payload: { refresh: boolean }) => Promise<any>
+    neteaseCloudPlaylistList?: () => Promise<{ ok?: boolean; data?: unknown[] }>
+    neteaseUserPlaylists?: () => Promise<{ ok?: boolean; data?: unknown[] }>
+    neteaseCloudPlaylistSaveRef?: (payload: CloudPlaylist) => Promise<{ ok?: boolean; error?: string }>
+    neteaseCloudPlaylistRemoveRef?: (payload: { platformPlaylistId: string }) => Promise<{ ok?: boolean; error?: string }>
+    onNeteaseAuthStateUpdate?: (handler: (payload?: any) => void) => void
+  }
+  neteaseDatabaseService?: {
+    listCloudPlaylists?: () => Promise<{ ok?: boolean; data?: unknown[] }>
+    getUserPlaylists?: () => Promise<{ ok?: boolean; data?: unknown[] }>
+    saveCloudPlaylistRef?: (payload: CloudPlaylist) => Promise<{ ok?: boolean; error?: string }>
+    removeCloudPlaylistRef?: (payload: { platformPlaylistId: string }) => Promise<{ ok?: boolean; error?: string }>
+  }
+  eventBus?: {
+    on: (eventName: string, handler: (payload?: any) => void) => void
+  }
+  dom?: {
+    listEl?: HTMLElement | null
+    refreshBtn?: HTMLElement | null
+  }
+  onOpenPlaylistDetail?: (playlistId: string, name: string, options: { source: string; cloudPlaylist: CloudPlaylist | null }) => void
+  onStateChanged?: (state: { loading: boolean; playlists: CloudPlaylist[]; isLoggedIn: boolean; lastError: string }) => void
+}
+
+function safeText(value: unknown): string {
   return String(value || '').trim()
 }
 
-function normalizeCloudPlaylist(item) {
+function normalizeCloudPlaylist(item: unknown): CloudPlaylist | null {
   if (!item || typeof item !== 'object') return null
-  const playlistId = safeText(item.platformPlaylistId || item.id)
+  const source = item as Record<string, any>
+  const playlistId = safeText(source.platformPlaylistId || source.id)
   if (!/^\d{1,20}$/.test(playlistId)) return null
 
-  const sourceKinds = Array.isArray(item.sourceKinds)
-    ? item.sourceKinds.map((value) => safeText(value)).filter(Boolean)
+  const sourceKinds = Array.isArray(source.sourceKinds)
+    ? source.sourceKinds.map((value) => safeText(value)).filter(Boolean)
     : []
 
   return {
-    id: safeText(item.id) || `netease-cloud-${playlistId}`,
-    platform: safeText(item.platform) || 'netease',
-    source: safeText(item.source) || 'cloud',
+    id: safeText(source.id) || `netease-cloud-${playlistId}`,
+    platform: safeText(source.platform) || 'netease',
+    source: safeText(source.source) || 'cloud',
     platformPlaylistId: playlistId,
-    name: safeText(item.name) || `歌单 ${playlistId}`,
+    name: safeText(source.name) || `歌单 ${playlistId}`,
     creator: {
-      userId: safeText(item?.creator?.userId),
-      nickname: safeText(item?.creator?.nickname)
+      userId: safeText(source.creator?.userId),
+      nickname: safeText(source.creator?.nickname)
     },
-    coverUrl: safeText(item.coverUrl),
-    description: safeText(item.description),
-    trackCount: Number(item.trackCount || 0),
-    playCount: Number(item.playCount || 0),
-    tags: Array.isArray(item.tags) ? item.tags.map((tag) => safeText(tag)).filter(Boolean) : [],
-    collected: item.collected !== false,
+    coverUrl: safeText(source.coverUrl),
+    description: safeText(source.description),
+    trackCount: Number(source.trackCount || 0),
+    playCount: Number(source.playCount || 0),
+    tags: Array.isArray(source.tags) ? source.tags.map((tag) => safeText(tag)).filter(Boolean) : [],
+    collected: source.collected !== false,
     sourceKinds,
-    updatedAt: safeText(item.updatedAt)
+    updatedAt: safeText(source.updatedAt)
   }
 }
 
-function renderSourceTag(sourceKinds) {
+function renderSourceTag(sourceKinds: string[] | undefined): string {
   const tags = Array.isArray(sourceKinds) ? sourceKinds : []
   if (tags.includes('daily')) return '日推'
   if (tags.includes('playback')) return '播放来源'
@@ -42,7 +88,7 @@ function renderSourceTag(sourceKinds) {
   return '云端'
 }
 
-export function createCloudPlaylistManager(options = {}) {
+export function createCloudPlaylistManager(options: CloudPlaylistManagerOptions = {}) {
   const {
     electronAPI,
     neteaseDatabaseService,
@@ -55,42 +101,44 @@ export function createCloudPlaylistManager(options = {}) {
   if (!dom?.listEl) {
     return { init() {} }
   }
+  const listEl = dom.listEl
+  const refreshBtn = dom.refreshBtn
 
   const state = {
     loading: false,
-    playlists: [],
+    playlists: [] as CloudPlaylist[],
     isLoggedIn: false,
     lastError: ''
   }
 
-  function emitState() {
+  function emitState(): void {
     if (typeof onStateChanged === 'function') {
       onStateChanged({ ...state })
     }
   }
 
-  function setListLoading() {
-    dom.listEl.innerHTML = '<div class="menu-item menu-item-empty">正在加载云端歌单...</div>'
+  function setListLoading(): void {
+    listEl.innerHTML = '<div class="menu-item menu-item-empty">正在加载云端歌单...</div>'
   }
 
-  function renderList() {
+  function renderList(): void {
     if (state.loading) {
       setListLoading()
       return
     }
 
     if (!state.isLoggedIn) {
-      dom.listEl.innerHTML = '<div class="menu-item menu-item-empty">登录后可同步云端歌单</div>'
+      listEl.innerHTML = '<div class="menu-item menu-item-empty">登录后可同步云端歌单</div>'
       return
     }
 
     if (state.lastError) {
-      dom.listEl.innerHTML = `<div class="menu-item menu-item-empty">${state.lastError}</div>`
+      listEl.innerHTML = `<div class="menu-item menu-item-empty">${state.lastError}</div>`
       return
     }
 
     if (!state.playlists.length) {
-      dom.listEl.innerHTML = '<div class="menu-item menu-item-empty">暂无云端歌单</div>'
+      listEl.innerHTML = '<div class="menu-item menu-item-empty">暂无云端歌单</div>'
       return
     }
 
@@ -112,10 +160,10 @@ export function createCloudPlaylistManager(options = {}) {
       })
       .join('')
 
-    dom.listEl.innerHTML = html
+    listEl.innerHTML = html
   }
 
-  async function refreshLoginState() {
+  async function refreshLoginState(): Promise<void> {
     if (!electronAPI?.neteaseAuthGetAccountSummary) {
       state.isLoggedIn = false
       return
@@ -125,9 +173,11 @@ export function createCloudPlaylistManager(options = {}) {
     state.isLoggedIn = Boolean(summary?.ok && (summary?.state?.isLoggedIn || summary?.account?.isLoggedIn))
   }
 
-  function mergePlaylists(input) {
-    const dedupMap = new Map()
-    for (const item of input.map(normalizeCloudPlaylist).filter(Boolean)) {
+  function mergePlaylists(input: unknown[]): CloudPlaylist[] {
+    const dedupMap = new Map<string, CloudPlaylist>()
+    for (const raw of input) {
+      const item = normalizeCloudPlaylist(raw)
+      if (!item) continue
       const key = item.platformPlaylistId
       const existing = dedupMap.get(key)
       if (!existing) {
@@ -147,7 +197,7 @@ export function createCloudPlaylistManager(options = {}) {
     return Array.from(dedupMap.values())
   }
 
-  async function listLocalRefs() {
+  async function listLocalRefs(): Promise<{ ok?: boolean; data?: unknown[]; error?: string }> {
     if (neteaseDatabaseService?.listCloudPlaylists) {
       return neteaseDatabaseService.listCloudPlaylists()
     }
@@ -159,7 +209,7 @@ export function createCloudPlaylistManager(options = {}) {
     return { ok: false, error: 'API_UNAVAILABLE' }
   }
 
-  async function syncFromAccount() {
+  async function syncFromAccount(): Promise<{ ok?: boolean; data?: unknown[]; error?: string }> {
     if (neteaseDatabaseService?.getUserPlaylists) {
       return neteaseDatabaseService.getUserPlaylists()
     }
@@ -171,7 +221,7 @@ export function createCloudPlaylistManager(options = {}) {
     return { ok: false, error: 'API_UNAVAILABLE' }
   }
 
-  async function refreshCloudPlaylists() {
+  async function refreshCloudPlaylists(): Promise<void> {
     state.loading = true
     state.lastError = ''
     renderList()
@@ -201,7 +251,7 @@ export function createCloudPlaylistManager(options = {}) {
     emitState()
   }
 
-  async function saveCloudPlaylistReference(payload) {
+  async function saveCloudPlaylistReference(payload: unknown): Promise<{ ok?: boolean; error?: string }> {
     const safePayload = normalizeCloudPlaylist(payload)
     if (!safePayload) return { ok: false, error: 'INVALID_PLAYLIST_ID' }
 
@@ -216,7 +266,7 @@ export function createCloudPlaylistManager(options = {}) {
     return { ok: false, error: 'API_UNAVAILABLE' }
   }
 
-  async function removeCloudPlaylistReference(payload) {
+  async function removeCloudPlaylistReference(payload: { platformPlaylistId?: string; playlistId?: string; id?: string }): Promise<{ ok?: boolean; error?: string }> {
     const playlistId = safeText(payload?.platformPlaylistId || payload?.playlistId || payload?.id)
     if (!/^\d{1,20}$/.test(playlistId)) {
       return { ok: false, error: 'INVALID_PLAYLIST_ID' }
@@ -233,8 +283,8 @@ export function createCloudPlaylistManager(options = {}) {
     return { ok: false, error: 'API_UNAVAILABLE' }
   }
 
-  function bindEvents() {
-    dom.listEl.addEventListener('click', (event) => {
+  function bindEvents(): void {
+    listEl.addEventListener('click', (event: MouseEvent) => {
       const target = event.target
       if (!(target instanceof HTMLElement)) return
       const button = target.closest('[data-cloud-playlist-id]')
@@ -251,7 +301,7 @@ export function createCloudPlaylistManager(options = {}) {
       }
     })
 
-    dom.refreshBtn?.addEventListener('click', () => {
+    refreshBtn?.addEventListener('click', () => {
       refreshCloudPlaylists()
     })
 
@@ -276,7 +326,7 @@ export function createCloudPlaylistManager(options = {}) {
     }
   }
 
-  async function init() {
+  async function init(): Promise<void> {
     bindEvents()
     await refreshCloudPlaylists()
   }

@@ -1,4 +1,3 @@
-// @ts-nocheck
 import { initTheme } from './modules/theme.js'
 import { createShortcutManager } from './modules/shortcutManager.js'
 import { createSavedPlaylistManager } from './modules/savedPlaylistManager.js'
@@ -25,7 +24,11 @@ import { createEventBridgeManager } from './core/eventBridgeManager.js'
 
 const SHORTCUT_STORAGE_KEY = 'musicPlayer.shortcuts.v1'
 const SEEK_SECONDS = 5
-const shortcutActions = {
+interface ShortcutAction {
+  readonly label: string
+  readonly defaultKey: string
+}
+const shortcutActions: Record<string, ShortcutAction> = {
   togglePlay: { label: '播放 / 暂停', defaultKey: 'Space' },
   seekBackward: { label: `快退 ${SEEK_SECONDS} 秒`, defaultKey: 'ArrowLeft' },
   seekForward: { label: `快进 ${SEEK_SECONDS} 秒`, defaultKey: 'ArrowRight' },
@@ -42,14 +45,14 @@ const shortcutActions = {
 
 const eventBus = createEventBus()
 
-function showHomeView(viewManager, view) {
+function showHomeView(viewManager: any, view: string): void {
   viewManager.showHomeView(view)
   if (view === 'recently-played') {
     eventBus.emit('view:recently-played.render')
   }
 }
 
-function createServices(electronAPI) {
+function createServices(electronAPI: any): Record<string, any> {
   const neteaseDatabaseService = createNeteaseDatabaseService({ electronAPI })
   const downloadService = createDownloadService({ electronAPI, eventBus })
   downloadService.init()
@@ -60,17 +63,17 @@ function createServices(electronAPI) {
   }
 }
 
-function setupRenderer() {
-  const electronAPI = window.electronAPI
-  const dom = collectRendererDom(document)
+function setupRenderer(): void {
+  const electronAPI = (window as any).electronAPI
+  const dom: any = collectRendererDom(document)
   const dialogManager = createDialogManager({ doc: document })
 
-  let playbackController = null
-  let savedPlaylistManager = null
-  let cloudPlaylistManager = null
-  let neteasePlaylistDetailManager = null
+  let playbackController: any = null
+  let savedPlaylistManager: any = null
+  let cloudPlaylistManager: any = null
+  let neteasePlaylistDetailManager: any = null
 
-  const viewManager = createViewManager({
+  const viewManager: any = createViewManager({
     dom: {
       homePageEl: dom.homePageEl,
       songPageEl: dom.songPageEl,
@@ -181,7 +184,7 @@ function setupRenderer() {
     neteaseDatabaseService,
     eventBus,
     dom: dom.cloudPlaylistDom,
-    onOpenPlaylistDetail: (playlistId, playlistName, options = {}) => {
+    onOpenPlaylistDetail: (playlistId, playlistName, options: any = {}) => {
       neteasePlaylistDetailManager?.openByPlaylistId(playlistId, playlistName, options)
     }
   })
@@ -215,7 +218,7 @@ function setupRenderer() {
       userDetailEl: dom.homeUserDetailEl,
       avatarEl: dom.homeUserAvatarEl,
       loginBtnEl: dom.homeLoginBtn
-    },
+    } as any,
     onRequestLoginWindow: () => {
       electronAPI?.neteaseAuthOpenWindow?.({ page: 'email' })
     }
@@ -245,10 +248,10 @@ function setupRenderer() {
     playbackController,
     savedPlaylistManager,
     recentlyPlayedManager,
-    toastManager,
+    toastManager: toastManager as any,
     viewManager,
     settingsManager,
-    playlistCacheService,
+    playlistCacheService: playlistCacheService as any,
     seekSeconds: SEEK_SECONDS,
     doc: document
   })

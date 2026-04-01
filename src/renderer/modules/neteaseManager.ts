@@ -1,5 +1,13 @@
-// @ts-nocheck
-export function createNeteaseManager(options) {
+type NeteaseManagerOptions = {
+  electronAPI?: any
+  neteaseDatabaseService?: any
+  downloadService?: any
+  dom?: any
+  eventBus?: any
+  onAppendDownloadedTrack?: (track: { path: string; name: string }) => void
+}
+
+export function createNeteaseManager(options: NeteaseManagerOptions) {
   const {
     electronAPI,
     neteaseDatabaseService,
@@ -13,36 +21,36 @@ export function createNeteaseManager(options) {
     return { init() {} }
   }
 
-  let lastResolved = null
-  let authState = null
+  let lastResolved: { type: 'song' | 'playlist'; id: string; item: any } | null = null
+  let authState: any = null
   let qrKey = ''
   let qrLoginUrl = ''
-  let qrPollTimer = null
-  const taskStateMap = new Map()
-  const autoQueueTaskIds = new Set()
+  let qrPollTimer: ReturnType<typeof setInterval> | null = null
+  const taskStateMap = new Map<string, any>()
+  const autoQueueTaskIds = new Set<string>()
 
-  function setResult(text, isError = false) {
+  function setResult(text: string, isError = false): void {
     dom.result.textContent = text
     dom.result.style.color = isError ? '#cf3f3f' : ''
   }
 
-  function setAuthStatus(text, isError = false) {
+  function setAuthStatus(text: string, isError = false): void {
     if (!dom.authStatus) return
     dom.authStatus.textContent = text
     dom.authStatus.style.color = isError ? '#cf3f3f' : ''
   }
 
-  function normalizeId(raw) {
+  function normalizeId(raw: unknown): string | null {
     const text = String(raw || '').trim()
     if (!/^\d{1,20}$/.test(text)) return null
     return text
   }
 
-  function getType() {
+  function getType(): 'song' | 'playlist' {
     return dom.type && dom.type.value === 'playlist' ? 'playlist' : 'song'
   }
 
-  function renderSong(item) {
+  function renderSong(item: any): void {
     const durationSec = Math.floor((item.durationMs || 0) / 1000)
     const min = Math.floor(durationSec / 60)
     const sec = durationSec % 60
@@ -53,9 +61,9 @@ export function createNeteaseManager(options) {
     )
   }
 
-  function renderPlaylist(item) {
+  function renderPlaylist(item: any): void {
     const preview = Array.isArray(item.tracks)
-      ? item.tracks.slice(0, 5).map((track, index) => `${index + 1}. ${track.name} - ${track.artist || '未知'}`).join('  |  ')
+      ? item.tracks.slice(0, 5).map((track: any, index: number) => `${index + 1}. ${track.name} - ${track.artist || '未知'}`).join('  |  ')
       : ''
 
     setResult(
@@ -63,7 +71,7 @@ export function createNeteaseManager(options) {
     )
   }
 
-  function formatTaskStatus(task) {
+  function formatTaskStatus(task: any): string {
     if (!task) return '未知'
     switch (task.status) {
       case 'pending':
@@ -81,7 +89,7 @@ export function createNeteaseManager(options) {
     }
   }
 
-  function renderTasks() {
+  function renderTasks(): void {
     if (!dom.taskList) return
 
     const tasks = Array.from(taskStateMap.values()).sort((a, b) => b.createdAt - a.createdAt)
@@ -112,7 +120,7 @@ export function createNeteaseManager(options) {
     dom.taskList.innerHTML = html
   }
 
-  function applyAuthStateToForm(state) {
+  function applyAuthStateToForm(state: any): void {
     if (!state) return
     authState = state
 
@@ -126,7 +134,7 @@ export function createNeteaseManager(options) {
     setAuthStatus(`授权状态: ${loginHint} / ${cookieHint} / ${tokenHint}`)
   }
 
-  function renderQrPreview(dataUrl, link) {
+  function renderQrPreview(dataUrl: string, link: string): void {
     if (dom.authQrLink) {
       dom.authQrLink.textContent = link || '二维码登录链接将在这里显示'
     }
@@ -209,7 +217,7 @@ export function createNeteaseManager(options) {
     }
   }
 
-  function startQrPolling() {
+  function startQrPolling(): void {
     if (qrPollTimer) return
     if (!qrKey) {
       setAuthStatus('请先生成二维码。', true)
@@ -223,13 +231,13 @@ export function createNeteaseManager(options) {
     checkQrStatusOnce()
   }
 
-  function stopQrPolling() {
+  function stopQrPolling(): void {
     if (!qrPollTimer) return
     clearInterval(qrPollTimer)
     qrPollTimer = null
   }
 
-  function openQrLink() {
+  function openQrLink(): void {
     if (!qrLoginUrl) {
       setAuthStatus('请先生成二维码链接。', true)
       return
@@ -410,7 +418,7 @@ export function createNeteaseManager(options) {
     setAuthStatus('授权信息已清空。')
   }
 
-  function updateTask(task) {
+  function updateTask(task: any): void {
     if (!task || !task.id) return
     taskStateMap.set(task.id, task)
     renderTasks()
@@ -453,7 +461,7 @@ export function createNeteaseManager(options) {
     renderTasks()
   }
 
-  async function createSongIdDownloadTask(autoQueue) {
+  async function createSongIdDownloadTask(autoQueue: boolean): Promise<void> {
     if (!dom.songIdDownloadInput) return
 
     const songId = normalizeId(dom.songIdDownloadInput.value)
@@ -578,7 +586,7 @@ export function createNeteaseManager(options) {
     setResult(`任务已创建: ${res.task.id}`)
   }
 
-  async function cancelTask(taskId) {
+  async function cancelTask(taskId: string): Promise<void> {
     if (!taskId) return
     const res = downloadService
       ? await downloadService.cancelTask(taskId)
@@ -590,7 +598,7 @@ export function createNeteaseManager(options) {
     updateTask(res.task)
   }
 
-  function init() {
+  function init(): void {
     dom.searchBtn.addEventListener('click', resolve)
     dom.openBtn.addEventListener('click', openPage)
 
@@ -640,7 +648,7 @@ export function createNeteaseManager(options) {
       dom.directDownloadBtn.addEventListener('click', directDownload)
     }
 
-    dom.input.addEventListener('keydown', (e) => {
+    dom.input.addEventListener('keydown', (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.preventDefault()
         resolve()
@@ -648,7 +656,7 @@ export function createNeteaseManager(options) {
     })
 
     if (dom.authPasswordInput) {
-      dom.authPasswordInput.addEventListener('keydown', (e) => {
+      dom.authPasswordInput.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter') {
           e.preventDefault()
           loginByEmail()
@@ -657,7 +665,7 @@ export function createNeteaseManager(options) {
     }
 
     if (dom.authCaptchaInput) {
-      dom.authCaptchaInput.addEventListener('keydown', (e) => {
+      dom.authCaptchaInput.addEventListener('keydown', (e: KeyboardEvent) => {
         if (e.key === 'Enter') {
           e.preventDefault()
           loginByPhoneCaptcha()
@@ -679,7 +687,7 @@ export function createNeteaseManager(options) {
     }
 
     if (dom.taskList) {
-      dom.taskList.addEventListener('click', (e) => {
+      dom.taskList.addEventListener('click', (e: MouseEvent) => {
         const target = e.target
         if (!(target instanceof HTMLElement)) return
         if (target.dataset.action !== 'cancel-task') return
@@ -691,17 +699,17 @@ export function createNeteaseManager(options) {
     }
 
     if (downloadService) {
-      downloadService.onTaskUpdate((task) => {
+      downloadService.onTaskUpdate((task: any) => {
         updateTask(task)
       })
     } else if (electronAPI && electronAPI.onNeteaseDownloadTaskUpdate) {
-      electronAPI.onNeteaseDownloadTaskUpdate((task) => {
+      electronAPI.onNeteaseDownloadTaskUpdate((task: any) => {
         updateTask(task)
       })
     }
 
     if (electronAPI && electronAPI.onNeteaseAuthStateUpdate) {
-      electronAPI.onNeteaseAuthStateUpdate((payload) => {
+      electronAPI.onNeteaseAuthStateUpdate((payload: any) => {
         if (payload?.state) {
           applyAuthStateToForm(payload.state)
         }

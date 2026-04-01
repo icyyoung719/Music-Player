@@ -1,12 +1,99 @@
-// @ts-nocheck
-function formatDuration(ms) {
+type PlaylistTrack = {
+  songId?: string
+  title?: string
+  artist?: string
+  album?: string
+  durationMs?: number
+  coverUrl?: string
+}
+
+type PlaylistDetail = {
+  id?: string
+  name?: string
+  creator?: string
+  trackCount?: number
+  playCount?: number
+  coverUrl?: string
+  description?: string
+  tags?: string[]
+  tracks?: PlaylistTrack[]
+}
+
+type DetailResponse = {
+  ok?: boolean
+  data?: PlaylistDetail
+  message?: string
+  error?: string
+  createdCount?: number
+  task?: { id?: string }
+}
+
+type PlaylistDetailDom = {
+  overlay?: HTMLElement | null
+  closeBtn?: HTMLElement | null
+  trackList?: HTMLElement | null
+  status?: HTMLElement | null
+  cover?: HTMLElement | null
+  coverText?: HTMLElement | null
+  collectBtn?: HTMLButtonElement | null
+  name?: HTMLElement | null
+  sub?: HTMLElement | null
+  playBtn?: HTMLElement | null
+  downloadBtn?: HTMLElement | null
+  saveLocalBtn?: HTMLElement | null
+}
+
+type PlaylistDetailOptions = {
+  electronAPI?: {
+    neteaseDownloadSongTask?: (payload: Record<string, unknown>) => Promise<DetailResponse>
+    neteaseDownloadPlaylistById?: (payload: Record<string, unknown>) => Promise<DetailResponse>
+    neteasePlaylistDetail?: (payload: { playlistId: string }) => Promise<DetailResponse>
+  }
+  neteaseDatabaseService?: {
+    getPlaylistDetail?: (playlistId: string) => Promise<DetailResponse>
+  }
+  downloadService?: {
+    createSongTask?: (payload: Record<string, unknown>) => Promise<DetailResponse>
+    createPlaylistTasks?: (payload: Record<string, unknown>) => Promise<DetailResponse>
+  }
+  eventBus?: {
+    emit: (eventName: string, payload?: unknown) => void
+  }
+  dom?: PlaylistDetailDom
+  requestDownloadStrategy?: () => Promise<string>
+  getCloudPlaylistManager?: () => {
+    saveCloudPlaylistReference: (payload: Record<string, unknown>) => Promise<{ ok?: boolean; message?: string; error?: string }>
+    removeCloudPlaylistReference: (payload: { platformPlaylistId: string }) => Promise<{ ok?: boolean; message?: string; error?: string }>
+  } | null
+}
+
+type CloudPlaylistReference = {
+  id: string
+  platform: 'netease'
+  source: 'cloud'
+  platformPlaylistId: string
+  name: string
+  creator: {
+    userId: string
+    nickname: string
+  }
+  coverUrl: string
+  description: string
+  trackCount: number
+  playCount: number
+  tags: string[]
+  collected: boolean
+  sourceKinds: string[]
+}
+
+function formatDuration(ms: unknown): string {
   const sec = Math.max(0, Math.floor(Number(ms || 0) / 1000))
   const min = Math.floor(sec / 60)
   const rem = sec % 60
   return `${min}:${String(rem).padStart(2, '0')}`
 }
 
-function formatPlayCount(value) {
+function formatPlayCount(value: unknown): string {
   const count = Number(value || 0)
   if (!Number.isFinite(count) || count <= 0) return '0'
   if (count >= 100000000) return `${(count / 100000000).toFixed(1)} 亿`
@@ -14,7 +101,7 @@ function formatPlayCount(value) {
   return String(Math.floor(count))
 }
 
-function escapeHtml(raw) {
+function escapeHtml(raw: unknown): string {
   return String(raw || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -23,28 +110,45 @@ function escapeHtml(raw) {
     .replace(/'/g, '&#39;')
 }
 
-function coverStyle(url) {
+function coverStyle(url: unknown): string {
   const clean = String(url || '').trim()
   if (!clean) return ''
   return `background-image:url('${clean.replace(/'/g, "\\'")}')`
 }
 
-export function createNeteasePlaylistDetailManager(options = {}) {
+export function createNeteasePlaylistDetailManager(options: PlaylistDetailOptions = {}) {
   const {
     electronAPI,
     neteaseDatabaseService,
     downloadService,
     eventBus,
-    dom,
+    dom: domRaw,
     requestDownloadStrategy,
     getCloudPlaylistManager
   } = options
 
-  if (!dom?.overlay || !dom?.closeBtn || !dom?.trackList) {
+  if (!domRaw?.overlay || !domRaw?.closeBtn || !domRaw?.trackList) {
     return { init() {}, openByPlaylistId() {} }
   }
 
-  const state = {
+  const dom: PlaylistDetailDom & {
+    overlay: HTMLElement
+    closeBtn: HTMLElement
+    trackList: HTMLElement
+  } = domRaw as PlaylistDetailDom & {
+    overlay: HTMLElement
+    closeBtn: HTMLElement
+    trackList: HTMLElement
+  }
+
+  const state: {
+    playlistId: string
+    playlistName: string
+    requestToken: number
+    sourceKind: string
+    playlistData: PlaylistDetail | null
+    collected: boolean
+  } = {
     playlistId: '',
     playlistName: '',
     requestToken: 0,
@@ -53,13 +157,13 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     collected: false
   }
 
-  function setStatus(text, isError = false) {
+  function setStatus(text: string, isError = false): void {
     if (!dom.status) return
     dom.status.textContent = String(text || '')
     dom.status.classList.toggle('is-error', Boolean(isError))
   }
 
-  function setCover(url, fallbackText = '♪') {
+  function setCover(url: string | undefined, fallbackText = '♪'): void {
     if (!dom.cover) return
     const style = coverStyle(url)
     if (style) {
@@ -74,22 +178,22 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     if (dom.coverText) dom.coverText.textContent = fallbackText
   }
 
-  function openOverlay() {
+  function openOverlay(): void {
     dom.overlay.classList.add('visible')
     dom.overlay.setAttribute('aria-hidden', 'false')
   }
 
-  function closeOverlay() {
+  function closeOverlay(): void {
     dom.overlay.classList.remove('visible')
     dom.overlay.setAttribute('aria-hidden', 'true')
   }
 
-  function renderCollectButton() {
+  function renderCollectButton(): void {
     if (!dom.collectBtn) return
     dom.collectBtn.textContent = state.collected ? '取消收藏云端引用' : '收藏云端引用'
   }
 
-  function renderSummary(playlist) {
+  function renderSummary(playlist: PlaylistDetail): void {
     if (dom.name) {
       dom.name.textContent = playlist.name || `歌单 ${playlist.id || ''}`
     }
@@ -103,7 +207,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setCover(playlist.coverUrl, firstLetter)
   }
 
-  function renderTracks(tracks) {
+  function renderTracks(tracks: PlaylistTrack[] | undefined): void {
     const list = Array.isArray(tracks) ? tracks : []
     if (!list.length) {
       dom.trackList.innerHTML = '<div class="netease-search-empty">该歌单暂无可展示歌曲</div>'
@@ -143,7 +247,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     dom.trackList.innerHTML = html
   }
 
-  function createLazyQueueTrack(item) {
+  function createLazyQueueTrack(item: PlaylistTrack): Record<string, unknown> {
     const songId = String(item?.songId || '').trim()
     const title = String(item?.title || '').trim() || `歌曲 ${songId}`
     const artist = String(item?.artist || '').trim()
@@ -175,7 +279,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     }
   }
 
-  function getCurrentCloudReference() {
+  function getCurrentCloudReference(): CloudPlaylistReference | null {
     if (!state.playlistData) return null
     return {
       id: `netease-cloud-${state.playlistId}`,
@@ -197,7 +301,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     }
   }
 
-  async function playSongById(songId) {
+  async function playSongById(songId: string): Promise<void> {
     const id = String(songId || '').trim()
     if (!/^\d{1,20}$/.test(id)) {
       setStatus('无法播放：歌曲 ID 无效。', true)
@@ -225,7 +329,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setStatus(`已从第 ${index + 1} 首开始播放云端歌单（按需下载）。`)
   }
 
-  async function downloadSongById(songId) {
+  async function downloadSongById(songId: string): Promise<void> {
     const id = String(songId || '').trim()
     if (!/^\d{1,20}$/.test(id)) {
       setStatus('无法下载：歌曲 ID 无效。', true)
@@ -239,9 +343,9 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     }
 
     setStatus('正在创建歌曲下载任务...')
-    const res = downloadService
+    const res = downloadService?.createSongTask
       ? await downloadService.createSongTask(payload)
-      : await electronAPI.neteaseDownloadSongTask(payload)
+      : await electronAPI?.neteaseDownloadSongTask?.(payload)
 
     if (!res?.ok || !res?.task?.id) {
       setStatus(`创建下载任务失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
@@ -251,7 +355,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setStatus('下载任务创建成功，可在下载队列中查看进度。')
   }
 
-  async function playCurrentPlaylist() {
+  async function playCurrentPlaylist(): Promise<void> {
     const tracks = Array.isArray(state.playlistData?.tracks) ? state.playlistData.tracks : []
     if (!tracks.length || !eventBus) {
       setStatus('当前歌单暂无可播放歌曲。', true)
@@ -271,7 +375,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setStatus(`已开始播放云端歌单，共 ${queueTracks.length} 首（按需下载）。`)
   }
 
-  async function downloadCurrentPlaylist() {
+  async function downloadCurrentPlaylist(): Promise<void> {
     const id = String(state.playlistId || '').trim()
     if (!/^\d{1,20}$/.test(id)) {
       setStatus('无法下载：歌单 ID 无效。', true)
@@ -286,9 +390,9 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     }
 
     setStatus('正在创建歌单下载任务...')
-    const res = downloadService
+    const res = downloadService?.createPlaylistTasks
       ? await downloadService.createPlaylistTasks(payload)
-      : await electronAPI.neteaseDownloadPlaylistById(payload)
+      : await electronAPI?.neteaseDownloadPlaylistById?.(payload)
 
     if (!res?.ok) {
       setStatus(`创建歌单下载任务失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
@@ -298,7 +402,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setStatus(`歌单下载任务已创建：${res.createdCount || 0} 首。`)
   }
 
-  async function toggleCollectCurrentPlaylist() {
+  async function toggleCollectCurrentPlaylist(): Promise<void> {
     const reference = getCurrentCloudReference()
     if (!reference) {
       setStatus('当前歌单信息未就绪，请稍后再试。', true)
@@ -341,7 +445,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setStatus('已从云端歌单引用列表移除。')
   }
 
-  async function saveCurrentPlaylistToLocal() {
+  async function saveCurrentPlaylistToLocal(): Promise<void> {
     const id = String(state.playlistId || '').trim()
     if (!/^\d{1,20}$/.test(id)) {
       setStatus('无法处理：歌单 ID 无效。', true)
@@ -371,9 +475,9 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     }
 
     setStatus('正在下载并写入本地歌单...')
-    const res = downloadService
+    const res = downloadService?.createPlaylistTasks
       ? await downloadService.createPlaylistTasks(payload)
-      : await electronAPI.neteaseDownloadPlaylistById(payload)
+      : await electronAPI?.neteaseDownloadPlaylistById?.(payload)
 
     if (!res?.ok) {
       setStatus(`下载失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
@@ -383,7 +487,11 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setStatus(`下载任务已创建：${res.createdCount || 0} 首，完成后将写入本地歌单。`)
   }
 
-  async function openByPlaylistId(playlistId, playlistName = '', options = {}) {
+  async function openByPlaylistId(
+    playlistId: string,
+    playlistName = '',
+    options: { source?: string; cloudPlaylist?: { collected?: boolean } } = {}
+  ): Promise<void> {
     const id = String(playlistId || '').trim()
     if (!/^\d{1,20}$/.test(id)) {
       setStatus('无法查看详情：歌单 ID 无效。', true)
@@ -409,9 +517,9 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setStatus('正在加载歌单详情...')
 
     const token = ++state.requestToken
-    const response = neteaseDatabaseService
+    const response = neteaseDatabaseService?.getPlaylistDetail
       ? await neteaseDatabaseService.getPlaylistDetail(id)
-      : await electronAPI.neteasePlaylistDetail({ playlistId: id })
+      : await electronAPI?.neteasePlaylistDetail?.({ playlistId: id })
 
     if (token !== state.requestToken) return
 
@@ -451,12 +559,12 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     setStatus(`已加载 ${playlist.trackCount || 0} 首歌曲。`)
   }
 
-  function bindEvents() {
+  function bindEvents(): void {
     dom.closeBtn.addEventListener('click', () => {
       closeOverlay()
     })
 
-    dom.overlay.addEventListener('click', (event) => {
+    dom.overlay.addEventListener('click', (event: MouseEvent) => {
       if (event.target === dom.overlay) {
         closeOverlay()
       }
@@ -486,7 +594,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
       })
     }
 
-    dom.trackList.addEventListener('click', (event) => {
+    dom.trackList.addEventListener('click', (event: MouseEvent) => {
       const target = event.target
       if (!(target instanceof HTMLElement)) return
 
@@ -514,7 +622,7 @@ export function createNeteasePlaylistDetailManager(options = {}) {
     })
   }
 
-  function init() {
+  function init(): void {
     bindEvents()
   }
 

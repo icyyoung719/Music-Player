@@ -1,7 +1,6 @@
-// @ts-nocheck
 import { formatTime } from './trackUtils.js'
 
-export function createPlaybackUIController(options = {}) {
+export function createPlaybackUIController(options: any = {}): any {
   const {
     dom,
     electronAPI,
@@ -21,13 +20,13 @@ export function createPlaybackUIController(options = {}) {
 
   let isQueueOverlayOpen = false
 
-  function setPlayButtonState(isPlaying) {
+  function setPlayButtonState(isPlaying: boolean): void {
     if (!dom.playBtn) return
     dom.playBtn.textContent = isPlaying ? '⏸' : '▶'
     dom.playBtn.title = isPlaying ? '暂停' : '播放'
   }
 
-  function setBottomNowPlaying(title, artist) {
+  function setBottomNowPlaying(title: string, artist: string): void {
     if (dom.bottomTrackTitleEl) dom.bottomTrackTitleEl.textContent = title || '\u00a0'
     if (dom.bottomTrackArtistEl) dom.bottomTrackArtistEl.textContent = artist || '\u00a0'
     if (dom.homeNowTitleEl) dom.homeNowTitleEl.textContent = title || 'Little Busters!'
@@ -35,7 +34,7 @@ export function createPlaybackUIController(options = {}) {
     if (dom.homeFeaturedTitleEl && title) dom.homeFeaturedTitleEl.textContent = title
   }
 
-  function setBottomNowPlayingCover(coverDataUrl) {
+  function setBottomNowPlayingCover(coverDataUrl: string): void {
     if (!dom.bottomTrackCoverImgEl || !dom.bottomTrackCoverPlaceholderEl) return
 
     if (coverDataUrl) {
@@ -50,21 +49,21 @@ export function createPlaybackUIController(options = {}) {
     dom.bottomTrackCoverPlaceholderEl.style.display = 'inline'
   }
 
-  function openQueueOverlay() {
+  function openQueueOverlay(): void {
     if (!dom.queueOverlayEl) return
     isQueueOverlayOpen = true
     dom.queueOverlayEl.classList.add('visible')
     dom.queueOverlayEl.setAttribute('aria-hidden', 'false')
   }
 
-  function closeQueueOverlay() {
+  function closeQueueOverlay(): void {
     if (!dom.queueOverlayEl) return
     isQueueOverlayOpen = false
     dom.queueOverlayEl.classList.remove('visible')
     dom.queueOverlayEl.setAttribute('aria-hidden', 'true')
   }
 
-  function toggleQueueOverlay() {
+  function toggleQueueOverlay(): void {
     if (isQueueOverlayOpen) {
       closeQueueOverlay()
       return
@@ -72,11 +71,11 @@ export function createPlaybackUIController(options = {}) {
     openQueueOverlay()
   }
 
-  function getQueueOverlayOpenState() {
+  function getQueueOverlayOpenState(): boolean {
     return isQueueOverlayOpen
   }
 
-  function reportPlayerState() {
+  function reportPlayerState(): void {
     if (!electronAPI || !electronAPI.reportPlayerState) return
 
     const playlist = getPlaylist()
@@ -92,14 +91,14 @@ export function createPlaybackUIController(options = {}) {
     })
   }
 
-  function resetProgress() {
+  function resetProgress(): void {
     dom.progressBar.style.width = '0%'
     dom.progressContainer.style.setProperty('--progress', '0%')
     dom.currentTimeEl.textContent = '0:00'
     dom.totalTimeEl.textContent = '0:00'
   }
 
-  function updateProgressUIByRatio(ratio, currentTime) {
+  function updateProgressUIByRatio(ratio: number, currentTime: number): void {
     const safeRatio = Math.max(0, Math.min(1, ratio || 0))
     const pct = safeRatio * 100
     const pctText = pct + '%'
@@ -111,7 +110,7 @@ export function createPlaybackUIController(options = {}) {
     }
   }
 
-  function resetTrackMeta() {
+  function resetTrackMeta(): void {
     dom.trackTitle.textContent = '未选择歌曲'
     dom.trackArtist.textContent = ''
     dom.trackAlbum.textContent = ''
@@ -128,7 +127,7 @@ export function createPlaybackUIController(options = {}) {
     dom.coverPlaceholder.style.display = 'flex'
   }
 
-  function updatePlaylistUI() {
+  function updatePlaylistUI(): void {
     const playlist = getPlaylist()
     const currentIndex = getCurrentIndex()
 
@@ -141,7 +140,7 @@ export function createPlaybackUIController(options = {}) {
       return
     }
 
-    playlist.forEach((track, index) => {
+    playlist.forEach((track: any, index: number) => {
       if (typeof onHydrateTrack === 'function') {
         onHydrateTrack(index, track)
       }
@@ -151,7 +150,7 @@ export function createPlaybackUIController(options = {}) {
 
       const idxSpan = document.createElement('span')
       idxSpan.className = 'playlist-index'
-      idxSpan.textContent = index + 1
+      idxSpan.textContent = String(index + 1)
 
       const cover = document.createElement('span')
       cover.className = 'playlist-cover'
@@ -190,7 +189,7 @@ export function createPlaybackUIController(options = {}) {
       saveBtn.className = 'playlist-item-action'
       saveBtn.textContent = '添加到歌单'
       saveBtn.title = '添加到某个歌单'
-      saveBtn.addEventListener('click', async (e) => {
+      saveBtn.addEventListener('click', async (e: Event) => {
         e.stopPropagation()
         if (typeof onSaveTrack === 'function') {
           await onSaveTrack(index)
@@ -201,7 +200,7 @@ export function createPlaybackUIController(options = {}) {
       delBtn.className = 'playlist-item-action playlist-delete-btn'
       delBtn.textContent = '移除'
       delBtn.title = '从列表移除'
-      delBtn.addEventListener('click', (e) => {
+      delBtn.addEventListener('click', (e: Event) => {
         e.stopPropagation()
         if (typeof onRemoveTrack === 'function') {
           onRemoveTrack(index)

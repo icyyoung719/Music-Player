@@ -1,12 +1,68 @@
-// @ts-nocheck
-function mapSearchUiTypeToApi(uiType) {
+type SearchDom = {
+  keywordInput: HTMLInputElement
+  searchBtn: HTMLElement
+  resultList: HTMLElement
+  keywordType?: HTMLSelectElement | null
+  searchStatus?: HTMLElement | null
+  suggestList?: HTMLElement | null
+  prevBtn?: HTMLButtonElement | null
+  nextBtn?: HTMLButtonElement | null
+  pageInfo?: HTMLElement | null
+}
+
+type SearchResponse = {
+  ok?: boolean
+  data?: {
+    total?: number
+    hasMore?: boolean
+    items?: unknown[]
+    keywords?: string[]
+  }
+  message?: string
+  error?: string
+}
+
+type DownloadTask = {
+  id?: string
+  status?: string
+  filePath?: string
+  title?: string
+  songId?: string
+}
+
+type NeteaseSearchManagerOptions = {
+  electronAPI?: {
+    neteaseSearch?: (payload: Record<string, unknown>) => Promise<SearchResponse>
+    neteaseSearchSuggest?: (payload: { keywords: string }) => Promise<SearchResponse>
+    neteaseDownloadSongTask?: (payload: Record<string, unknown>) => Promise<any>
+    neteaseDownloadPlaylistById?: (payload: Record<string, unknown>) => Promise<any>
+    onNeteaseDownloadTaskUpdate?: (handler: (task: DownloadTask) => void) => void
+  }
+  neteaseDatabaseService?: {
+    search?: (payload: Record<string, unknown>) => Promise<SearchResponse>
+    suggest?: (payload: { keywords: string }) => Promise<SearchResponse>
+  }
+  downloadService?: {
+    createSongTask?: (payload: Record<string, unknown>) => Promise<any>
+    createPlaylistTasks?: (payload: Record<string, unknown>) => Promise<any>
+    onTaskUpdate?: (handler: (task: DownloadTask) => void) => void
+  }
+  dom?: Partial<SearchDom>
+  eventBus?: {
+    emit: (eventName: string, payload?: unknown) => void
+  }
+  onAppendDownloadedTrack?: (track: { path: string; name: string }) => void
+  onOpenPlaylistDetail?: (playlistId: string, playlistName: string) => void
+}
+
+function mapSearchUiTypeToApi(uiType: unknown): string {
   if (uiType === 'artist') return '100'
   if (uiType === 'playlist') return '1000'
   return '1'
 }
 
-function createDebounce(fn, delayMs) {
-  let timer = null
+function createDebounce(fn: () => void, delayMs: number): () => void {
+  let timer: ReturnType<typeof setTimeout> | null = null
   return (...args) => {
     if (timer) {
       clearTimeout(timer)
@@ -18,14 +74,14 @@ function createDebounce(fn, delayMs) {
   }
 }
 
-function formatDuration(ms) {
+function formatDuration(ms: unknown): string {
   const sec = Math.max(0, Math.floor(Number(ms || 0) / 1000))
   const min = Math.floor(sec / 60)
   const rem = sec % 60
   return `${min}:${String(rem).padStart(2, '0')}`
 }
 
-function formatPlayCount(value) {
+function formatPlayCount(value: unknown): string {
   const count = Number(value || 0)
   if (!Number.isFinite(count) || count <= 0) return '0'
   if (count >= 100000000) return `${(count / 100000000).toFixed(1)} 亿`
@@ -33,7 +89,7 @@ function formatPlayCount(value) {
   return String(Math.floor(count))
 }
 
-function escapeHtml(raw) {
+function escapeHtml(raw: unknown): string {
   return String(raw || '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
@@ -42,26 +98,30 @@ function escapeHtml(raw) {
     .replace(/'/g, '&#39;')
 }
 
-function coverStyle(url) {
+function coverStyle(url: unknown): string {
   const clean = String(url || '').trim()
   if (!clean) return ''
   return `background-image:url('${clean.replace(/'/g, "\\'")}')`
 }
 
-export function createNeteaseSearchManager(options) {
+export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions) {
   const {
     electronAPI,
     neteaseDatabaseService,
     downloadService,
-    dom,
+    dom: domRaw,
     eventBus,
     onAppendDownloadedTrack,
     onOpenPlaylistDetail
   } = options
 
-  if (!electronAPI || !dom?.keywordInput || !dom?.searchBtn || !dom?.resultList) {
+  if (!electronAPI || !domRaw?.keywordInput || !domRaw?.searchBtn || !domRaw?.resultList) {
     return { init() {} }
   }
+
+  const dom: SearchDom = domRaw as SearchDom
+  const api = electronAPI
+  const searchService = neteaseDatabaseService
 
   const state = {
     keywords: '',
@@ -75,18 +135,18 @@ export function createNeteaseSearchManager(options) {
 
   const autoQueueTaskIds = new Set()
 
-  function setSearchStatus(text, isError = false) {
+  function setSearchStatus(text: string, isError = false): void {
     if (!dom.searchStatus) return
     dom.searchStatus.textContent = text
     dom.searchStatus.classList.toggle('is-error', Boolean(isError))
   }
 
-  function readSearchForm() {
+  function readSearchForm(): void {
     state.keywords = String(dom.keywordInput.value || '').trim()
     state.type = mapSearchUiTypeToApi(dom.keywordType?.value)
   }
 
-  function togglePager() {
+  function togglePager(): void {
     if (dom.prevBtn) {
       dom.prevBtn.disabled = state.offset <= 0
     }
@@ -102,7 +162,7 @@ export function createNeteaseSearchManager(options) {
     }
   }
 
-  function renderSuggestions(data) {
+  function renderSuggestions(data: { keywords?: string[] }): void {
     if (!dom.suggestList) return
 
     const list = Array.isArray(data?.keywords) ? data.keywords : []
@@ -123,7 +183,7 @@ export function createNeteaseSearchManager(options) {
     dom.suggestList.classList.remove('page-hidden')
   }
 
-  function renderResults(items) {
+  function renderResults(items: unknown[]): void {
     if (!Array.isArray(items) || !items.length) {
       dom.resultList.innerHTML = '<div class="netease-search-empty">没有找到匹配结果</div>'
       return
@@ -131,17 +191,18 @@ export function createNeteaseSearchManager(options) {
 
     const html = items
       .map((item) => {
+        const row = item as Record<string, any>
         if (state.type === '100') {
-          const style = coverStyle(item.picUrl)
-          const name = escapeHtml(item.name)
-          const alias = Array.isArray(item.alias) && item.alias.length ? ` · ${escapeHtml(item.alias.join(' / '))}` : ''
+          const style = coverStyle(row.picUrl)
+          const name = escapeHtml(row.name)
+          const alias = Array.isArray(row.alias) && row.alias.length ? ` · ${escapeHtml(row.alias.join(' / '))}` : ''
           const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
           return `
             <article class="netease-result-card netease-result-card-artist">
               <div class="${coverClass}" ${style ? `style="${style}"` : ''}>${style ? '' : '♪'}</div>
               <div class="netease-result-content">
                 <div class="netease-result-title">${name}${alias}</div>
-                <div class="netease-result-meta">专辑 ${item.albumSize || 0} · MV ${item.mvSize || 0}</div>
+                <div class="netease-result-meta">专辑 ${row.albumSize || 0} · MV ${row.mvSize || 0}</div>
                 <div class="netease-result-foot">
                   <span class="netease-result-duration">歌手</span>
                 </div>
@@ -151,17 +212,17 @@ export function createNeteaseSearchManager(options) {
         }
 
         if (state.type === '1000') {
-          const style = coverStyle(item.coverUrl)
-          const name = escapeHtml(item.name)
-          const creator = escapeHtml(item.creator || '未知')
-          const itemId = escapeHtml(item.id)
+          const style = coverStyle(row.coverUrl)
+          const name = escapeHtml(row.name)
+          const creator = escapeHtml(row.creator || '未知')
+          const itemId = escapeHtml(row.id)
           const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
           return `
             <article class="netease-result-card netease-result-card-playlist">
               <div class="${coverClass}" ${style ? `style="${style}"` : ''}>${style ? '' : '♫'}</div>
               <div class="netease-result-content">
                 <div class="netease-result-title">${name}</div>
-                <div class="netease-result-meta">创建者 ${creator} · ${item.trackCount || 0} 首 · 播放 ${formatPlayCount(item.playCount)}</div>
+                <div class="netease-result-meta">创建者 ${creator} · ${row.trackCount || 0} 首 · 播放 ${formatPlayCount(row.playCount)}</div>
                 <div class="netease-result-foot">
                   <span class="netease-result-duration">歌单</span>
                   <div class="netease-result-actions">
@@ -174,11 +235,11 @@ export function createNeteaseSearchManager(options) {
           `
         }
 
-        const style = coverStyle(item.coverUrl)
-        const itemId = escapeHtml(item.id)
-        const name = escapeHtml(item.name)
-        const artist = escapeHtml(item.artist || '未知歌手')
-        const album = escapeHtml(item.album || '未知专辑')
+        const style = coverStyle(row.coverUrl)
+        const itemId = escapeHtml(row.id)
+        const name = escapeHtml(row.name)
+        const artist = escapeHtml(row.artist || '未知歌手')
+        const album = escapeHtml(row.album || '未知专辑')
         const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
 
         return `
@@ -188,7 +249,7 @@ export function createNeteaseSearchManager(options) {
               <div class="netease-result-title">${name}</div>
               <div class="netease-result-meta">${artist} · ${album}</div>
               <div class="netease-result-foot">
-                <span class="netease-result-duration">${formatDuration(item.durationMs)}</span>
+                <span class="netease-result-duration">${formatDuration(row.durationMs)}</span>
                 <div class="netease-result-actions">
                   <button type="button" data-action="play-song" data-item-id="${itemId}">播放</button>
                 </div>
@@ -202,7 +263,7 @@ export function createNeteaseSearchManager(options) {
     dom.resultList.innerHTML = html
   }
 
-  async function runSearch(resetOffset = false) {
+  async function runSearch(resetOffset = false): Promise<void> {
     readSearchForm()
 
     if (!state.keywords) {
@@ -224,9 +285,9 @@ export function createNeteaseSearchManager(options) {
       offset: state.offset
     }
 
-    const response = neteaseDatabaseService
-      ? await neteaseDatabaseService.search(payload)
-      : await electronAPI.neteaseSearch(payload)
+    const response = searchService?.search
+      ? await searchService.search(payload)
+      : await api.neteaseSearch?.(payload)
 
     if (token !== state.requestToken) {
       return
@@ -247,7 +308,7 @@ export function createNeteaseSearchManager(options) {
     setSearchStatus(`搜索完成，共 ${state.total || 0} 条结果。`)
   }
 
-  async function runSuggest() {
+  async function runSuggest(): Promise<void> {
     const keywords = String(dom.keywordInput.value || '').trim()
     if (!keywords) {
       renderSuggestions({ keywords: [] })
@@ -255,9 +316,9 @@ export function createNeteaseSearchManager(options) {
     }
 
     const token = ++state.requestToken
-    const response = neteaseDatabaseService
-      ? await neteaseDatabaseService.suggest({ keywords })
-      : await electronAPI.neteaseSearchSuggest({ keywords })
+    const response = searchService?.suggest
+      ? await searchService.suggest({ keywords })
+      : await api.neteaseSearchSuggest?.({ keywords })
     if (token !== state.requestToken) {
       return
     }
@@ -270,7 +331,7 @@ export function createNeteaseSearchManager(options) {
     renderSuggestions(response.data)
   }
 
-  function updateTask(task) {
+  function updateTask(task: DownloadTask): void {
     if (!task?.id) return
     if (task.status !== 'succeeded') return
     if (!autoQueueTaskIds.has(task.id)) return
@@ -295,7 +356,7 @@ export function createNeteaseSearchManager(options) {
     }
   }
 
-  async function playSongById(songId) {
+  async function playSongById(songId: string): Promise<void> {
     const id = String(songId || '').trim()
     if (!/^\d{1,20}$/.test(id)) {
       setSearchStatus('无法播放：歌曲 ID 无效。', true)
@@ -309,9 +370,9 @@ export function createNeteaseSearchManager(options) {
       mode: 'song-temp-queue-only'
     }
 
-    const res = downloadService
+    const res = downloadService?.createSongTask
       ? await downloadService.createSongTask(payload)
-      : await electronAPI.neteaseDownloadSongTask(payload)
+      : await api.neteaseDownloadSongTask?.(payload)
 
     if (!res?.ok || !res?.task?.id) {
       const msg = res?.message || res?.error || 'REQUEST_FAILED'
@@ -323,7 +384,7 @@ export function createNeteaseSearchManager(options) {
     setSearchStatus('歌曲已加入待播队列，下载完成后会自动加入播放列表。')
   }
 
-  async function playPlaylistById(playlistId) {
+  async function playPlaylistById(playlistId: string): Promise<void> {
     const id = String(playlistId || '').trim()
     if (!/^\d{1,20}$/.test(id)) {
       setSearchStatus('无法播放：歌单 ID 无效。', true)
@@ -338,9 +399,9 @@ export function createNeteaseSearchManager(options) {
       duplicateStrategy: 'skip'
     }
 
-    const res = downloadService
+    const res = downloadService?.createPlaylistTasks
       ? await downloadService.createPlaylistTasks(payload)
-      : await electronAPI.neteaseDownloadPlaylistById(payload)
+      : await api.neteaseDownloadPlaylistById?.(payload)
 
     if (!res?.ok) {
       const msg = res?.message || res?.error || 'REQUEST_FAILED'
@@ -356,7 +417,7 @@ export function createNeteaseSearchManager(options) {
     setSearchStatus(`歌单任务已创建：${res.createdCount || 0} 首入队，完成后会自动加入播放列表。`)
   }
 
-  function bindEvents() {
+  function bindEvents(): void {
     const debouncedSuggest = createDebounce(runSuggest, 260)
 
     dom.searchBtn.addEventListener('click', () => {
@@ -367,20 +428,21 @@ export function createNeteaseSearchManager(options) {
       debouncedSuggest()
     })
 
-    dom.keywordInput.addEventListener('keydown', (event) => {
+    dom.keywordInput.addEventListener('keydown', (event: KeyboardEvent) => {
       if (event.key !== 'Enter') return
       event.preventDefault()
       runSearch(true)
     })
 
-    if (dom.suggestList) {
-      dom.suggestList.addEventListener('click', (event) => {
+    const suggestList = dom.suggestList
+    if (suggestList) {
+      suggestList.addEventListener('click', (event: MouseEvent) => {
         const target = event.target
         if (!(target instanceof HTMLElement)) return
         const keyword = String(target.dataset.suggest || '').trim()
         if (!keyword) return
         dom.keywordInput.value = keyword
-        dom.suggestList.classList.add('page-hidden')
+        suggestList.classList.add('page-hidden')
         runSearch(true)
       })
     }
@@ -401,7 +463,7 @@ export function createNeteaseSearchManager(options) {
       })
     }
 
-    dom.resultList.addEventListener('click', (event) => {
+    dom.resultList.addEventListener('click', (event: MouseEvent) => {
       const target = event.target
       if (!(target instanceof HTMLElement)) return
 
@@ -425,18 +487,18 @@ export function createNeteaseSearchManager(options) {
       }
     })
 
-    if (downloadService) {
+    if (downloadService?.onTaskUpdate) {
       downloadService.onTaskUpdate((task) => {
         updateTask(task)
       })
-    } else if (electronAPI.onNeteaseDownloadTaskUpdate) {
-      electronAPI.onNeteaseDownloadTaskUpdate((task) => {
+    } else if (api.onNeteaseDownloadTaskUpdate) {
+      api.onNeteaseDownloadTaskUpdate((task) => {
         updateTask(task)
       })
     }
   }
 
-  function init() {
+  function init(): void {
     bindEvents()
     togglePager()
     setSearchStatus('输入关键词可搜索歌曲、歌手、歌单。')

@@ -1,7 +1,66 @@
-// @ts-nocheck
 import { formatTime, getFileNameFromPath } from './trackUtils.js'
 
-export function createSavedPlaylistManager(options) {
+type SavedTrack = {
+  path?: string
+  metadataCache?: {
+    title?: string
+    artist?: string
+    album?: string
+    duration?: number
+    coverDataUrl?: string
+  }
+}
+
+type SavedPlaylist = {
+  id: string
+  name: string
+  trackIds: string[]
+}
+
+type SavedState = {
+  playlists: SavedPlaylist[]
+  trackLibrary: Record<string, SavedTrack>
+}
+
+type SavedPlaylistDom = {
+  sidebarListEl?: HTMLElement | null
+  sidebarCreateBtn?: HTMLElement | null
+  detailPlayAllBtn?: HTMLButtonElement | null
+  detailAppendBtn?: HTMLButtonElement | null
+  detailAddCurrentBtn?: HTMLButtonElement | null
+  detailTitleEditBtn?: HTMLButtonElement | null
+  detailDeleteBtn?: HTMLButtonElement | null
+  detailCoverEl?: HTMLElement | null
+  detailCoverTextEl?: HTMLElement | null
+  detailTitleEl?: HTMLElement | null
+  detailSubtitleEl?: HTMLElement | null
+  detailMetaEl?: HTMLElement | null
+  detailTrackListEl?: HTMLElement | null
+}
+
+type ElectronApiLike = {
+  getMetadata?: (filePath: string) => Promise<{ coverDataUrl?: string } | null>
+  playlistList?: () => Promise<{ playlists?: SavedPlaylist[]; trackLibrary?: Record<string, SavedTrack> }>
+  playlistCreate: (name: string) => Promise<{ ok?: boolean; playlist?: { id?: string } }>
+  playlistRename: (playlistId: string, name: string) => Promise<{ ok?: boolean }>
+  playlistDelete: (playlistId: string) => Promise<{ ok?: boolean }>
+  playlistAddTracks: (playlistId: string, tracks: unknown[]) => Promise<{ ok?: boolean; addedCount?: number }>
+  playlistRemoveTrack?: (playlistId: string, trackId: string) => Promise<{ ok?: boolean }>
+}
+
+type EventBusLike = {
+  emit: (eventName: string, payload?: unknown) => void
+  request?: (eventName: string, payload?: unknown) => Promise<unknown>
+}
+
+type SavedPlaylistManagerOptions = {
+  electronAPI: ElectronApiLike
+  dom: SavedPlaylistDom
+  promptForPlaylistName: (message: string, defaultValue: string) => Promise<string | null>
+  eventBus?: EventBusLike
+}
+
+export function createSavedPlaylistManager(options: SavedPlaylistManagerOptions) {
   const {
     electronAPI,
     dom,
@@ -9,33 +68,33 @@ export function createSavedPlaylistManager(options) {
     eventBus
   } = options
 
-  let savedState = { playlists: [], trackLibrary: {} }
-  let selectedSavedPlaylistId = null
+  let savedState: SavedState = { playlists: [], trackLibrary: {} }
+  let selectedSavedPlaylistId: string | null = null
   let activeView = 'recommend'
-  const trackCoverCache = new Map()
+  const trackCoverCache = new Map<string, string | null>()
   let detailRenderToken = 0
-  let lastRenderedPlaylistId = undefined
+  let lastRenderedPlaylistId: string | null | undefined = undefined
 
-  function emit(eventName, payload) {
+  function emit(eventName: string, payload?: unknown): void {
     if (!eventBus) return
     eventBus.emit(eventName, payload)
   }
 
-  async function request(eventName, payload) {
-    if (!eventBus) return undefined
+  async function request(eventName: string, payload?: unknown): Promise<unknown> {
+    if (!eventBus?.request) return undefined
     return eventBus.request(eventName, payload)
   }
 
-  function getSelectedSavedPlaylist() {
+  function getSelectedSavedPlaylist(): SavedPlaylist | null {
     return savedState.playlists.find((item) => item.id === selectedSavedPlaylistId) || null
   }
 
-  function getQueueTracksForPlaylist(playlist = getSelectedSavedPlaylist()) {
+  function getQueueTracksForPlaylist(playlist: SavedPlaylist | null = getSelectedSavedPlaylist()): Array<Record<string, unknown>> {
     if (!playlist) {
       return []
     }
 
-    const tracks = []
+    const tracks: Array<Record<string, unknown>> = []
 
     for (const trackId of playlist.trackIds) {
       const savedTrack = savedState.trackLibrary[trackId]
@@ -53,7 +112,7 @@ export function createSavedPlaylistManager(options) {
     return tracks
   }
 
-  function updateActionButtons(selected) {
+  function updateActionButtons(selected: SavedPlaylist | null): void {
     const hasPlaylist = Boolean(selected)
 
     if (dom.detailPlayAllBtn) dom.detailPlayAllBtn.disabled = !hasPlaylist
@@ -63,7 +122,7 @@ export function createSavedPlaylistManager(options) {
     if (dom.detailDeleteBtn) dom.detailDeleteBtn.disabled = !hasPlaylist
   }
 
-  function applyDetailCover(coverDataUrl, fallbackText = '♪') {
+  function applyDetailCover(coverDataUrl: string | null, fallbackText = '♪'): void {
     if (!dom.detailCoverEl || !dom.detailCoverTextEl) return
 
     if (coverDataUrl) {
@@ -79,13 +138,13 @@ export function createSavedPlaylistManager(options) {
     dom.detailCoverTextEl.textContent = fallbackText
   }
 
-  async function getTrackCoverDataUrl(trackId, filePath) {
+  async function getTrackCoverDataUrl(trackId: string, filePath?: string): Promise<string | null> {
     if (!filePath || !electronAPI || !electronAPI.getMetadata) {
       return null
     }
 
     if (trackCoverCache.has(trackId)) {
-      return trackCoverCache.get(trackId)
+      return trackCoverCache.get(trackId) || null
     }
 
     try {
@@ -99,16 +158,17 @@ export function createSavedPlaylistManager(options) {
     }
   }
 
-  function renderSidebarPlaylists() {
-    if (!dom.sidebarListEl) return
+  function renderSidebarPlaylists(): void {
+    const listEl = dom.sidebarListEl
+    if (!listEl) return
 
-    dom.sidebarListEl.innerHTML = ''
+    listEl.innerHTML = ''
 
     if (!savedState.playlists.length) {
       const empty = document.createElement('div')
       empty.className = 'menu-item menu-item-empty'
       empty.textContent = '还没有本地歌单'
-      dom.sidebarListEl.appendChild(empty)
+      listEl.appendChild(empty)
       return
     }
 
@@ -127,15 +187,15 @@ export function createSavedPlaylistManager(options) {
 
       const count = document.createElement('span')
       count.className = 'created-playlist-count'
-      count.textContent = playlist.trackIds.length
+      count.textContent = String(playlist.trackIds.length)
 
       item.appendChild(name)
       item.appendChild(count)
-      dom.sidebarListEl.appendChild(item)
+      listEl.appendChild(item)
     })
   }
 
-  function renderPlaylistDetail(force = false) {
+  function renderPlaylistDetail(force = false): void {
     const selected = getSelectedSavedPlaylist()
     const currentPlaylistId = selected?.id || null
     if (!force && currentPlaylistId === lastRenderedPlaylistId) {
@@ -248,7 +308,7 @@ export function createSavedPlaylistManager(options) {
       removeBtn.className = 'playlist-track-remove-btn'
       removeBtn.textContent = '移除'
       removeBtn.title = '从歌单移除'
-      removeBtn.addEventListener('click', async (event) => {
+      removeBtn.addEventListener('click', async (event: Event) => {
         event.stopPropagation()
         if (!electronAPI || !electronAPI.playlistRemoveTrack) return
         await electronAPI.playlistRemoveTrack(selected.id, trackId)
@@ -295,7 +355,7 @@ export function createSavedPlaylistManager(options) {
     dom.detailTrackListEl.appendChild(fragment)
   }
 
-  async function refreshSavedPlaylists(preferredId = null) {
+  async function refreshSavedPlaylists(preferredId: string | null = null): Promise<void> {
     if (!electronAPI || !electronAPI.playlistList) return
 
     const payload = await electronAPI.playlistList()
@@ -317,7 +377,7 @@ export function createSavedPlaylistManager(options) {
     renderPlaylistDetail(true)
   }
 
-  async function createSavedPlaylist() {
+  async function createSavedPlaylist(): Promise<void> {
     if (!electronAPI || !electronAPI.playlistCreate) {
       alert('歌单功能不可用，请重启应用后重试')
       return
@@ -342,7 +402,7 @@ export function createSavedPlaylistManager(options) {
     }
   }
 
-  async function renameSavedPlaylist() {
+  async function renameSavedPlaylist(): Promise<void> {
     const selected = getSelectedSavedPlaylist()
     if (!selected) {
       alert('请先选择歌单')
@@ -361,7 +421,7 @@ export function createSavedPlaylistManager(options) {
     await refreshSavedPlaylists(selected.id)
   }
 
-  async function deleteSavedPlaylist() {
+  async function deleteSavedPlaylist(): Promise<void> {
     const selected = getSelectedSavedPlaylist()
     if (!selected) {
       alert('请先选择歌单')
@@ -380,7 +440,7 @@ export function createSavedPlaylistManager(options) {
     await refreshSavedPlaylists()
   }
 
-  function appendSelectedPlaylistToCurrentQueue() {
+  function appendSelectedPlaylistToCurrentQueue(): void {
     const selected = getSelectedSavedPlaylist()
     if (!selected) {
       alert('请先选择歌单')
@@ -396,7 +456,7 @@ export function createSavedPlaylistManager(options) {
     emit('playback:queue.append', { tracks })
   }
 
-  function playSelectedPlaylist() {
+  function playSelectedPlaylist(): void {
     const selected = getSelectedSavedPlaylist()
     if (!selected) {
       alert('请先选择歌单')
@@ -417,14 +477,14 @@ export function createSavedPlaylistManager(options) {
     emit('view:song.open')
   }
 
-  async function addCurrentQueueToSavedPlaylist() {
+  async function addCurrentQueueToSavedPlaylist(): Promise<void> {
     const selected = getSelectedSavedPlaylist()
     if (!selected) {
       alert('请先选择歌单')
       return
     }
 
-    const tracks = (await request('playback:queue.collect-current-track-inputs')) || []
+    const tracks = ((await request('playback:queue.collect-current-track-inputs')) || []) as unknown[]
 
     if (!tracks.length) {
       alert('当前播放列表没有可添加的本地歌曲')
@@ -441,7 +501,7 @@ export function createSavedPlaylistManager(options) {
     alert(`已添加 ${result.addedCount} 首到歌单`)
   }
 
-  function openPlaylist(playlistId) {
+  function openPlaylist(playlistId?: string): boolean {
     if (playlistId) {
       const target = savedState.playlists.find((item) => item.id === playlistId)
       if (target) {
@@ -458,12 +518,12 @@ export function createSavedPlaylistManager(options) {
     return Boolean(getSelectedSavedPlaylist())
   }
 
-  function setActiveView(view) {
+  function setActiveView(view: string): void {
     activeView = view
     renderSidebarPlaylists()
   }
 
-  function bindEvents() {
+  function bindEvents(): void {
     if (dom.sidebarCreateBtn) {
       dom.sidebarCreateBtn.addEventListener('click', createSavedPlaylist)
     }
@@ -489,7 +549,7 @@ export function createSavedPlaylistManager(options) {
     }
   }
 
-  async function init() {
+  async function init(): Promise<void> {
     bindEvents()
     await refreshSavedPlaylists()
   }
