@@ -1,4 +1,3 @@
-// @ts-nocheck
 import {
   formatTime,
   filePathToURL,
@@ -15,34 +14,44 @@ import { createPlaybackUIController } from './playbackUIController.js'
 const PREFETCH_BEFORE_SECONDS = 20
 const SUPPORTED_AUDIO_EXTENSIONS = new Set(['.mp3', '.flac', '.aac', '.ogg', '.wav', '.m4a', '.opus', '.wma'])
 
-export function createPlaybackController(options) {
+type TrackLike = Record<string, any>
+
+type PlaybackControllerOptions = {
+  electronAPI?: any
+  dom: any
+  eventBus?: {
+    emit: (eventName: string, payload?: unknown) => void
+  }
+}
+
+export function createPlaybackController(options: PlaybackControllerOptions): any {
   const {
     electronAPI,
     dom,
     eventBus
   } = options
 
-  function emit(eventName, payload) {
+  function emit(eventName: string, payload?: unknown): void {
     if (!eventBus) return
     eventBus.emit(eventName, payload)
   }
 
   const audio = new Audio()
-  let playlist = []
+  let playlist: TrackLike[] = []
   let currentIndex = -1
   let isLooping = false
   let isSeeking = false
-  let previewSeekRatio = null
-  let lyricManager = null
+  let previewSeekRatio: number | null = null
+  let lyricManager: any = null
   const fadeManager = createPlaybackFadeManager({ audio })
-  let fadeSettings = fadeManager.getSettings()
+  let fadeSettings: any = fadeManager.getSettings()
   let loadRequestId = 0
-  const metadataHydrationKeys = new Set()
+  const metadataHydrationKeys = new Set<string>()
   const lazyQueueManager = createLazyQueueManager({
     electronAPI,
     getPlaylist: () => playlist,
     getCurrentIndex: () => currentIndex,
-    onTrackReady: (index) => {
+    onTrackReady: (index: number) => {
       if (index === currentIndex) {
         updatePlaylistUI()
       }
@@ -57,83 +66,83 @@ export function createPlaybackController(options) {
     getTrackArtistText,
     getTrackDurationText,
     getTrackCoverDataUrl,
-    onHydrateTrack: (index, track) => {
+    onHydrateTrack: (index: number, track: any) => {
       hydrateTrackDisplayMetadata(index, track)
     },
-    onSaveTrack: (index) => saveTrackToSavedPlaylist(index),
-    onRemoveTrack: (index) => removeTrack(index),
-    onLoadTrack: (index) => loadTrack(index),
+    onSaveTrack: (index: number) => saveTrackToSavedPlaylist(index),
+    onRemoveTrack: (index: number) => removeTrack(index),
+    onLoadTrack: (index: number) => loadTrack(index),
     onResetLyrics: () => {
       if (lyricManager) lyricManager.setLyrics(null)
     },
-    onHomeCoverChanged: (dataUrl) => {
+    onHomeCoverChanged: (dataUrl: string) => {
       emit('playback:home-cover.changed', dataUrl)
     }
   })
 
-  function setPlayButtonState(isPlaying) {
+  function setPlayButtonState(isPlaying: boolean): void {
     uiController.setPlayButtonState(isPlaying)
   }
 
-  function setBottomNowPlaying(title, artist) {
+  function setBottomNowPlaying(title: string, artist: string): void {
     uiController.setBottomNowPlaying(title, artist)
   }
 
-  function setBottomNowPlayingCover(dataUrl) {
+  function setBottomNowPlayingCover(dataUrl: string): void {
     uiController.setBottomNowPlayingCover(dataUrl)
   }
 
-  function openQueueOverlay() {
+  function openQueueOverlay(): void {
     uiController.openQueueOverlay()
   }
 
-  function closeQueueOverlay() {
+  function closeQueueOverlay(): void {
     uiController.closeQueueOverlay()
   }
 
-  function toggleQueueOverlay() {
+  function toggleQueueOverlay(): void {
     uiController.toggleQueueOverlay()
   }
 
-  function reportPlayerState() {
+  function reportPlayerState(): void {
     uiController.reportPlayerState()
   }
 
-  function resetProgress() {
+  function resetProgress(): void {
     uiController.resetProgress()
   }
 
-  function updateProgressUIByRatio(ratio, currentTime) {
+  function updateProgressUIByRatio(ratio: number, currentTime: number): void {
     uiController.updateProgressUIByRatio(ratio, currentTime)
   }
 
-  function resetTrackMeta() {
+  function resetTrackMeta(): void {
     uiController.resetTrackMeta()
   }
 
-  function updatePlaylistUI() {
+  function updatePlaylistUI(): void {
     uiController.updatePlaylistUI()
     reportPlayerState()
   }
 
-  function getAudioExtFromPath(filePath) {
+  function getAudioExtFromPath(filePath: unknown): string {
     const source = String(filePath || '')
     const match = source.match(/\.([a-z0-9]+)$/i)
     if (!match) return ''
     return `.${match[1].toLowerCase()}`
   }
 
-  function isSupportedAudioPath(filePath) {
+  function isSupportedAudioPath(filePath: unknown): boolean {
     return SUPPORTED_AUDIO_EXTENSIONS.has(getAudioExtFromPath(filePath))
   }
 
-  function isSupportedAudioFile(file) {
+  function isSupportedAudioFile(file: any): boolean {
     if (!file) return false
     if (typeof file.type === 'string' && file.type.startsWith('audio/')) return true
     return isSupportedAudioPath(file.name)
   }
 
-  function tryGetFilePath(file) {
+  function tryGetFilePath(file: any): string {
     if (!file || !electronAPI?.getPathForFile) return ''
     try {
       return electronAPI.getPathForFile(file) || ''
@@ -142,7 +151,7 @@ export function createPlaybackController(options) {
     }
   }
 
-  function createTrackInputByPath(filePath) {
+  function createTrackInputByPath(filePath: string): TrackLike | null {
     if (!isSupportedAudioPath(filePath)) return null
     return {
       name: getFileNameFromPath(filePath),
@@ -151,7 +160,7 @@ export function createPlaybackController(options) {
     }
   }
 
-  function createTrackInputByFile(file) {
+  function createTrackInputByFile(file: File): TrackLike | null {
     if (!isSupportedAudioFile(file)) return null
     return {
       name: file.name || '未知歌曲',
@@ -160,13 +169,13 @@ export function createPlaybackController(options) {
     }
   }
 
-  async function readDirectoryEntries(directoryEntry) {
+  async function readDirectoryEntries(directoryEntry: any): Promise<any[]> {
     return new Promise((resolve, reject) => {
       const reader = directoryEntry.createReader()
-      const allEntries = []
+      const allEntries: any[] = []
 
       const readNext = () => {
-        reader.readEntries((entries) => {
+        reader.readEntries((entries: any[]) => {
           if (!entries || entries.length === 0) {
             resolve(allEntries)
             return
@@ -181,13 +190,13 @@ export function createPlaybackController(options) {
     })
   }
 
-  async function readFileEntry(fileEntry) {
+  async function readFileEntry(fileEntry: any): Promise<File> {
     return new Promise((resolve, reject) => {
       fileEntry.file(resolve, reject)
     })
   }
 
-  function getDroppedFileIdentity(file) {
+  function getDroppedFileIdentity(file: any): string {
     if (!file) return ''
     const fileName = String(file.name || '').toLowerCase()
     const fileSize = Number(file.size) || 0
@@ -202,7 +211,7 @@ export function createPlaybackController(options) {
     return ''
   }
 
-  async function collectFilesFromDropEntry(entry, pushFile) {
+  async function collectFilesFromDropEntry(entry: any, pushFile: (file: any) => void): Promise<void> {
     if (!entry) return
 
     if (entry.isFile) {
@@ -218,13 +227,13 @@ export function createPlaybackController(options) {
     }
   }
 
-  async function collectDropTrackInputs(dataTransfer) {
-    const items = Array.from(dataTransfer?.items || [])
-    const tracks = []
-    const looseFiles = []
-    const seenFiles = new Set()
+  async function collectDropTrackInputs(dataTransfer: DataTransfer | any): Promise<TrackLike[]> {
+    const items: any[] = Array.from(dataTransfer?.items || [])
+    const tracks: TrackLike[] = []
+    const looseFiles: any[] = []
+    const seenFiles = new Set<string>()
 
-    const pushLooseFile = (file) => {
+    const pushLooseFile = (file: any): void => {
       const identity = getDroppedFileIdentity(file)
       if (!identity || seenFiles.has(identity)) return
       seenFiles.add(identity)
@@ -237,13 +246,13 @@ export function createPlaybackController(options) {
         pushLooseFile(file)
       }
     } else {
-      for (const item of items) {
+      for (const item of items as any[]) {
         if (item.kind !== 'file') continue
 
         try {
           const entry = typeof item.webkitGetAsEntry === 'function' ? item.webkitGetAsEntry() : null
           await collectFilesFromDropEntry(entry, pushLooseFile)
-        } catch (err) {
+        } catch (err: any) {
           console.warn('Failed to collect dropped item:', err)
         }
       }
@@ -257,16 +266,16 @@ export function createPlaybackController(options) {
     return tracks
   }
 
-  function stopFade(options = {}) {
+  function stopFade(options: any = {}): void {
     fadeManager.stopFade(options)
   }
 
-  function runFadeTo(targetVolume, durationMs) {
+  function runFadeTo(targetVolume: number, durationMs: number = 0): Promise<any> {
     return fadeManager.runFadeTo(targetVolume, durationMs)
   }
 
 
-  function getTrackArtistText(track) {
+  function getTrackArtistText(track: any): string {
     const artist = track?.metadataCache?.artist
       || track?.lazyNetease?.artist
       || track?.lazyNetease?.artists
@@ -275,7 +284,7 @@ export function createPlaybackController(options) {
     return String(artist || '').trim() || '未知歌手'
   }
 
-  function getTrackDurationText(track) {
+  function getTrackDurationText(track: any): string {
     const durationSeconds = Number(track?.metadataCache?.duration)
     if (Number.isFinite(durationSeconds) && durationSeconds > 0) {
       return formatTime(durationSeconds)
@@ -289,14 +298,14 @@ export function createPlaybackController(options) {
     return '--:--'
   }
 
-  function getTrackCoverDataUrl(track) {
+  function getTrackCoverDataUrl(track: any): string {
     return track?.metadataCache?.coverDataUrl
       || track?.lazyNetease?.coverDataUrl
       || track?.lazyNetease?.coverUrl
       || ''
   }
 
-  async function saveTrackToSavedPlaylist(index) {
+  async function saveTrackToSavedPlaylist(index: number): Promise<void> {
     const track = playlist[index]
     const filePath = getCurrentTrackPath(track, electronAPI)
     if (!filePath) {
@@ -313,7 +322,7 @@ export function createPlaybackController(options) {
 
     let playlistId = ''
     if (existing.length) {
-      const tips = existing.map((item, idx) => `${idx + 1}. ${item.name}`).join('\n')
+      const tips = existing.map((item: any, idx: number) => `${idx + 1}. ${item.name}`).join('\n')
       const input = prompt(`选择歌单序号，或输入新歌单名称：\n${tips}`, '1')
       if (input === null) return
 
@@ -355,7 +364,7 @@ export function createPlaybackController(options) {
     alert('已添加到歌单')
   }
 
-  async function saveCurrentQueueAsSavedPlaylist() {
+  async function saveCurrentQueueAsSavedPlaylist(): Promise<void> {
     const tracks = collectCurrentQueueAsTrackInputs()
     if (!tracks.length) {
       alert('当前播放列表没有可收藏的本地歌曲')
@@ -386,7 +395,7 @@ export function createPlaybackController(options) {
     alert(`已收藏到歌单：${created.playlist?.name || '未命名歌单'}`)
   }
 
-  async function hydrateTrackDisplayMetadata(index, track) {
+  async function hydrateTrackDisplayMetadata(index: number, track: any): Promise<void> {
     const filePath = getCurrentTrackPath(track, electronAPI)
     if (!filePath || !electronAPI?.getMetadata) return
 
@@ -417,19 +426,19 @@ export function createPlaybackController(options) {
   }
 
 
-  async function ensureTrackReadyForPlayback(index, options = {}) {
+  async function ensureTrackReadyForPlayback(index: number, options: any = {}): Promise<any> {
     return lazyQueueManager.ensureTrackReadyForPlayback(index, options)
   }
 
-  function maybePrefetchNextLazyTrack() {
+  function maybePrefetchNextLazyTrack(): void {
     lazyQueueManager.maybePrefetchNextLazyTrack()
   }
 
-  function handleLazyDownloadTaskUpdate(task) {
+  function handleLazyDownloadTaskUpdate(task: any): void {
     lazyQueueManager.handleLazyDownloadTaskUpdate(task)
   }
 
-  async function loadTrack(index) {
+  async function loadTrack(index: number): Promise<void> {
     if (index < 0 || index >= playlist.length) return
     const requestId = ++loadRequestId
     currentIndex = index
@@ -571,7 +580,7 @@ export function createPlaybackController(options) {
           coverDataUrl: track?.metadataCache?.coverDataUrl || ''
         }
       })
-    } catch (err) {
+    } catch (err: any) {
       console.warn('Failed to play audio:', err)
       setPlayButtonState(false)
     }
@@ -580,12 +589,12 @@ export function createPlaybackController(options) {
     reportPlayerState()
   }
 
-  function appendToPlaylist(newTracks) {
+  function appendToPlaylist(newTracks: TrackLike[]): void {
     if (!newTracks.length) return
     const wasEmpty = playlist.length === 0
 
-    const existingKeys = new Set(playlist.map((track) => getTrackUniqueKey(track, electronAPI)))
-    const dedupedTracks = []
+    const existingKeys = new Set<string>(playlist.map((track: any) => getTrackUniqueKey(track, electronAPI)))
+    const dedupedTracks: TrackLike[] = []
 
     for (const track of newTracks) {
       const key = getTrackUniqueKey(track, electronAPI)
@@ -601,7 +610,7 @@ export function createPlaybackController(options) {
     if (wasEmpty) loadTrack(0)
   }
 
-  function setQueueTracks(nextTracks, startIndex = 0) {
+  function setQueueTracks(nextTracks: TrackLike[], startIndex: number = 0): void {
     loadRequestId += 1
     playlist = Array.isArray(nextTracks) ? nextTracks.slice() : []
     lazyQueueManager.reset()
@@ -623,7 +632,7 @@ export function createPlaybackController(options) {
     loadTrack(safeIndex)
   }
 
-  function removeTrack(index) {
+  function removeTrack(index: number): void {
     lazyQueueManager.removeTrack(index)
 
     if (index === currentIndex) {
@@ -653,7 +662,7 @@ export function createPlaybackController(options) {
     updatePlaylistUI()
   }
 
-  function clearPlaylist() {
+  function clearPlaylist(): void {
     loadRequestId += 1
     lazyQueueManager.reset()
     playlist = []
@@ -668,19 +677,19 @@ export function createPlaybackController(options) {
     reportPlayerState()
   }
 
-  function playPreviousTrack() {
+  function playPreviousTrack(): void {
     if (playlist.length === 0) return
     const newIndex = currentIndex <= 0 ? playlist.length - 1 : currentIndex - 1
     loadTrack(newIndex)
   }
 
-  function playNextTrack() {
+  function playNextTrack(): void {
     if (playlist.length === 0) return
     const newIndex = currentIndex >= playlist.length - 1 ? 0 : currentIndex + 1
     loadTrack(newIndex)
   }
 
-  function togglePlayback(options = {}) {
+  function togglePlayback(options: any = {}): void {
     const { silent = false } = options
     if (playlist.length === 0) {
       if (!silent) alert('请先选择音乐文件 🎵')
@@ -701,7 +710,7 @@ export function createPlaybackController(options) {
         }
         setPlayButtonState(true)
         reportPlayerState()
-      }).catch((err) => {
+      }).catch((err: any) => {
         console.warn('Failed to resume audio:', err)
       })
     } else {
@@ -715,21 +724,21 @@ export function createPlaybackController(options) {
     }
   }
 
-  function toggleLoopState() {
+  function toggleLoopState(): void {
     isLooping = !isLooping
     audio.loop = isLooping
     dom.loopBtn.classList.toggle('btn-active', isLooping)
     dom.loopBtn.title = isLooping ? '单曲循环: 开' : '单曲循环: 关'
   }
 
-  function seekBy(seconds) {
+  function seekBy(seconds: number): void {
     if (!audio.duration) return
     audio.currentTime = Math.max(0, Math.min(audio.duration, audio.currentTime + seconds))
   }
 
-  function collectCurrentQueueAsTrackInputs() {
-    const trackInputs = []
-    const usedPaths = new Set()
+  function collectCurrentQueueAsTrackInputs(): any[] {
+    const trackInputs: any[] = []
+    const usedPaths = new Set<string>()
 
     for (const track of playlist) {
       const filePath = getCurrentTrackPath(track, electronAPI)
@@ -748,11 +757,11 @@ export function createPlaybackController(options) {
     return trackInputs
   }
 
-  function replaceCurrentQueueWithTracks(tracks, startIndex = 0, _options = {}) {
+  function replaceCurrentQueueWithTracks(tracks: TrackLike[], startIndex: number = 0, _options: any = {}): void {
     setQueueTracks(tracks, startIndex)
   }
 
-  function handleExternalPlayerControl(action) {
+  function handleExternalPlayerControl(action: string): void {
     switch (action) {
       case 'toggle-play':
         togglePlayback({ silent: true })
@@ -768,8 +777,8 @@ export function createPlaybackController(options) {
     }
   }
 
-  function bindControlEvents() {
-    const appendTracks = (tracks, options = {}) => {
+  function bindControlEvents(): void {
+    const appendTracks = (tracks: TrackLike[], options: any = {}) => {
       const { openQueue = false } = options
       if (!tracks.length) return
       appendToPlaylist(tracks)
@@ -778,18 +787,19 @@ export function createPlaybackController(options) {
       }
     }
 
-    dom.fileInput.addEventListener('change', async (e) => {
-      const files = Array.from(e.target.files)
+    dom.fileInput.addEventListener('change', async (e: Event) => {
+      const target = e.target as HTMLInputElement
+      const files = Array.from(target?.files || [])
       if (!files.length) return
-      appendTracks(files.map((file) => ({ name: file.name, file, path: null })), { openQueue: true })
+      appendTracks(files.map((file: File) => ({ name: file.name, file, path: null })), { openQueue: true })
       dom.fileInput.value = ''
     })
 
-    const handleAddFolder = async () => {
+    const handleAddFolder = async (): Promise<void> => {
       if (!electronAPI || !electronAPI.selectFolder) return
       const paths = await electronAPI.selectFolder()
       if (!paths || !paths.length) return
-      appendTracks(paths.map((p) => ({ name: p.split(/[/\\]/).pop(), path: p, file: null })), { openQueue: true })
+      appendTracks(paths.map((p: string) => ({ name: p.split(/[/\\]/).pop(), path: p, file: null })), { openQueue: true })
     }
 
     dom.folderBtn.addEventListener('click', handleAddFolder)
@@ -797,30 +807,31 @@ export function createPlaybackController(options) {
     if (dom.songPageEl) {
       let dragDepth = 0
 
-      const hasFilePayload = (event) => {
+      const hasFilePayload = (event: DragEvent | any): boolean => {
         const types = Array.from(event.dataTransfer?.types || [])
         return types.includes('Files')
       }
 
-      const clearDragState = () => {
+      const clearDragState = (): void => {
         dragDepth = 0
         dom.songPageEl.classList.remove('drag-over')
       }
 
-      dom.songPageEl.addEventListener('dragenter', (event) => {
+      dom.songPageEl.addEventListener('dragenter', (event: DragEvent) => {
         if (!hasFilePayload(event)) return
         event.preventDefault()
         dragDepth += 1
         dom.songPageEl.classList.add('drag-over')
       })
 
-      dom.songPageEl.addEventListener('dragover', (event) => {
+      dom.songPageEl.addEventListener('dragover', (event: DragEvent) => {
         if (!hasFilePayload(event)) return
         event.preventDefault()
+        if (!event.dataTransfer) return
         event.dataTransfer.dropEffect = 'copy'
       })
 
-      dom.songPageEl.addEventListener('dragleave', (event) => {
+      dom.songPageEl.addEventListener('dragleave', (event: DragEvent) => {
         if (!hasFilePayload(event)) return
         event.preventDefault()
         dragDepth = Math.max(0, dragDepth - 1)
@@ -829,15 +840,16 @@ export function createPlaybackController(options) {
         }
       })
 
-      dom.songPageEl.addEventListener('drop', async (event) => {
+      dom.songPageEl.addEventListener('drop', async (event: DragEvent) => {
         if (!hasFilePayload(event)) return
         event.preventDefault()
         clearDragState()
+        if (!event.dataTransfer) return
 
-        let tracks = []
+        let tracks: TrackLike[] = []
         try {
           tracks = await collectDropTrackInputs(event.dataTransfer)
-        } catch (err) {
+        } catch (err: any) {
           console.warn('Failed to parse drop payload:', err)
           return
         }
@@ -880,7 +892,7 @@ export function createPlaybackController(options) {
       dom.queueSaveBtn.addEventListener('click', saveCurrentQueueAsSavedPlaylist)
     }
 
-    document.addEventListener('keydown', (event) => {
+    document.addEventListener('keydown', (event: KeyboardEvent) => {
       if (event.key !== 'Escape') return
       if (!uiController.getQueueOverlayOpenState()) return
       event.preventDefault()
@@ -909,26 +921,26 @@ export function createPlaybackController(options) {
     }
   }
 
-  function bindAudioEvents() {
-    const getSeekRatioFromClientX = (clientX) => {
+  function bindAudioEvents(): void {
+    const getSeekRatioFromClientX = (clientX: number): number => {
       const rect = dom.progressContainer.getBoundingClientRect()
       const ratio = (clientX - rect.left) / rect.width
       return Math.max(0, Math.min(1, ratio))
     }
 
-    const updateSeekPreview = (ratio) => {
+    const updateSeekPreview = (ratio: number): void => {
       if (!audio.duration) return
       previewSeekRatio = Math.max(0, Math.min(1, ratio))
       updateProgressUIByRatio(previewSeekRatio, previewSeekRatio * audio.duration)
     }
 
-    const commitSeekPreview = () => {
+    const commitSeekPreview = (): void => {
       if (!audio.duration || previewSeekRatio === null) return
       audio.currentTime = previewSeekRatio * audio.duration
       previewSeekRatio = null
     }
 
-    const endSeeking = (pointerId, shouldCommit = true) => {
+    const endSeeking = (pointerId?: number, shouldCommit: boolean = true): void => {
       if (!isSeeking) return
       if (shouldCommit) {
         commitSeekPreview()
@@ -980,7 +992,7 @@ export function createPlaybackController(options) {
       updateProgressUIByRatio(audio.duration ? audio.currentTime / audio.duration : 0, audio.currentTime)
     })
 
-    dom.progressContainer.addEventListener('pointerdown', (e) => {
+    dom.progressContainer.addEventListener('pointerdown', (e: PointerEvent) => {
       if (!audio.duration) return
       isSeeking = true
       dom.progressContainer.classList.add('seeking')
@@ -988,27 +1000,27 @@ export function createPlaybackController(options) {
       updateSeekPreview(getSeekRatioFromClientX(e.clientX))
     })
 
-    dom.progressContainer.addEventListener('pointermove', (e) => {
+    dom.progressContainer.addEventListener('pointermove', (e: PointerEvent) => {
       if (!isSeeking) return
       updateSeekPreview(getSeekRatioFromClientX(e.clientX))
     })
 
-    dom.progressContainer.addEventListener('pointerup', (e) => {
+    dom.progressContainer.addEventListener('pointerup', (e: PointerEvent) => {
       if (!isSeeking) return
       updateSeekPreview(getSeekRatioFromClientX(e.clientX))
       endSeeking(e.pointerId)
     })
 
-    dom.progressContainer.addEventListener('pointercancel', (e) => {
+    dom.progressContainer.addEventListener('pointercancel', (e: PointerEvent) => {
       endSeeking(e.pointerId, false)
     })
   }
 
-  function init() {
+  function init(): void {
     lyricManager = createLyricManager('lyricsContainer', 'lyricsWrapper')
 
     if (electronAPI?.onNeteaseDownloadTaskUpdate) {
-      electronAPI.onNeteaseDownloadTaskUpdate((task) => {
+      electronAPI.onNeteaseDownloadTaskUpdate((task: any) => {
         handleLazyDownloadTaskUpdate(task)
       })
     }
@@ -1021,12 +1033,12 @@ export function createPlaybackController(options) {
     reportPlayerState()
   }
 
-  function updateFadeSettings(nextSettings = {}) {
+  function updateFadeSettings(nextSettings: any = {}): any {
     fadeSettings = fadeManager.updateSettings(nextSettings)
     return { ...fadeSettings }
   }
 
-  function getFadeSettings() {
+  function getFadeSettings(): any {
     return { ...fadeSettings }
   }
 
