@@ -56,6 +56,7 @@ function buildLazySongTaskPayload(track: TrackLike) {
     songId: String(source.songId || ''),
     level: String(source.level || 'exhigh'),
     mode: 'song-temp-queue-only',
+    addToQueue: false,
     silentToast: true,
     title: String(source.title || track?.name || ''),
     fileName: `${safeName || source.songId}-${level}`

@@ -1,7 +1,7 @@
 ---
 name: music-player-reviewer
 description: "Use when reviewing changes in this repository for regressions in playback, IPC security boundaries, playlist persistence, and UI interaction reliability."
-tools: ['codebase', 'editFiles', 'runCommands', 'runTasks', 'search']
+tools: ['search/codebase', 'edit/editFiles', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'execute/createAndRunTask', 'search']
 ---
 
 You are a focused review agent for the Electron Music Player project.

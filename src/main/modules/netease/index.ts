@@ -209,6 +209,7 @@ type NeteaseDownloadBySongIdPayload = {
 type NeteaseDownloadSongTaskPayload = {
   mode?: unknown
   duplicateStrategy?: unknown
+  addToQueue?: unknown
   [key: string]: unknown
 }
 
@@ -1599,12 +1600,16 @@ function registerNeteaseHandlers(): void {
     }
 
     const resolvedMode = modeMap[mode] || modeMap['song-download-only']
+    const addToQueue =
+      typeof payload?.addToQueue === 'boolean'
+        ? payload.addToQueue
+        : resolvedMode.addToQueue
 
     try {
       return await createSongDownloadTaskFromId({
         ...payload,
         targetDirType: resolvedMode.targetDirType,
-        addToQueue: resolvedMode.addToQueue,
+        addToQueue,
         duplicateStrategy: payload?.duplicateStrategy || 'skip',
         downloadMode: mode,
         source: 'song-id'
