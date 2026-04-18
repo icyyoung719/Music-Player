@@ -33,8 +33,20 @@ type RecommendedPlaylistManagerOptions = {
   dom?: {
     gridEl?: HTMLElement | null
     statusEl?: HTMLElement | null
+    privateRadarCardEl?: HTMLElement | null
+    privateRadarCoverEl?: HTMLElement | null
+    privateRadarMetaEl?: HTMLElement | null
+    heroCardEls?: Array<Element | null>
+    heroCoverEls?: Array<Element | null>
+    heroMetaEls?: Array<Element | null>
   }
   onOpenPlaylistDetail?: (playlistId: string, name: string, options: { source: string; cloudPlaylist: RecommendedPlaylist | null }) => void
+}
+
+type HeroSlot = {
+  cardEl: HTMLElement
+  coverEl: HTMLElement
+  metaEl: HTMLElement
 }
 
 function safeText(value: unknown): string {
@@ -83,10 +95,55 @@ function normalizeRecommendedPlaylist(raw: unknown): RecommendedPlaylist | null 
   }
 }
 
-function formatPlayCount(playCount: number): string {
-  if (playCount >= 100000000) return `${(playCount / 100000000).toFixed(1)} 亿`
-  if (playCount >= 10000) return `${(playCount / 10000).toFixed(1)} 万`
-  return `${Math.max(0, Math.trunc(playCount))}`
+function setCover(coverEl: HTMLElement, coverUrl: string): void {
+  if (!coverUrl) {
+    coverEl.style.backgroundImage = ''
+    coverEl.style.backgroundSize = ''
+    coverEl.style.backgroundPosition = ''
+    coverEl.style.backgroundRepeat = ''
+    return
+  }
+
+  coverEl.style.backgroundImage = `url("${coverUrl}"), radial-gradient(circle at 72% 18%, rgba(255,255,255,0.58), transparent 42%), linear-gradient(140deg, #ef6d57, #f8c95e)`
+  coverEl.style.backgroundSize = 'cover, auto, auto'
+  coverEl.style.backgroundPosition = 'center, center, center'
+  coverEl.style.backgroundRepeat = 'no-repeat, no-repeat, no-repeat'
+}
+
+function setClickablePlaylist(cardEl: HTMLElement, playlistId: string): void {
+  if (/^\d{1,20}$/.test(playlistId)) {
+    cardEl.dataset.recommendPlaylistId = playlistId
+  } else {
+    delete cardEl.dataset.recommendPlaylistId
+  }
+}
+
+function collectHeroSlots(input?: {
+  heroCardEls?: Array<Element | null>
+  heroCoverEls?: Array<Element | null>
+  heroMetaEls?: Array<Element | null>
+}): HeroSlot[] {
+  const cards = Array.isArray(input?.heroCardEls) ? input!.heroCardEls : []
+  const covers = Array.isArray(input?.heroCoverEls) ? input!.heroCoverEls : []
+  const metas = Array.isArray(input?.heroMetaEls) ? input!.heroMetaEls : []
+  const slotCount = Math.min(cards.length, covers.length, metas.length)
+  const slots: HeroSlot[] = []
+
+  for (let i = 0; i < slotCount; i += 1) {
+    const card = cards[i]
+    const cover = covers[i]
+    const meta = metas[i]
+    if (!(card instanceof HTMLElement) || !(cover instanceof HTMLElement) || !(meta instanceof HTMLElement)) {
+      continue
+    }
+    slots.push({
+      cardEl: card,
+      coverEl: cover,
+      metaEl: meta
+    })
+  }
+
+  return slots
 }
 
 export function createRecommendedPlaylistManager(options: RecommendedPlaylistManagerOptions = {}) {
@@ -98,12 +155,26 @@ export function createRecommendedPlaylistManager(options: RecommendedPlaylistMan
     onOpenPlaylistDetail
   } = options
 
-  if (!(dom?.gridEl instanceof HTMLElement) || !(dom?.statusEl instanceof HTMLElement)) {
+  if (
+    !(dom?.gridEl instanceof HTMLElement)
+    || !(dom?.statusEl instanceof HTMLElement)
+    || !(dom?.privateRadarCardEl instanceof HTMLElement)
+    || !(dom?.privateRadarCoverEl instanceof HTMLElement)
+    || !(dom?.privateRadarMetaEl instanceof HTMLElement)
+  ) {
     return { init() {} }
   }
 
   const gridEl = dom.gridEl
   const statusEl = dom.statusEl
+  const privateRadarCardEl = dom.privateRadarCardEl
+  const privateRadarCoverEl = dom.privateRadarCoverEl
+  const privateRadarMetaEl = dom.privateRadarMetaEl
+  const heroSlots = collectHeroSlots({
+    heroCardEls: dom.heroCardEls,
+    heroCoverEls: dom.heroCoverEls,
+    heroMetaEls: dom.heroMetaEls
+  })
 
   const state = {
     loading: false,
@@ -125,57 +196,95 @@ export function createRecommendedPlaylistManager(options: RecommendedPlaylistMan
   function renderCards(): void {
     gridEl.innerHTML = ''
 
+    const privateRadar = state.playlists[0] || null
+    const heroPlaylists = state.playlists.slice(1, 1 + heroSlots.length)
+    const gridPlaylists = state.playlists.slice(1 + heroSlots.length)
+
     if (!state.isLoggedIn) {
       setStatus('登录后可查看个性化推荐歌单')
+      privateRadarMetaEl.textContent = '私人雷达 | 登录后可查看推荐'
+      setCover(privateRadarCoverEl, '')
+      setClickablePlaylist(privateRadarCardEl, '')
+
+      heroSlots.forEach((slot) => {
+        slot.metaEl.textContent = '推荐歌单 | 登录后加载'
+        setCover(slot.coverEl, '')
+        setClickablePlaylist(slot.cardEl, '')
+      })
       return
     }
 
     if (state.loading) {
       setStatus('推荐歌单加载中...')
+      privateRadarMetaEl.textContent = '私人雷达 | 正在加载推荐'
       return
     }
 
     if (state.lastError) {
       setStatus('推荐歌单加载失败，请稍后重试')
+      privateRadarMetaEl.textContent = '私人雷达 | 加载失败'
       return
     }
 
     if (!state.playlists.length) {
       setStatus('暂无推荐歌单')
+      privateRadarMetaEl.textContent = '私人雷达 | 暂无内容'
+      setCover(privateRadarCoverEl, '')
+      setClickablePlaylist(privateRadarCardEl, '')
+
+      heroSlots.forEach((slot) => {
+        slot.metaEl.textContent = '推荐歌单 | 暂无内容'
+        setCover(slot.coverEl, '')
+        setClickablePlaylist(slot.cardEl, '')
+      })
       return
     }
 
     hideStatus()
+
+    if (privateRadar) {
+      privateRadarMetaEl.textContent = `私人雷达 | ${privateRadar.name}`
+      setCover(privateRadarCoverEl, privateRadar.coverUrl)
+      setClickablePlaylist(privateRadarCardEl, privateRadar.platformPlaylistId)
+    } else {
+      privateRadarMetaEl.textContent = '私人雷达 | 暂无内容'
+      setCover(privateRadarCoverEl, '')
+      setClickablePlaylist(privateRadarCardEl, '')
+    }
+
+    heroSlots.forEach((slot, index) => {
+      const playlist = heroPlaylists[index]
+      if (!playlist) {
+        slot.metaEl.textContent = '推荐歌单 | 暂无内容'
+        setCover(slot.coverEl, '')
+        setClickablePlaylist(slot.cardEl, '')
+        return
+      }
+
+      slot.metaEl.textContent = `推荐歌单 | ${playlist.name}`
+      setCover(slot.coverEl, playlist.coverUrl)
+      setClickablePlaylist(slot.cardEl, playlist.platformPlaylistId)
+    })
+
     const fragment = document.createDocumentFragment()
 
-    for (const playlist of state.playlists) {
+    for (const playlist of gridPlaylists) {
       const button = document.createElement('button')
       button.type = 'button'
-      button.className = 'playlist-card recommend-playlist-card'
+      button.className = 'hero-card hero-card-action recommend-grid-hero-card'
       button.dataset.recommendPlaylistId = playlist.platformPlaylistId
       button.title = playlist.name
 
-      const thumb = document.createElement('div')
-      thumb.className = 'playlist-thumb'
-      if (playlist.coverUrl) {
-        thumb.style.backgroundImage = `url(${playlist.coverUrl})`
-        thumb.style.backgroundSize = 'cover'
-        thumb.style.backgroundPosition = 'center'
-      }
+      const cover = document.createElement('div')
+      cover.className = 'hero-cover'
+      setCover(cover, playlist.coverUrl)
 
-      const name = document.createElement('div')
-      name.className = 'playlist-name'
-      name.textContent = playlist.name
+      const title = document.createElement('div')
+      title.className = 'hero-meta'
+      title.textContent = playlist.name
 
-      const meta = document.createElement('div')
-      meta.className = 'recommend-playlist-meta'
-      const trackText = playlist.trackCount > 0 ? `${playlist.trackCount} 首` : '歌单'
-      const playText = playlist.playCount > 0 ? `${formatPlayCount(playlist.playCount)} 次播放` : '推荐'
-      meta.textContent = `${trackText} · ${playText}`
-
-      button.appendChild(thumb)
-      button.appendChild(name)
-      button.appendChild(meta)
+      button.appendChild(cover)
+      button.appendChild(title)
       fragment.appendChild(button)
     }
 
@@ -224,21 +333,14 @@ export function createRecommendedPlaylistManager(options: RecommendedPlaylistMan
       ? result.data.map(normalizeRecommendedPlaylist).filter(Boolean)
       : []
 
-    state.playlists = (playlists as RecommendedPlaylist[]).slice(0, 6)
+    state.playlists = (playlists as RecommendedPlaylist[]).slice(0, 30)
     state.lastError = ''
     renderCards()
   }
 
   function bindEvents(): void {
-    gridEl.addEventListener('click', (event: MouseEvent) => {
-      const target = event.target
-      if (!(target instanceof HTMLElement)) return
-      const button = target.closest('[data-recommend-playlist-id]')
-      if (!(button instanceof HTMLElement)) return
-
-      const playlistId = safeText(button.dataset.recommendPlaylistId)
+    const openByPlaylistId = (playlistId: string): void => {
       if (!/^\d{1,20}$/.test(playlistId)) return
-
       const playlist = state.playlists.find((item) => item.platformPlaylistId === playlistId) || null
       if (!playlist) return
 
@@ -257,6 +359,24 @@ export function createRecommendedPlaylistManager(options: RecommendedPlaylistMan
           cloudPlaylist: playlist
         })
       }
+    }
+
+    privateRadarCardEl.addEventListener('click', () => {
+      openByPlaylistId(safeText(privateRadarCardEl.dataset.recommendPlaylistId))
+    })
+
+    heroSlots.forEach((slot) => {
+      slot.cardEl.addEventListener('click', () => {
+        openByPlaylistId(safeText(slot.cardEl.dataset.recommendPlaylistId))
+      })
+    })
+
+    gridEl.addEventListener('click', (event: MouseEvent) => {
+      const target = event.target
+      if (!(target instanceof HTMLElement)) return
+      const button = target.closest('[data-recommend-playlist-id]')
+      if (!(button instanceof HTMLElement)) return
+      openByPlaylistId(safeText(button.dataset.recommendPlaylistId))
     })
 
     if (electronAPI?.onNeteaseAuthStateUpdate) {

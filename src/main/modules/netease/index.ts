@@ -313,12 +313,17 @@ function normalizeDailyRecommendationTracks(data: unknown): DailyRecommendationT
 function normalizeRecommendedPlaylists(data: unknown): CloudPlaylistItem[] {
   const payload = (data ?? {}) as {
     recommend?: unknown[]
-    data?: { recommend?: unknown[] }
+    result?: unknown[]
+    data?: { recommend?: unknown[]; result?: unknown[] }
   }
   const rawList = Array.isArray(payload.recommend)
     ? payload.recommend
+    : Array.isArray(payload.result)
+      ? payload.result
     : Array.isArray(payload.data?.recommend)
       ? payload.data.recommend
+      : Array.isArray(payload.data?.result)
+        ? payload.data.result
       : []
 
   return rawList
@@ -1395,21 +1400,30 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:get-recommended-playlists', async () => {
+  ipcMain.handle('netease:get-recommended-playlists', async (_event, payload: { limit?: unknown } = {}) => {
     await ensureAuthStateLoaded()
 
     if (!authState.cookie && !authState.userId) {
       return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
     }
 
+    const requestedLimit = Number(payload?.limit)
+    const limit = Number.isFinite(requestedLimit)
+      ? Math.max(1, Math.min(60, Math.trunc(requestedLimit)))
+      : 30
+
     try {
       const recommendResult = await postFormWithFallback(
         [
-          '/api/v1/discovery/recommend/resource',
-          '/weapi/v1/discovery/recommend/resource',
-          '/recommend/resource'
+          '/weapi/personalized/playlist',
+          '/api/personalized/playlist',
+          '/personalized'
         ],
-        {},
+        {
+          limit,
+          total: true,
+          n: 1000
+        },
         12000,
         { cookieProfile: 'ios' }
       )
@@ -1442,7 +1456,8 @@ function registerNeteaseHandlers(): void {
         data: playlists,
         meta: {
           fetchedAt: new Date().toISOString(),
-          source: 'recommend-resource'
+          source: 'personalized',
+          limit
         }
       }
     } catch (err: unknown) {

@@ -199,7 +199,13 @@ export function collectRendererDom(doc: Document = document) {
 
   const recommendedPlaylistDom = {
     gridEl: doc.getElementById('homeRecommendPlaylistGrid'),
-    statusEl: doc.getElementById('homeRecommendPlaylistStatus')
+    statusEl: doc.getElementById('homeRecommendPlaylistStatus'),
+    privateRadarCardEl: doc.getElementById('homePrivateRadarCard'),
+    privateRadarCoverEl: doc.getElementById('homePrivateRadarCover'),
+    privateRadarMetaEl: doc.getElementById('homePrivateRadarMeta'),
+    heroCardEls: Array.from(doc.querySelectorAll('[data-recommend-hero-slot]')),
+    heroCoverEls: Array.from(doc.querySelectorAll('[data-recommend-hero-cover]')),
+    heroMetaEls: Array.from(doc.querySelectorAll('[data-recommend-hero-meta]'))
   }
 
   return {

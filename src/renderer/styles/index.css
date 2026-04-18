@@ -1112,11 +1112,31 @@ body {
   border: 1px solid var(--line);
   animation: rise-in 0.45s ease both;
 }
+.hero-card-action {
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+button.hero-card {
+  appearance: none;
+  display: block;
+  border: 0;
+  padding: 0;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  width: 100%;
+  cursor: pointer;
+}
+.hero-card-action:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.08);
+}
 .hero-card:nth-child(2), .playlist-card:nth-child(2) { animation-delay: 0.06s; }
 .hero-card:nth-child(3), .playlist-card:nth-child(3) { animation-delay: 0.12s; }
 .hero-card:nth-child(4), .playlist-card:nth-child(4) { animation-delay: 0.18s; }
 .hero-card:nth-child(5), .playlist-card:nth-child(5) { animation-delay: 0.24s; }
 .hero-cover {
+  width: 100%;
   height: 150px;
   background:
     radial-gradient(circle at 72% 18%, rgba(255,255,255,0.58), transparent 42%),
@@ -1146,6 +1166,10 @@ body {
   font-size: 13px;
   color: var(--text-sub);
 }
+.recommend-hero-grid {
+  grid-template-columns: repeat(5, minmax(130px, 1fr));
+  margin-bottom: 24px;
+}
 .playlist-card {
   cursor: pointer;
   animation: rise-in 0.45s ease both;
@@ -1169,7 +1193,7 @@ button.playlist-card {
 }
 .playlist-name {
   margin-top: 8px;
-  font-size: 17px;
+  font-size: 15px;
   color: var(--text-main);
   line-height: 1.32;
   max-height: 3.1em;
