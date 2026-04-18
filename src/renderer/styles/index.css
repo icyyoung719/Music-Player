@@ -1141,9 +1141,22 @@ body {
   gap: 14px;
   margin-bottom: 24px;
 }
+.playlist-grid-status {
+  margin: 0 0 12px;
+  font-size: 13px;
+  color: var(--text-sub);
+}
 .playlist-card {
   cursor: pointer;
   animation: rise-in 0.45s ease both;
+}
+button.playlist-card {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: left;
+  font: inherit;
+  color: inherit;
 }
 .playlist-thumb {
   width: 100%;
@@ -1161,6 +1174,14 @@ body {
   line-height: 1.32;
   max-height: 3.1em;
   overflow: hidden;
+}
+.recommend-playlist-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--text-sub);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .home-banner-row {
   display: grid;

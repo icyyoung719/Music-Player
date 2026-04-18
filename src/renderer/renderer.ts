@@ -9,6 +9,7 @@ import { createAccountManager } from './modules/accountManager.js'
 import { createDownloadManager } from './modules/downloadManager.js'
 import { createToastManager } from './modules/toastManager.js'
 import { createDailyRecommendationManager } from './modules/dailyRecommendationManager.js'
+import { createRecommendedPlaylistManager } from './modules/recommendedPlaylistManager.js'
 import { createCloudPlaylistManager } from './modules/cloudPlaylistManager.js'
 import { createRecentlyPlayedManager } from './modules/recentlyPlayedManager.js'
 import { collectRendererDom } from './modules/rendererDom.js'
@@ -86,8 +87,7 @@ function setupRenderer(): void {
       homeMenuDownloadEl: dom.homeMenuDownloadEl,
       homeMenuRecentlyPlayedEl: dom.homeMenuRecentlyPlayedEl,
       homeNowCoverImgEl: dom.homeNowCoverImgEl,
-      homeNowCoverPlaceholderEl: dom.homeNowCoverPlaceholderEl,
-      homeFeaturedCoverEl: dom.homeFeaturedCoverEl
+      homeNowCoverPlaceholderEl: dom.homeNowCoverPlaceholderEl
     },
     onSongPageShown: () => {
       playbackController?.refreshLyricsScroll()
@@ -179,6 +179,16 @@ function setupRenderer(): void {
     getCloudPlaylistManager: () => cloudPlaylistManager
   })
   neteasePlaylistDetailManager.init()
+
+  createRecommendedPlaylistManager({
+    electronAPI,
+    neteaseDatabaseService,
+    eventBus,
+    dom: dom.recommendedPlaylistDom,
+    onOpenPlaylistDetail: (playlistId, playlistName, options: any = {}) => {
+      neteasePlaylistDetailManager?.openByPlaylistId(playlistId, playlistName, options)
+    }
+  }).init()
 
   cloudPlaylistManager = createCloudPlaylistManager({
     electronAPI,

@@ -194,6 +194,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   neteaseSendAlbum: (payload: unknown) => ipcRenderer.invoke('netease:send-album', payload),
   neteaseSendPlaylist: (payload: unknown) => ipcRenderer.invoke('netease:send-playlist', payload),
   neteaseGetDailyRecommendation: () => ipcRenderer.invoke('netease:get-daily-recommendation'),
+  neteaseGetRecommendedPlaylists: () => ipcRenderer.invoke('netease:get-recommended-playlists'),
   neteaseResolveSongDownloadUrl: (payload: unknown) => ipcRenderer.invoke('netease:resolve-song-download-url', payload),
   neteaseDownloadBySongId: (payload: unknown) => ipcRenderer.invoke('netease:download-by-song-id', payload),
   neteaseDownloadTaskList: () => ipcRenderer.invoke('netease:download-task:list'),

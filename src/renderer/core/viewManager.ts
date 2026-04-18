@@ -17,7 +17,6 @@ type ViewDom = {
   homeMenuRecentlyPlayedEl?: HTMLElement | null
   homeNowCoverImgEl?: HTMLImageElement | null
   homeNowCoverPlaceholderEl?: HTMLElement | null
-  homeFeaturedCoverEl?: HTMLElement | null
 }
 
 type ViewManagerOptions = {
@@ -119,16 +118,6 @@ export function createViewManager(options: ViewManagerOptions) {
         dom.homeNowCoverImgEl.src = ''
         dom.homeNowCoverImgEl.style.display = 'none'
         dom.homeNowCoverPlaceholderEl.style.display = 'inline'
-      }
-    }
-
-    if (dom.homeFeaturedCoverEl) {
-      if (dataUrl) {
-        dom.homeFeaturedCoverEl.style.backgroundImage = `url(${dataUrl})`
-        dom.homeFeaturedCoverEl.style.backgroundSize = 'cover'
-        dom.homeFeaturedCoverEl.style.backgroundPosition = 'center'
-      } else {
-        dom.homeFeaturedCoverEl.style.backgroundImage = ''
       }
     }
   }

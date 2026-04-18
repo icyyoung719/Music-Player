@@ -162,6 +162,11 @@ export type NeteaseCloudPlaylistResult = ApiResult<{
   state?: unknown
 }>
 
+export type NeteaseRecommendedPlaylistResult = ApiResult<{
+  data?: unknown[]
+  meta?: unknown
+}>
+
 export type NeteaseToastPayload = {
   level?: 'info' | 'success' | 'warning' | 'error'
   message?: string
@@ -248,6 +253,7 @@ export interface ElectronAPI {
   neteaseSendAlbum?: (payload: Record<string, unknown>) => Promise<ApiResult<Record<string, unknown>>>
   neteaseSendPlaylist?: (payload: Record<string, unknown>) => Promise<ApiResult<Record<string, unknown>>>
   neteaseGetDailyRecommendation?: () => Promise<ApiResult<{ data?: unknown }>>
+  neteaseGetRecommendedPlaylists?: () => Promise<NeteaseRecommendedPlaylistResult>
   neteaseResolveSongDownloadUrl?: (payload: NeteaseSongIdPayload) => Promise<ApiResult<{ resolved?: Record<string, unknown>; pickedLevel?: string; attempts?: unknown[] }>>
 
   onNeteaseAuthWindowSetPage?: (listener: (page: string) => void) => Unsubscribe

@@ -3,7 +3,6 @@ export function collectRendererDom(doc: Document = document) {
   const songPageEl = doc.getElementById('songPage')
   const homeNowCoverImgEl = doc.getElementById('homeNowCoverImg')
   const homeNowCoverPlaceholderEl = doc.getElementById('homeNowCoverPlaceholder')
-  const homeFeaturedCoverEl = doc.getElementById('homeFeaturedCover')
   const homeMenuRecommendEl = doc.getElementById('homeMenuRecommend')
   const homeMenuDownloadEl = doc.getElementById('homeMenuDownload')
   const homeMenuRecentlyPlayedEl = doc.getElementById('homeMenuRecentlyPlayed')
@@ -94,7 +93,6 @@ export function collectRendererDom(doc: Document = document) {
     bottomTrackCoverPlaceholderEl: doc.getElementById('bottomTrackCoverPlaceholder'),
     homeNowTitleEl: doc.getElementById('homeNowTitle'),
     homeNowArtistEl: doc.getElementById('homeNowArtist'),
-    homeFeaturedTitleEl: doc.getElementById('homeFeaturedTitle'),
     songBackBtn: doc.getElementById('songBackBtn'),
     homeGoSongBtn: doc.getElementById('homeGoSongBtn')
   }
@@ -199,6 +197,11 @@ export function collectRendererDom(doc: Document = document) {
     metaEl: doc.getElementById('dailyRecommendMeta')
   }
 
+  const recommendedPlaylistDom = {
+    gridEl: doc.getElementById('homeRecommendPlaylistGrid'),
+    statusEl: doc.getElementById('homeRecommendPlaylistStatus')
+  }
+
   return {
     homePageEl,
     songPageEl,
@@ -208,7 +211,6 @@ export function collectRendererDom(doc: Document = document) {
     homeCreatedPlaylistListEl,
     homeNowCoverImgEl,
     homeNowCoverPlaceholderEl,
-    homeFeaturedCoverEl,
     homeRecommendViewEl,
     homeDownloadViewEl,
     homeRecentlyPlayedViewEl,
@@ -232,6 +234,7 @@ export function collectRendererDom(doc: Document = document) {
     neteasePlaylistDetailDom,
     cloudPlaylistDom,
     downloadDom,
-    dailyRecommendationDom
+    dailyRecommendationDom,
+    recommendedPlaylistDom
   }
 }

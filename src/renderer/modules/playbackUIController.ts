@@ -31,7 +31,6 @@ export function createPlaybackUIController(options: any = {}): any {
     if (dom.bottomTrackArtistEl) dom.bottomTrackArtistEl.textContent = artist || '\u00a0'
     if (dom.homeNowTitleEl) dom.homeNowTitleEl.textContent = title || 'Little Busters!'
     if (dom.homeNowArtistEl) dom.homeNowArtistEl.textContent = artist || 'Rita / VISUAL ARTS'
-    if (dom.homeFeaturedTitleEl && title) dom.homeFeaturedTitleEl.textContent = title
   }
 
   function setBottomNowPlayingCover(coverDataUrl: string): void {

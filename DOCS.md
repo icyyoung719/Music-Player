@@ -80,6 +80,7 @@
 - 登录在独立授权窗口进行
 - 云端歌单与本地歌单双轨管理：云端歌单采用引用收藏，不直接写入本地歌单库
 - 云端歌单支持账户同步（我创建/我收藏）、日推来源入库、播放来源入库
+- 首页推荐歌单支持登录态个性化拉取（未登录显示登录引导）
 - 关键词搜索支持歌曲/歌手/歌单卡片化展示，包含封面/头像与核心元信息
 - 歌单搜索结果支持详情面板，可查看歌单曲目并触发播放/下载操作
 - 下载支持单曲/歌单任务创建、取消、状态筛选
@@ -101,9 +102,10 @@
 - `src/renderer/modules/neteaseSearchManager.ts`
 - `src/renderer/modules/neteasePlaylistDetailManager.ts`
 
-### 1.5 每日推荐
+### 1.5 每日推荐与推荐歌单
 
 - 登录后拉取推荐歌曲
+- 登录后拉取个性化推荐歌单并在主页推荐区渲染
 - 可加入当前播放队列
 - 支持懒下载播放队列模式
 
@@ -111,6 +113,7 @@
 
 - `src/main/modules/netease/index.ts`
 - `src/renderer/modules/dailyRecommendationManager.ts`
+- `src/renderer/modules/recommendedPlaylistManager.ts`
 - `src/renderer/modules/playbackController.ts`
 
 ### 1.6 桌面壳层
@@ -181,7 +184,7 @@
 
 - `src/renderer/core/eventBus.ts`：发布/订阅与 request/handle 模式
 - `src/renderer/core/viewManager.ts`：页面与子视图切换、封面区域同步
-- `src/renderer/core/neteaseDatabaseService.ts`：网易云查询/搜索/建议/歌单详情/日推/云歌单数据访问
+- `src/renderer/core/neteaseDatabaseService.ts`：网易云查询/搜索/建议/歌单详情/日推/推荐歌单/云歌单数据访问
 - `src/renderer/core/downloadService.ts`：下载任务状态汇聚与任务操作封装
 - `src/renderer/core/eventBridgeManager.ts`：事件总线到业务模块的桥接与快捷键动作分发
 

@@ -310,6 +310,56 @@ function normalizeDailyRecommendationTracks(data: unknown): DailyRecommendationT
     .filter((item): item is DailyRecommendationTrack => Boolean(item))
 }
 
+function normalizeRecommendedPlaylists(data: unknown): CloudPlaylistItem[] {
+  const payload = (data ?? {}) as {
+    recommend?: unknown[]
+    data?: { recommend?: unknown[] }
+  }
+  const rawList = Array.isArray(payload.recommend)
+    ? payload.recommend
+    : Array.isArray(payload.data?.recommend)
+      ? payload.data.recommend
+      : []
+
+  return rawList
+    .map((item: unknown): CloudPlaylistItem | undefined => {
+      const typed = (item ?? {}) as {
+        id?: unknown
+        name?: unknown
+        picUrl?: unknown
+        coverImgUrl?: unknown
+        copywriter?: unknown
+        description?: unknown
+        trackCount?: unknown
+        playCount?: unknown
+        playcount?: unknown
+        tags?: unknown[]
+        creator?: { userId?: unknown; nickname?: unknown }
+      }
+      const playlistId = sanitizeId(typed.id)
+      if (!playlistId) return undefined
+
+      return normalizeCloudPlaylistItem({
+        id: playlistId,
+        platformPlaylistId: playlistId,
+        name: typed.name,
+        creator: {
+          userId: sanitizeId(typed.creator?.userId) || '',
+          nickname: String(typed.creator?.nickname || '').trim() || '网易云音乐'
+        },
+        coverUrl: typed.picUrl || typed.coverImgUrl,
+        description: typed.copywriter || typed.description,
+        trackCount: typed.trackCount,
+        playCount: typed.playCount ?? typed.playcount,
+        tags: typed.tags,
+        collected: false,
+        sourceKinds: ['recommend'],
+        updatedAt: new Date().toISOString()
+      })
+    })
+    .filter((entry: CloudPlaylistItem | undefined): entry is CloudPlaylistItem => Boolean(entry))
+}
+
 function getCloudPlaylistStorePath(): string {
   return path.join(app.getPath('userData'), CLOUD_PLAYLIST_STORE_NAME)
 }
@@ -1339,6 +1389,67 @@ function registerNeteaseHandlers(): void {
         source: 'netease.index',
         event: 'get-daily-recommendation-failed',
         message: 'Failed to fetch daily recommendation',
+        error: err
+      })
+      return { ok: false, error: 'REQUEST_FAILED', message: getErrorMessage(err) }
+    }
+  })
+
+  ipcMain.handle('netease:get-recommended-playlists', async () => {
+    await ensureAuthStateLoaded()
+
+    if (!authState.cookie && !authState.userId) {
+      return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
+    }
+
+    try {
+      const recommendResult = await postFormWithFallback(
+        [
+          '/api/v1/discovery/recommend/resource',
+          '/weapi/v1/discovery/recommend/resource',
+          '/recommend/resource'
+        ],
+        {},
+        12000,
+        { cookieProfile: 'ios' }
+      )
+
+      if (!recommendResult.ok || !recommendResult.result?.data) {
+        return {
+          ok: false,
+          error: 'REQUEST_FAILED',
+          message: recommendResult.error || 'REQUEST_FAILED'
+        }
+      }
+
+      const data = recommendResult.result.data
+      const code = Number(data?.code || 0)
+      if (code && code !== 200) {
+        const message = extractApiErrorMessage(data) || 'REQUEST_FAILED'
+        if (isRiskControlMessage(message)) {
+          return { ok: false, error: 'LOGIN_RISK_BLOCKED', code, message }
+        }
+        return { ok: false, error: 'REQUEST_FAILED', code, message }
+      }
+
+      const playlists = normalizeRecommendedPlaylists(data)
+      if (!playlists.length) {
+        return { ok: false, error: 'EMPTY_RECOMMENDED_PLAYLISTS', message: '暂无推荐歌单' }
+      }
+
+      return {
+        ok: true,
+        data: playlists,
+        meta: {
+          fetchedAt: new Date().toISOString(),
+          source: 'recommend-resource'
+        }
+      }
+    } catch (err: unknown) {
+      logProgramEvent({
+        source: 'netease.index',
+        event: 'get-recommended-playlists-failed',
+        message: 'Failed to fetch recommended playlists',
         error: err
       })
       return { ok: false, error: 'REQUEST_FAILED', message: getErrorMessage(err) }
