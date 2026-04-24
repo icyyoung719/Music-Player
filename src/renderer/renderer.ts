@@ -124,7 +124,8 @@ function setupRenderer(): void {
   playbackController = createPlaybackController({
     electronAPI,
     dom: dom.playbackDom,
-    eventBus
+    eventBus,
+    promptForPlaylistName: dialogManager.requestPlaylistName
   })
   playbackController.init()
 

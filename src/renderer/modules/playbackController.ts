@@ -22,18 +22,29 @@ type PlaybackControllerOptions = {
   eventBus?: {
     emit: (eventName: string, payload?: unknown) => void
   }
+  promptForPlaylistName?: (message: string, defaultValue: string) => Promise<string | null>
 }
 
 export function createPlaybackController(options: PlaybackControllerOptions): any {
   const {
     electronAPI,
     dom,
-    eventBus
+    eventBus,
+    promptForPlaylistName
   } = options
 
   function emit(eventName: string, payload?: unknown): void {
     if (!eventBus) return
     eventBus.emit(eventName, payload)
+  }
+
+  async function requestPlaylistName(message: string, defaultValue: string): Promise<string | null> {
+    if (typeof promptForPlaylistName === 'function') {
+      return promptForPlaylistName(message, defaultValue)
+    }
+
+    const input = prompt(message, defaultValue)
+    return input === null ? null : input
   }
 
   const audio = new Audio()
@@ -323,7 +334,7 @@ export function createPlaybackController(options: PlaybackControllerOptions): an
     let playlistId = ''
     if (existing.length) {
       const tips = existing.map((item: any, idx: number) => `${idx + 1}. ${item.name}`).join('\n')
-      const input = prompt(`选择歌单序号，或输入新歌单名称：\n${tips}`, '1')
+      const input = await requestPlaylistName(`选择歌单序号，或输入新歌单名称：\n${tips}`, '1')
       if (input === null) return
 
       const trimmed = String(input || '').trim()
@@ -335,7 +346,7 @@ export function createPlaybackController(options: PlaybackControllerOptions): an
         playlistId = created?.ok ? created.playlist?.id || '' : ''
       }
     } else {
-      const name = prompt('输入新歌单名称：', track.name || '收藏歌曲')
+      const name = await requestPlaylistName('输入新歌单名称：', track.name || '收藏歌曲')
       if (name === null) return
       const created = await electronAPI.playlistCreate(String(name || '').trim() || '收藏歌曲')
       playlistId = created?.ok ? created.playlist?.id || '' : ''
@@ -375,7 +386,7 @@ export function createPlaybackController(options: PlaybackControllerOptions): an
       return
     }
 
-    const name = prompt('输入要收藏成的歌单名称：', `播放列表 ${new Date().toLocaleDateString()}`)
+    const name = await requestPlaylistName('输入要收藏成的歌单名称：', `播放列表 ${new Date().toLocaleDateString()}`)
     if (name === null) return
     const created = await electronAPI.playlistCreate(String(name || '').trim() || `播放列表 ${Date.now()}`)
     const playlistId = created?.ok ? created.playlist?.id || '' : ''

@@ -33,6 +33,7 @@ export function createDialogManager(options: DialogManagerOptions = {}) {
       titleEl.textContent = title
       titleEl.style.fontSize = '14px'
       titleEl.style.marginBottom = '10px'
+      titleEl.style.whiteSpace = 'pre-wrap'
 
       const input = doc.createElement('input')
       input.type = 'text'
