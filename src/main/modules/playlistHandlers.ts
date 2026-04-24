@@ -38,11 +38,13 @@ type MetadataCache = {
   artist?: string
   album?: string
   duration?: number
+  songId?: string
 }
 
 type TrackLibraryEntry = {
   path: string
   metadataCache: MetadataCache
+  songId?: string
 }
 
 type NeteaseTrackMetadataRecord = {
@@ -332,7 +334,11 @@ function ensureStateShape(rawState: unknown): PlaylistState {
       metadataCache:
         typedTrack.metadataCache && typeof typedTrack.metadataCache === 'object'
           ? (typedTrack.metadataCache as MetadataCache)
-          : {}
+          : {},
+      songId:
+        typeof (track as { songId?: unknown }).songId === 'string'
+          ? String((track as { songId?: unknown }).songId || '').trim() || undefined
+          : undefined
     }
   }
 
@@ -367,16 +373,22 @@ async function initializePlaylistState(): Promise<void> {
   }
 }
 
-function createTrackId(filePath: string, mtimeMs: number): string {
-  return crypto
+function createTrackId(filePath: string, songId?: string): string {
+  const normalizedSongId = String(songId || '').trim()
+  if (normalizedSongId) {
+    return `netease:${normalizedSongId}`
+  }
+
+  return `path:${crypto
     .createHash('sha1')
-    .update(`${filePath}|${mtimeMs}`)
-    .digest('hex')
+    .update(path.resolve(filePath).toLowerCase())
+    .digest('hex')}`
 }
 
 async function upsertTrack(trackInput: unknown): Promise<string | undefined> {
   const payload = (trackInput ?? {}) as {
     path?: unknown
+    songId?: unknown
     metadataCache?: unknown
     title?: unknown
     artist?: unknown
@@ -394,12 +406,24 @@ async function upsertTrack(trackInput: unknown): Promise<string | undefined> {
   } catch {
     return undefined
   }
+  if (!stat.isFile()) {
+    return undefined
+  }
 
-  const trackId = createTrackId(resolvedPath, stat.mtimeMs)
   const metadataCacheInput =
     payload.metadataCache && typeof payload.metadataCache === 'object'
       ? (payload.metadataCache as Record<string, unknown>)
       : {}
+
+  const songIdCandidate =
+    typeof payload.songId === 'string'
+      ? String(payload.songId || '').trim()
+      : typeof metadataCacheInput.songId === 'string'
+        ? String(metadataCacheInput.songId || '').trim()
+        : ''
+
+  const trackId = createTrackId(resolvedPath, songIdCandidate)
+
 
   playlistState.trackLibrary[trackId] = {
     path: resolvedPath,
@@ -407,8 +431,10 @@ async function upsertTrack(trackInput: unknown): Promise<string | undefined> {
       title: String(metadataCacheInput.title || payload.title || path.basename(resolvedPath)),
       artist: metadataCacheInput.artist ? String(metadataCacheInput.artist) : payload.artist ? String(payload.artist) : undefined,
       album: metadataCacheInput.album ? String(metadataCacheInput.album) : payload.album ? String(payload.album) : undefined,
-      duration: Number(metadataCacheInput.duration || payload.duration || 0) || undefined
-    }
+      duration: Number(metadataCacheInput.duration || payload.duration || 0) || undefined,
+      songId: songIdCandidate || undefined
+    },
+    songId: songIdCandidate || undefined
   }
 
   return trackId

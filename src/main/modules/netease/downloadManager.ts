@@ -18,10 +18,17 @@ const {
   resolveAudioExtByResolvedUrl
 } = require('./neteaseApi') as any
 const {
-  trackMetadataStore,
-  ensureTrackMetadataLoaded,
-  persistTrackMetadataForTask
+  persistTrackMetadataForTask,
+  getTrackMetadataStorePath
 } = require('./trackMetadata') as any
+const {
+  findLocalSongBySongId,
+  findLocalSongByFileName,
+  upsertLocalSongFile,
+  markLocalSongFileMissing,
+  ensureLocalSongCatalogReady,
+  ensureLocalSongCatalogHydrated
+} = require('./localSongCatalog') as any
 
 const MAX_DOWNLOAD_CONCURRENCY = 2
 const DEFAULT_DOWNLOAD_DIR = path.join(os.homedir(), 'Music', 'MyPlayerDownloads')
@@ -197,6 +204,35 @@ async function countFilesRecursive(targetDir: string): Promise<number> {
   return count
 }
 
+async function loadSongIdMapFromTrackMetadataStore(): Promise<Record<string, string>> {
+  const map: Record<string, string> = {}
+  try {
+    const metadataStorePath = String(getTrackMetadataStorePath?.() || '').trim()
+    if (!metadataStorePath) return map
+    const content = await fs.promises.readFile(metadataStorePath, 'utf8')
+    const parsed = JSON.parse(content)
+    if (!parsed || typeof parsed !== 'object') return map
+
+    for (const [storedPath, metadata] of Object.entries(parsed as Record<string, any>)) {
+      const songId = String(metadata?.songId ?? '').trim()
+      if (!songId) continue
+      map[normalizeFsPath(storedPath)] = songId
+    }
+  } catch {
+    // Keep empty map when metadata store is unavailable or malformed.
+  }
+  return map
+}
+
+async function ensureCatalogHydratedForDownloads(dirs: Record<string, string>): Promise<void> {
+  ensureLocalSongCatalogReady()
+  const songIdByNormalizedPath = await loadSongIdMapFromTrackMetadataStore()
+  await ensureLocalSongCatalogHydrated({
+    dirs,
+    songIdByNormalizedPath
+  })
+}
+
 function normalizeFsPath(filePath: unknown): string {
   const resolved = path.resolve(String(filePath ?? ''))
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved
@@ -217,6 +253,31 @@ function resolveDirTypeForPath(filePath: unknown, dirs: any): string {
   return ''
 }
 
+function resolveSongIdForCatalog(taskLike: any): string {
+  const fromPayload = String(taskLike?.songId ?? '').trim()
+  if (fromPayload) return fromPayload
+
+  const fromMetadata = String(taskLike?.songMetadata?.songId ?? '').trim()
+  if (fromMetadata) return fromMetadata
+
+  return ''
+}
+
+function upsertSongCatalogForTask(taskLike: any, filePath: unknown, dirType: unknown): void {
+  const normalizedFilePath = String(filePath ?? '').trim()
+  if (!normalizedFilePath) return
+
+  try {
+    upsertLocalSongFile({
+      filePath: normalizedFilePath,
+      songId: resolveSongIdForCatalog(taskLike),
+      dirType
+    })
+  } catch {
+    // Ignore catalog write errors to avoid interrupting download flows.
+  }
+}
+
 async function fileExists(filePath: unknown): Promise<boolean> {
   if (!filePath) return false
   try {
@@ -227,31 +288,6 @@ async function fileExists(filePath: unknown): Promise<boolean> {
   }
 }
 
-async function listFilesRecursive(rootDir: string): Promise<string[]> {
-  const files: string[] = []
-  const stack: string[] = [rootDir]
-  while (stack.length > 0) {
-    const current = stack.pop()
-    if (!current) continue
-    let entries: any[] = []
-    try {
-      entries = await fs.promises.readdir(current, { withFileTypes: true })
-    } catch {
-      continue
-    }
-
-    for (const entry of entries) {
-      const full = path.join(current, entry.name)
-      if (entry.isDirectory()) {
-        stack.push(full)
-      } else if (entry.isFile()) {
-        files.push(full)
-      }
-    }
-  }
-  return files
-}
-
 async function locateSongBySongId(songId: unknown, dirs: any, options: any = {}): Promise<any> {
   const id = String(songId ?? '').trim()
   if (!id) return null
@@ -260,24 +296,12 @@ async function locateSongBySongId(songId: unknown, dirs: any, options: any = {})
   const includeSongs = options.includeSongs !== false
   const includeLists = Boolean(options.includeLists)
 
-  await ensureTrackMetadataLoaded()
-  for (const [storedPath, metadata] of Object.entries(trackMetadataStore)) {
-    if (!metadata || String((metadata as any).songId ?? '').trim() !== id) continue
-    if (!(await fileExists(storedPath))) continue
-
-    const dirType = resolveDirTypeForPath(storedPath, dirs)
-    if (!dirType) continue
-    if (dirType === 'temp' && !includeTemp) continue
-    if (dirType === 'songs' && !includeSongs) continue
-    if (dirType === 'lists' && !includeLists) continue
-
-    return {
-      path: storedPath,
-      dirType
-    }
-  }
-
-  return null
+  const fromCatalog = findLocalSongBySongId(id, {
+    includeTemp,
+    includeSongs,
+    includeLists
+  })
+  return fromCatalog || null
 }
 
 async function locateSongByFileName(fileName: unknown, dirs: any, options: any = {}): Promise<any> {
@@ -288,23 +312,12 @@ async function locateSongByFileName(fileName: unknown, dirs: any, options: any =
   const includeSongs = options.includeSongs !== false
   const includeLists = Boolean(options.includeLists)
 
-  if (includeTemp) {
-    const tempPath = path.join(dirs.temp, normalizedName)
-    if (await fileExists(tempPath)) return { path: tempPath, dirType: 'temp' }
-  }
-
-  if (includeSongs) {
-    const songsPath = path.join(dirs.songs, normalizedName)
-    if (await fileExists(songsPath)) return { path: songsPath, dirType: 'songs' }
-  }
-
-  if (includeLists) {
-    const listFiles = await listFilesRecursive(dirs.lists)
-    const matchedPath = listFiles.find((filePath) => path.basename(filePath).toLowerCase() === normalizedName.toLowerCase())
-    if (matchedPath) return { path: matchedPath, dirType: 'lists' }
-  }
-
-  return null
+  const fromCatalog = findLocalSongByFileName(normalizedName, {
+    includeTemp,
+    includeSongs,
+    includeLists
+  })
+  return fromCatalog || null
 }
 
 async function moveFileSafely(sourcePath: string, targetPath: string): Promise<string> {
@@ -381,6 +394,7 @@ async function reuseLocalSongForTask(
   if (!located) return null
 
   if (isPlaySong) {
+    upsertSongCatalogForTask(payload, located.path, located.dirType)
     const skippedTask = createSkippedTask({
       ...payload,
       filePath: located.path,
@@ -395,6 +409,7 @@ async function reuseLocalSongForTask(
 
   if (isSongDownload) {
     if (located.dirType === 'songs') {
+      upsertSongCatalogForTask(payload, located.path, 'songs')
       const skippedTask = createSkippedTask({
         ...payload,
         filePath: located.path,
@@ -409,6 +424,8 @@ async function reuseLocalSongForTask(
 
     if (located.dirType === 'temp') {
       const movedPath = await moveFileSafely(located.path, targetFilePath)
+      markLocalSongFileMissing(located.path)
+      upsertSongCatalogForTask(payload, movedPath, 'songs')
       const skippedTask = createSkippedTask({
         ...payload,
         filePath: movedPath,
@@ -426,6 +443,7 @@ async function reuseLocalSongForTask(
     const targetInLists = path.join(dirResolved.dirPath, finalFileName)
 
     if (located.dirType === 'lists' && normalizeFsPath(located.path) === normalizeFsPath(targetInLists)) {
+      upsertSongCatalogForTask(payload, targetInLists, 'lists')
       const skippedTask = createSkippedTask({
         ...payload,
         filePath: targetInLists,
@@ -439,6 +457,7 @@ async function reuseLocalSongForTask(
     }
 
     const copiedPath = await copyFileSafely(located.path, targetInLists)
+    upsertSongCatalogForTask(payload, copiedPath, 'lists')
     const skippedTask = createSkippedTask({
       ...payload,
       filePath: copiedPath,
@@ -584,6 +603,7 @@ async function runSingleTask(taskId: string): Promise<void> {
     task.finishedAt = Date.now()
     task.updatedAt = Date.now()
     await persistTrackMetadataForTask(task)
+    upsertSongCatalogForTask(task, task.filePath, task.targetDirType || 'songs')
     emitDownloadTaskUpdate(task)
     if (shouldEmitTaskToast(task)) {
       emitGlobalToast({
@@ -632,7 +652,9 @@ async function consumeDownloadQueue() {
 }
 
 async function createDownloadTask(payload: any): Promise<any> {
-  await ensureDownloadBaseDirs()
+  ensureLocalSongCatalogReady()
+  const dirs = await ensureDownloadBaseDirs()
+  await ensureCatalogHydratedForDownloads(dirs)
 
   const fileNameInput = safeFileName(payload.fileName || `song-${payload.songId || Date.now()}`)
   const finalFileName = maybeAddFileExt(fileNameInput, payload.url)
@@ -640,7 +662,6 @@ async function createDownloadTask(payload: any): Promise<any> {
   await fs.promises.mkdir(dirResolved.dirPath, { recursive: true })
   const filePath = path.join(dirResolved.dirPath, finalFileName)
 
-  const dirs = await ensureDownloadBaseDirs()
   const reusedLocal = await reuseLocalSongForTask(payload, finalFileName, filePath, dirs, dirResolved)
   if (reusedLocal) {
     return reusedLocal
@@ -650,6 +671,7 @@ async function createDownloadTask(payload: any): Promise<any> {
   if (duplicateStrategy === 'skip') {
     try {
       await fs.promises.access(filePath, fs.constants.F_OK)
+      upsertSongCatalogForTask(payload, filePath, dirResolved.dirType)
       const skippedTask = createSkippedTask({
         ...payload,
         filePath,

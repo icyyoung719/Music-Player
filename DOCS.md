@@ -86,8 +86,9 @@
 - 下载支持单曲/歌单任务创建、取消、状态筛选
 - 下载目录支持 Songs、Temp、Lists/<歌单名>
 - 下载任务创建前先执行本地命中检查：
-	- 单曲播放（song-temp-queue-only）扫描 Temp/Songs/Lists，命中后直接复用本地文件
-	- 单曲下载（song-download-only / song-download-and-queue）扫描 Songs/Temp，命中 Temp 时移动到 Songs
+	- 优先查询本地歌曲索引 `netease-song-catalog.sqlite`
+	- 任务创建前执行索引重建：按 Songs/Temp/Lists 扫描并写入索引，运行态查询不再做目录回退扫描
+	- 单曲下载（song-download-only / song-download-and-queue）命中 Temp 时移动到 Songs，并同步更新索引状态
 	- 歌单下载（playlist-download-*）优先复用本地 Songs/Temp/Lists 文件并复制到目标 Lists/<歌单名>
 - 下载后补全标签、歌词与封面元数据
 
@@ -224,7 +225,7 @@
 - 最大并发数：2
 - 任务状态：pending/downloading/succeeded/failed/skipped/canceled
 - 支持取消与跨窗口进度广播
-- 创建任务前执行本地优先解析：按下载模式扫描 Temp/Songs/Lists，命中后可直接复用、移动或复制
+- 创建任务前执行本地优先解析：先重建并加载 `netease-song-catalog.sqlite`，下载运行态仅走索引查询
 - 当目标路径已存在时继续使用重复文件跳过策略
 
 ### 3.4 懒下载播放队列
@@ -267,6 +268,7 @@
 - `netease-cloud-playlists.json`
 - `netease-auth.json`
 - `netease-track-metadata.json`
+- `netease-song-catalog.sqlite`
 - `shell-preferences.json`
 - 浏览器本地存储：`musicPlayer.recentlyPlayed.v1`（最近播放，最多 50 条，去重上移）
 

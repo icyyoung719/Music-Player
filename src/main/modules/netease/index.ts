@@ -57,6 +57,7 @@ import {
   createSongDownloadTaskFromId,
   cancelDownloadTask
 } from './downloadManager'
+import { markLocalSongCatalogDirTypeMissing } from './localSongCatalog'
 
 let handlersRegistered = false
 const CLOUD_PLAYLIST_STORE_NAME = 'netease-cloud-playlists.json'
@@ -724,6 +725,7 @@ function registerNeteaseHandlers(): void {
       const beforeCount = await countFilesRecursive(tempDir)
       await fs.promises.rm(tempDir, { recursive: true, force: true })
       await fs.promises.mkdir(tempDir, { recursive: true })
+      markLocalSongCatalogDirTypeMissing('temp')
 
       emitGlobalToast({
         level: 'info',

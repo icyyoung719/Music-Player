@@ -85,6 +85,7 @@
 - `netease-cloud-playlists.json`：云端歌单引用收藏与来源索引
 - `netease-auth.json`：网易云鉴权状态
 - `netease-track-metadata.json`：网易云下载曲目元数据索引
+- `netease-song-catalog.sqlite`：本地歌曲路径与状态索引（用于下载前快速命中）
 - `shell-preferences.json`：桌面壳层偏好
 - `logs/program.log`、`logs/network.log`：程序与网络日志
 
