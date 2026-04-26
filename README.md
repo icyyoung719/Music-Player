@@ -23,6 +23,7 @@
   - 云端歌单与本地歌单双轨：云端歌单以引用方式收藏，独立于本地歌单
   - 关键词搜索支持歌曲/歌手/歌单卡片化结果展示（封面、头像、核心元信息）
   - 歌单搜索结果支持详情面板，可查看歌单内歌曲并执行播放/下载
+  - 首页推荐歌单支持登录态个性化拉取，未登录显示登录引导
   - 支持将云端歌单下载为本地歌单，并在操作时选择策略
   - 自动检测本地，避免重复下载
   - 单曲/歌单查询与下载任务管理
@@ -34,18 +35,31 @@
 - 日志可视化工具
   - 查看 `program.log` 与 `network.log`
   - 支持关键词、方法、状态过滤与详情查看
+- API 模拟采样工具
+  - 复用本地 `netease-auth.json` 登录态进行接口采样
+  - 输出每个接口的精简 JSON 快照（裁剪大数组、长文本、data URL）
+  - 生成 unknown 字段审计报告，辅助减少界面兜底文案
 
 ## 快速开始
 
 1. 安装依赖：`npm install`
-2. 启动应用：`npm run start`
-3. 启动日志可视化：`npm run logviz`
+2. 构建产物：`npm run build`
+3. 启动应用：`npm run start`
+4. 启动日志可视化：`npm run logviz`
+5. 运行 API 模拟采样：`npm run api-sim`
+
+## 开发与构建
+
+- 源码目录：`src/**`（TypeScript）
+- 构建产物：`dist/**`
+- 类型检查：`npm run typecheck`
+- Windows 打包：`npm run build:win`
 
 ## 架构边界
 
 - Main (`src/main/**`)
   - 生命周期、窗口/托盘壳层、IPC 注册、持久化与网络访问
-- Preload (`src/preload/preload.js`)
+- Preload (`src/preload/preload.ts`)
   - 通过 `contextBridge` 暴露受控 API
 - Renderer (`src/renderer/**`)
   - 页面装配、事件编排、交互逻辑
@@ -59,13 +73,14 @@
 
 ## 目录与入口
 
-- 主入口：`src/main/main.js`
-- 预加载：`src/preload/preload.js`
+- 运行时主入口：`dist/main/main.js`
+- Main 源码入口：`src/main/main.ts`
+- 预加载：`src/preload/preload.ts`
 - 渲染层壳：`src/renderer/index.html`
-- 渲染层启动：`src/renderer/bootstrap.js`
-- 渲染层编排：`src/renderer/renderer.js`
-- 渲染层核心：`src/renderer/core/*.js`
-- 功能模块：`src/renderer/modules/*.js`
+- 渲染层启动：`src/renderer/bootstrap.ts`
+- 渲染层编排：`src/renderer/renderer.ts`
+- 渲染层核心：`src/renderer/core/*.ts`
+- 功能模块：`src/renderer/modules/*.ts`
 
 ## 数据与存储
 
@@ -75,6 +90,7 @@
 - `netease-cloud-playlists.json`：云端歌单引用收藏与来源索引
 - `netease-auth.json`：网易云鉴权状态
 - `netease-track-metadata.json`：网易云下载曲目元数据索引
+- `netease-song-catalog.sqlite`：本地歌曲路径与状态索引（用于下载前快速命中）
 - `shell-preferences.json`：桌面壳层偏好
 - `logs/program.log`、`logs/network.log`：程序与网络日志
 
@@ -87,5 +103,6 @@
 ## 文档
 
 - 架构与实现细节：`DOCS.md`
+- API 模拟采样说明：`tools/netease-api-sim/README.md`
 - 网易云 API 参考：`ref/netease-cloud-music-api-binaryify/`
 - 其他参考：`ref/CloudMusic-Mod/`、`ref/NetMusic/`

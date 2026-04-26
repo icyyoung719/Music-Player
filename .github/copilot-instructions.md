@@ -1,7 +1,12 @@
 # Copilot Instructions For This Repository
 
 ## Project Intent
-This is an Electron-based local music player prototype. Keep edits pragmatic, modular, and easy to verify manually.
+This is a TypeScript Electron desktop music player. Keep edits pragmatic, modular, and easy to verify manually.
+
+## First Read
+- `AGENTS.md` for workflow and repository guardrails.
+- `README.md` for capability overview and commands.
+- `DOCS.md` for architecture, data flow, and storage details.
 
 ## Technical Constraints
 - Keep Electron security defaults:
@@ -10,30 +15,15 @@ This is an Electron-based local music player prototype. Keep edits pragmatic, mo
 - Do not expose raw Node or privileged APIs directly to renderer.
 - For new cross-process features, update all three layers:
   - `src/main/**` (IPC)
-  - `src/preload/preload.js` (bridge)
+  - `src/preload/preload.ts` (bridge)
   - `src/renderer/**` (caller)
 
 ## Preferred Patterns
-- Put feature logic in `src/renderer/modules/` rather than `renderer.js`.
-- Keep `renderer.js` as composition/orchestration.
-- Keep utility logic in `trackUtils.js` when reusable.
+- Put feature logic in `src/renderer/modules/*.ts` rather than `src/renderer/renderer.ts`.
+- Keep `src/renderer/renderer.ts` as composition/orchestration.
+- Use `src/renderer/core/*.ts` for cross-module services and contracts.
+- Keep reusable utility logic in `trackUtils.ts`.
 - Prefer small functions with clear side effects.
-- Documentation maintenance is required after significant changes:
-  - Update `README.md` for user-facing capability/usage changes.
-  - Update `DOCS.md` for current architecture, implementation keys, and maintenance notes.
-  - When features are removed/updated or implementation/architecture changes, update both files as needed (do not update only changelog text).
-
-## Documentation Style
-- Treat `README.md` and `DOCS.md` as stable reference docs.
-- Emphasize capability core, architecture, data flow, and usage boundaries.
-- Avoid status/process wording: `已完成`、`此次更新`、`修复`、`优化中`、`计划中`.
-- Keep both files concise; do not include bug timeline narratives or temporary progress notes.
-- Keep `README.md` high-level and keep implementation depth in `DOCS.md`.
-
-## UI Guidance
-- Respect existing visual direction in `index.html`.
-- Keep desktop and small-screen behavior usable.
-- Avoid introducing heavy CSS frameworks.
 
 ## Validation Expectations
 When modifying playback or playlists, verify:
@@ -41,6 +31,18 @@ When modifying playback or playlists, verify:
 - play/pause/next/prev/loop
 - progress/time display and seek behavior
 - playlist persistence and import/export flows
+
+Run `npm run typecheck` before considering a TypeScript change complete.
+
+## Documentation Maintenance
+When behavior, architecture, or user-visible usage changes:
+- Update `README.md` for capability/usage
+- Update `DOCS.md` for architecture/implementation/data flow
+
+Documentation style:
+- Keep docs concise and stable.
+- Avoid status/process wording: `已完成`、`此次更新`、`修复`、`优化中`、`计划中`.
+- Avoid timeline-style troubleshooting narratives.
 
 ## Non-Goals
 - Do not rewrite architecture unless requested.

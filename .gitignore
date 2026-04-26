@@ -11,9 +11,11 @@ Thumbs.db
 # 日志
 *.log
 npm-debug.log*
+tools/netease-api-sim/runs/
 
 # Electron 打包及构建输出目录
 dist/
+dist-release/
 build/
 out/
 release/

@@ -1,15 +1,20 @@
 {
   "devDependencies": {
+    "@types/node": "^24.12.0",
     "electron": "^40.6.1",
-    "electron-builder": "^26.8.1"
+    "electron-builder": "^26.8.1",
+    "typescript": "^6.0.2"
   },
   "name": "music-player",
   "version": "1.0.0",
-  "main": "src/main/main.js",
+  "main": "dist/main/main.js",
   "scripts": {
-    "start": "electron .",
-    "build:win": "electron-builder --win",
-    "logviz": "node tools/log-visualizer/server.js"
+    "build": "node build.js",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "start": "npm run build && electron .",
+    "build:win": "npm run build && electron-builder --win",
+    "logviz": "node tools/log-visualizer/server.js",
+    "api-sim": "node tools/netease-api-sim/index.js"
   },
   "keywords": [],
   "author": "",
@@ -80,10 +85,10 @@
     "appId": "com.icyyoung.musicplayer",
     "productName": "MusicPlayer",
     "directories": {
-      "output": "dist"
+      "output": "dist-release"
     },
     "files": [
-      "src/**/*",
+      "dist/**/*",
       "assets/**/*",
       "package.json"
     ],
@@ -91,7 +96,9 @@
       "target": [
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     }

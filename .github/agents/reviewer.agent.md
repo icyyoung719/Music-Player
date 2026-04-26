@@ -1,7 +1,7 @@
 ---
 name: music-player-reviewer
 description: "Use when reviewing changes in this repository for regressions in playback, IPC security boundaries, playlist persistence, and UI interaction reliability."
-tools: ['codebase', 'editFiles', 'runCommands', 'runTasks', 'search']
+tools: ['search/codebase', 'edit/editFiles', 'execute/getTerminalOutput', 'execute/runInTerminal', 'read/terminalLastCommand', 'read/terminalSelection', 'execute/createAndRunTask', 'search']
 ---
 
 You are a focused review agent for the Electron Music Player project.
@@ -20,9 +20,9 @@ You are a focused review agent for the Electron Music Player project.
 - Keep summaries concise.
 
 ## Repo Context
-- Main app startup: `src/main/main.js`
-- IPC and persistence: `src/main/modules/playlistHandlers.js`
-- Shell integration: `src/main/modules/playerShell.js`
-- Secure API bridge: `src/preload/preload.js`
-- Renderer orchestration: `src/renderer/renderer.js`
-- Playback logic: `src/renderer/modules/playbackController.js`
+- Main app startup: `src/main/main.ts` (runtime output: `dist/main/main.js`)
+- IPC and persistence: `src/main/modules/playlistHandlers.ts`
+- Shell integration: `src/main/modules/playerShell.ts`
+- Secure API bridge: `src/preload/preload.ts`
+- Renderer bootstrap/orchestration: `src/renderer/bootstrap.ts`, `src/renderer/renderer.ts`
+- Playback logic: `src/renderer/modules/playbackController.ts`
