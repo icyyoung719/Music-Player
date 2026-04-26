@@ -29,6 +29,78 @@ type NeteasePlaylistDetailPayload = {
   playlistId: string | number
 }
 
+type NeteaseOpenDownloadDirPayload = {
+  dirType?: 'songs' | 'temp' | 'lists' | string
+  playlistName?: string
+}
+
+type NeteaseDownloadTaskPayload = {
+  songId?: string | number
+  playlistId?: string | number
+  level?: string
+  mode?: string
+  targetDirType?: 'songs' | 'temp' | 'lists' | string
+  duplicateStrategy?: string
+  downloadMode?: string
+  addToQueue?: boolean
+  fileName?: string
+  title?: string
+  savePlaylistName?: string
+  savePlaylistBatchKey?: string
+  [key: string]: unknown
+}
+
+type NeteaseAuthSummaryPayload = {
+  refresh?: boolean
+}
+
+type NeteaseAuthUpdatePayload = {
+  apiBaseUrl?: string
+  cookie?: string
+  accessToken?: string
+  refreshToken?: string
+  userName?: string
+  userId?: string | number
+}
+
+type NeteaseAuthLoginEmailPayload = {
+  apiBaseUrl?: string
+  email?: string
+  password?: string
+  md5Password?: string
+  phone?: string
+  countryCode?: string
+}
+
+type NeteaseAuthSendCaptchaPayload = {
+  apiBaseUrl?: string
+  phone?: string
+  countryCode?: string
+}
+
+type NeteaseAuthLoginCaptchaPayload = {
+  apiBaseUrl?: string
+  phone?: string
+  captcha?: string
+  countryCode?: string
+}
+
+type NeteaseAuthQrPayload = {
+  apiBaseUrl?: string
+  qrKey?: string
+}
+
+type NeteaseAuthOpenWindowPayload = {
+  page?: 'email' | 'captcha' | 'qr'
+}
+
+type NeteaseAuthRequestPayload = {
+  path?: string
+  data?: Record<string, unknown>
+  method?: 'GET' | 'POST' | string
+  timeout?: number
+}
+
 type NeteaseDownloadTaskCancelPayload = {
   id: string
 }
@@ -96,6 +168,13 @@ function sanitizeHttpUrl(value: unknown): string {
   return /^https?:\/\//i.test(text) ? text : ''
 }
 
+function sanitizeDirType(value: unknown): 'songs' | 'temp' | 'lists' {
+  const text = String(value ?? '').trim().toLowerCase()
+  if (text === 'temp') return 'temp'
+  if (text === 'lists') return 'lists'
+  return 'songs'
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   playAudio: (filePath: string) => ipcRenderer.invoke('play-audio', filePath),
   getMetadata: (filePath: string) => ipcRenderer.invoke('get-metadata', filePath),
@@ -140,22 +219,39 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   neteaseGetDownloadDir: () => ipcRenderer.invoke('netease:get-download-dir'),
   neteaseGetDownloadDirs: () => ipcRenderer.invoke('netease:get-download-dirs'),
-  neteaseOpenDownloadDir: (payload: unknown) => ipcRenderer.invoke('netease:open-download-dir', payload),
+  neteaseOpenDownloadDir: (payload: NeteaseOpenDownloadDirPayload | unknown) => {
+    const safePayload = asRecord(payload)
+    return ipcRenderer.invoke('netease:open-download-dir', {
+      dirType: sanitizeDirType(safePayload?.dirType),
+      playlistName: String(safePayload?.playlistName || '').trim()
+    })
+  },
   neteaseClearTempDownloads: () => ipcRenderer.invoke('netease:clear-temp-downloads'),
-  neteaseDownloadDirect: (payload: unknown) => ipcRenderer.invoke('netease:download-direct', payload),
-  neteaseDownloadSongTask: (payload: unknown) => ipcRenderer.invoke('netease:download-song-task', payload),
-  neteaseDownloadPlaylistById: (payload: unknown) => ipcRenderer.invoke('netease:download-playlist-by-id', payload),
+  neteaseDownloadDirect: (payload: NeteaseDownloadTaskPayload | unknown) =>
+    ipcRenderer.invoke('netease:download-direct', asRecord(payload) || {}),
+  neteaseDownloadSongTask: (payload: NeteaseDownloadTaskPayload | unknown) =>
+    ipcRenderer.invoke('netease:download-song-task', asRecord(payload) || {}),
+  neteaseDownloadPlaylistById: (payload: NeteaseDownloadTaskPayload | unknown) =>
+    ipcRenderer.invoke('netease:download-playlist-by-id', asRecord(payload) || {}),
   neteaseAuthGetState: () => ipcRenderer.invoke('netease:auth:get-state'),
-  neteaseAuthGetAccountSummary: (payload: unknown) => ipcRenderer.invoke('netease:auth:get-account-summary', payload),
-  neteaseAuthUpdate: (payload: unknown) => ipcRenderer.invoke('netease:auth:update', payload),
-  neteaseAuthLoginEmail: (payload: unknown) => ipcRenderer.invoke('netease:auth:login-email', payload),
-  neteaseAuthSendCaptcha: (payload: unknown) => ipcRenderer.invoke('netease:auth:send-captcha', payload),
-  neteaseAuthLoginCaptcha: (payload: unknown) => ipcRenderer.invoke('netease:auth:login-captcha', payload),
-  neteaseAuthQrCreate: (payload: unknown) => ipcRenderer.invoke('netease:auth:qr:create', payload),
-  neteaseAuthQrCheck: (payload: unknown) => ipcRenderer.invoke('netease:auth:qr:check', payload),
+  neteaseAuthGetAccountSummary: (payload: NeteaseAuthSummaryPayload | unknown) =>
+    ipcRenderer.invoke('netease:auth:get-account-summary', asRecord(payload) || {}),
+  neteaseAuthUpdate: (payload: NeteaseAuthUpdatePayload | unknown) =>
+    ipcRenderer.invoke('netease:auth:update', asRecord(payload) || {}),
+  neteaseAuthLoginEmail: (payload: NeteaseAuthLoginEmailPayload | unknown) =>
+    ipcRenderer.invoke('netease:auth:login-email', asRecord(payload) || {}),
+  neteaseAuthSendCaptcha: (payload: NeteaseAuthSendCaptchaPayload | unknown) =>
+    ipcRenderer.invoke('netease:auth:send-captcha', asRecord(payload) || {}),
+  neteaseAuthLoginCaptcha: (payload: NeteaseAuthLoginCaptchaPayload | unknown) =>
+    ipcRenderer.invoke('netease:auth:login-captcha', asRecord(payload) || {}),
+  neteaseAuthQrCreate: (payload: NeteaseAuthQrPayload | unknown) =>
+    ipcRenderer.invoke('netease:auth:qr:create', asRecord(payload) || {}),
+  neteaseAuthQrCheck: (payload: NeteaseAuthQrPayload | unknown) =>
+    ipcRenderer.invoke('netease:auth:qr:check', asRecord(payload) || {}),
   neteaseAuthClear: () => ipcRenderer.invoke('netease:auth:clear'),
   neteaseAuthVerify: () => ipcRenderer.invoke('netease:auth:verify'),
-  neteaseAuthOpenWindow: (payload: unknown) => ipcRenderer.invoke('netease:auth:open-window', payload),
+  neteaseAuthOpenWindow: (payload: NeteaseAuthOpenWindowPayload | unknown) =>
+    ipcRenderer.invoke('netease:auth:open-window', asRecord(payload) || {}),
   neteaseAuthCloseWindow: () => ipcRenderer.send('netease:auth-window:close'),
   onNeteaseAuthWindowSetPage: (listener: GenericListener<string>): Unsubscribe => {
     if (typeof listener !== 'function') return () => {}
@@ -169,7 +265,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.on('netease:auth:state-updated', wrapped)
     return () => ipcRenderer.removeListener('netease:auth:state-updated', wrapped)
   },
-  neteaseAuthRequest: (payload: unknown) => ipcRenderer.invoke('netease:auth:request', payload),
+  neteaseAuthRequest: (payload: NeteaseAuthRequestPayload | unknown) =>
+    ipcRenderer.invoke('netease:auth:request', asRecord(payload) || {}),
   neteaseSearch: (payload: unknown) => ipcRenderer.invoke('netease:search', payload),
   neteaseSearchSuggest: (payload: unknown) => ipcRenderer.invoke('netease:search-suggest', payload),
   neteaseSearchDefault: () => ipcRenderer.invoke('netease:search-default'),
@@ -195,8 +292,10 @@ contextBridge.exposeInMainWorld('electronAPI', {
   neteaseSendPlaylist: (payload: unknown) => ipcRenderer.invoke('netease:send-playlist', payload),
   neteaseGetDailyRecommendation: () => ipcRenderer.invoke('netease:get-daily-recommendation'),
   neteaseGetRecommendedPlaylists: () => ipcRenderer.invoke('netease:get-recommended-playlists'),
-  neteaseResolveSongDownloadUrl: (payload: unknown) => ipcRenderer.invoke('netease:resolve-song-download-url', payload),
-  neteaseDownloadBySongId: (payload: unknown) => ipcRenderer.invoke('netease:download-by-song-id', payload),
+  neteaseResolveSongDownloadUrl: (payload: NeteaseDownloadTaskPayload | unknown) =>
+    ipcRenderer.invoke('netease:resolve-song-download-url', asRecord(payload) || {}),
+  neteaseDownloadBySongId: (payload: NeteaseDownloadTaskPayload | unknown) =>
+    ipcRenderer.invoke('netease:download-by-song-id', asRecord(payload) || {}),
   neteaseDownloadTaskList: () => ipcRenderer.invoke('netease:download-task:list'),
   neteaseDownloadTaskCancel: (payload: NeteaseDownloadTaskCancelPayload | unknown) => {
     const safePayload = asRecord(payload)

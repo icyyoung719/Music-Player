@@ -16,11 +16,20 @@ const {
   isNeteaseAudioHost,
   sanitizeSongId,
   resolveAudioExtByResolvedUrl
-} = require('./neteaseApi') as any
+} = require('./neteaseApi') as {
+  resolveSongUrlWithLevelFallback: (songId: string, level: string) => Promise<ResolveSongUrlResult>
+  fetchSongMetadataById: (songId: string) => Promise<SongMetadata | null>
+  isNeteaseAudioHost: (rawUrl: string) => boolean
+  sanitizeSongId: (songId: unknown) => string | null
+  resolveAudioExtByResolvedUrl: (resolved: { type?: unknown; url?: unknown } | unknown) => string
+}
 const {
   persistTrackMetadataForTask,
   getTrackMetadataStorePath
-} = require('./trackMetadata') as any
+} = require('./trackMetadata') as {
+  persistTrackMetadataForTask: (task: DownloadTask) => Promise<void>
+  getTrackMetadataStorePath: () => string
+}
 const {
   findLocalSongBySongId,
   findLocalSongByFileName,
@@ -28,7 +37,17 @@ const {
   markLocalSongFileMissing,
   ensureLocalSongCatalogReady,
   ensureLocalSongCatalogHydrated
-} = require('./localSongCatalog') as any
+} = require('./localSongCatalog') as {
+  findLocalSongBySongId: (songId: string, options: LocateSongOptions) => LocalSongCatalogEntry | null
+  findLocalSongByFileName: (fileName: string, options: LocateSongOptions) => LocalSongCatalogEntry | null
+  upsertLocalSongFile: (payload: { filePath: string; songId: string; dirType: DownloadDirType | string }) => void
+  markLocalSongFileMissing: (filePath: string) => void
+  ensureLocalSongCatalogReady: () => void
+  ensureLocalSongCatalogHydrated: (payload: {
+    dirs: DownloadBaseDirs
+    songIdByNormalizedPath: Record<string, string>
+  }) => Promise<void>
+}
 
 const MAX_DOWNLOAD_CONCURRENCY = 2
 const DEFAULT_DOWNLOAD_DIR = path.join(os.homedir(), 'Music', 'MyPlayerDownloads')
@@ -36,9 +55,136 @@ const DOWNLOAD_DIR_SONGS = 'Songs'
 const DOWNLOAD_DIR_TEMP = 'Temp'
 const DOWNLOAD_DIR_LISTS = 'Lists'
 
-const downloadTasks = new Map<string, any>()
+type DownloadDirType = 'songs' | 'temp' | 'lists'
+type DownloadTaskStatus = 'pending' | 'downloading' | 'succeeded' | 'failed' | 'skipped' | 'canceled'
+type DownloadMode =
+  | 'song-download-only'
+  | 'song-temp-queue-only'
+  | 'song-download-and-queue'
+  | 'playlist-download-only'
+  | 'playlist-download-and-queue'
+  | 'playlist-download-and-save'
+
+interface SongMetadata {
+  songId: string
+  title: string
+  artist: string
+  album: string
+  durationMs: number
+  year: number | null
+  coverUrl: string
+}
+
+interface LocalSongCatalogEntry {
+  path: string
+  fileName?: string
+  songId?: string
+  dirType: DownloadDirType | string
+}
+
+interface LocateSongOptions {
+  includeTemp?: boolean
+  includeSongs?: boolean
+  includeLists?: boolean
+}
+
+interface DownloadBaseDirs {
+  root: string
+  songs: string
+  temp: string
+  lists: string
+}
+
+interface DownloadTask {
+  id: string
+  source: string
+  songId: string
+  title: string
+  songMetadata: SongMetadata | null
+  url: string
+  filePath: string
+  status: DownloadTaskStatus
+  progress: number
+  totalBytes: number
+  receivedBytes: number
+  error: string
+  skipReason: string
+  downloadMode: DownloadMode | string
+  targetDirType: DownloadDirType | string
+  playlistContext: Record<string, unknown> | null
+  addToQueue: boolean
+  silentToast: boolean
+  savePlaylistName: string
+  savePlaylistBatchKey: string
+  createdAt: number
+  updatedAt: number
+  startedAt?: number
+  finishedAt?: number
+}
+
+interface DownloadTaskPayload {
+  source?: string
+  songId?: string
+  title?: string
+  songMetadata?: SongMetadata | null
+  url?: string
+  filePath?: string
+  fileName?: string
+  error?: string
+  skipReason?: string
+  downloadMode?: DownloadMode | string
+  targetDirType?: DownloadDirType | string
+  playlistContext?: Record<string, unknown> | null
+  addToQueue?: boolean
+  silentToast?: boolean
+  savePlaylistName?: string
+  savePlaylistBatchKey?: string
+  duplicateStrategy?: string
+  playlistName?: string
+  level?: string
+}
+
+interface ResolveSongUrlResult {
+  ok: boolean
+  resolved?: {
+    url?: string
+    type?: string
+  }
+  pickedLevel?: string
+  attempts?: Array<{ level: string; ok: boolean; error?: string }>
+  error?: string
+  message?: string
+}
+
+interface TaskMutationResult {
+  ok: boolean
+  task?: DownloadTask
+  error?: string
+  message?: string
+  attempts?: Array<{ level: string; ok: boolean; error?: string }>
+  pickedLevel?: string
+}
+
+interface ActiveDownloadHandle {
+  request: http.ClientRequest
+  stream: fs.WriteStream
+}
+
+interface AppToastPayload {
+  id?: string
+  message?: string
+  level?: 'info' | 'success' | 'warning' | 'error' | string
+  createdAt?: number
+  taskId?: string
+  taskStatus?: DownloadTaskStatus | string
+  scope?: string
+  error?: string
+  [key: string]: unknown
+}
+
+const downloadTasks = new Map<string, DownloadTask>()
 const pendingTaskIds: string[] = []
-const activeDownloadHandles = new Map<string, any>()
+const activeDownloadHandles = new Map<string, ActiveDownloadHandle>()
 let activeDownloadCount = 0
 
 // ---------------------------------------------------------------------------
@@ -86,7 +232,7 @@ function isAllowedDownloadHost(rawUrl: string): boolean {
   return isNeteaseAudioHost(rawUrl)
 }
 
-function shouldEmitTaskToast(task: any): boolean {
+function shouldEmitTaskToast(task: DownloadTask | null | undefined): boolean {
   return !Boolean(task?.silentToast)
 }
 
@@ -94,7 +240,7 @@ function shouldEmitTaskToast(task: any): boolean {
 // Broadcast helpers
 // ---------------------------------------------------------------------------
 
-function emitGlobalToast(payload: any): void {
+function emitGlobalToast(payload: AppToastPayload): void {
   const message = String(payload?.message ?? '').trim()
   if (!message) return
 
@@ -113,7 +259,7 @@ function emitGlobalToast(payload: any): void {
   }
 }
 
-function emitDownloadTaskUpdate(task: any): void {
+function emitDownloadTaskUpdate(task: DownloadTask): void {
   const payload = { ...task }
   for (const win of BrowserWindow.getAllWindows()) {
     if (!win.isDestroyed()) {
@@ -122,8 +268,8 @@ function emitDownloadTaskUpdate(task: any): void {
   }
 }
 
-function listDownloadTasks(): any[] {
-  return Array.from(downloadTasks.values()).sort((a: any, b: any) => b.createdAt - a.createdAt)
+function listDownloadTasks(): DownloadTask[] {
+  return Array.from(downloadTasks.values()).sort((a, b) => b.createdAt - a.createdAt)
 }
 
 // ---------------------------------------------------------------------------
@@ -160,7 +306,7 @@ function resolveDownloadDir(dirType: unknown, playlistName?: unknown): DownloadD
   return { dirType: 'songs', dirPath: path.join(rootDir, DOWNLOAD_DIR_SONGS) }
 }
 
-async function ensureDownloadBaseDirs(): Promise<Record<string, string>> {
+async function ensureDownloadBaseDirs(): Promise<DownloadBaseDirs> {
   const root = getDownloadRootDir()
   const songsDir = resolveDownloadDir('songs').dirPath
   const tempDir = resolveDownloadDir('temp').dirPath
@@ -185,7 +331,7 @@ async function countFilesRecursive(targetDir: string): Promise<number> {
   while (stack.length > 0) {
     const current = stack.pop()
     if (!current) continue
-    let entries: any[] = []
+    let entries: fs.Dirent[] = []
     try {
       entries = await fs.promises.readdir(current, { withFileTypes: true })
     } catch {
@@ -213,7 +359,7 @@ async function loadSongIdMapFromTrackMetadataStore(): Promise<Record<string, str
     const parsed = JSON.parse(content)
     if (!parsed || typeof parsed !== 'object') return map
 
-    for (const [storedPath, metadata] of Object.entries(parsed as Record<string, any>)) {
+    for (const [storedPath, metadata] of Object.entries(parsed as Record<string, { songId?: unknown }>)) {
       const songId = String(metadata?.songId ?? '').trim()
       if (!songId) continue
       map[normalizeFsPath(storedPath)] = songId
@@ -224,7 +370,7 @@ async function loadSongIdMapFromTrackMetadataStore(): Promise<Record<string, str
   return map
 }
 
-async function ensureCatalogHydratedForDownloads(dirs: Record<string, string>): Promise<void> {
+async function ensureCatalogHydratedForDownloads(dirs: DownloadBaseDirs): Promise<void> {
   ensureLocalSongCatalogReady()
   const songIdByNormalizedPath = await loadSongIdMapFromTrackMetadataStore()
   await ensureLocalSongCatalogHydrated({
@@ -245,7 +391,7 @@ function isPathInside(basePath: string, targetPath: string): boolean {
   return target.startsWith(`${base}${path.sep}`)
 }
 
-function resolveDirTypeForPath(filePath: unknown, dirs: any): string {
+function resolveDirTypeForPath(filePath: unknown, dirs: DownloadBaseDirs): DownloadDirType | '' {
   if (!filePath || !dirs) return ''
   if (isPathInside(String(filePath), dirs.songs)) return 'songs'
   if (isPathInside(String(filePath), dirs.temp)) return 'temp'
@@ -253,7 +399,7 @@ function resolveDirTypeForPath(filePath: unknown, dirs: any): string {
   return ''
 }
 
-function resolveSongIdForCatalog(taskLike: any): string {
+function resolveSongIdForCatalog(taskLike: DownloadTaskPayload | DownloadTask | null | undefined): string {
   const fromPayload = String(taskLike?.songId ?? '').trim()
   if (fromPayload) return fromPayload
 
@@ -263,7 +409,11 @@ function resolveSongIdForCatalog(taskLike: any): string {
   return ''
 }
 
-function upsertSongCatalogForTask(taskLike: any, filePath: unknown, dirType: unknown): void {
+function upsertSongCatalogForTask(
+  taskLike: DownloadTaskPayload | DownloadTask | null | undefined,
+  filePath: unknown,
+  dirType: DownloadDirType | string
+): void {
   const normalizedFilePath = String(filePath ?? '').trim()
   if (!normalizedFilePath) return
 
@@ -288,7 +438,11 @@ async function fileExists(filePath: unknown): Promise<boolean> {
   }
 }
 
-async function locateSongBySongId(songId: unknown, dirs: any, options: any = {}): Promise<any> {
+async function locateSongBySongId(
+  songId: unknown,
+  _dirs: DownloadBaseDirs,
+  options: LocateSongOptions = {}
+): Promise<LocalSongCatalogEntry | null> {
   const id = String(songId ?? '').trim()
   if (!id) return null
 
@@ -304,7 +458,11 @@ async function locateSongBySongId(songId: unknown, dirs: any, options: any = {})
   return fromCatalog || null
 }
 
-async function locateSongByFileName(fileName: unknown, dirs: any, options: any = {}): Promise<any> {
+async function locateSongByFileName(
+  fileName: unknown,
+  _dirs: DownloadBaseDirs,
+  options: LocateSongOptions = {}
+): Promise<LocalSongCatalogEntry | null> {
   const normalizedName = String(fileName ?? '').trim()
   if (!normalizedName) return null
 
@@ -327,8 +485,9 @@ async function moveFileSafely(sourcePath: string, targetPath: string): Promise<s
   try {
     await fs.promises.rename(sourcePath, targetPath)
     return targetPath
-  } catch (err: any) {
-    if (err?.code !== 'EXDEV' && err?.code !== 'EEXIST') {
+  } catch (err: unknown) {
+    const code = (err as NodeJS.ErrnoException)?.code
+    if (code !== 'EXDEV' && code !== 'EEXIST') {
       throw err
     }
   }
@@ -351,13 +510,13 @@ async function copyFileSafely(sourcePath: string, targetPath: string): Promise<s
   return targetPath
 }
 
-function publishSkippedTask(task: any, infoMessage: unknown): void {
+function publishSkippedTask(task: DownloadTask, infoMessage: unknown): void {
   downloadTasks.set(task.id, task)
   emitDownloadTaskUpdate(task)
   if (infoMessage && shouldEmitTaskToast(task)) {
     emitGlobalToast({
       level: 'info',
-      message: infoMessage,
+      message: String(infoMessage),
       taskId: task.id,
       taskStatus: task.status
     })
@@ -365,12 +524,12 @@ function publishSkippedTask(task: any, infoMessage: unknown): void {
 }
 
 async function reuseLocalSongForTask(
-  payload: any,
+  payload: DownloadTaskPayload,
   finalFileName: string,
   targetFilePath: string,
-  dirs: any,
+  dirs: DownloadBaseDirs,
   dirResolved: DownloadDirInfo
-): Promise<any> {
+): Promise<TaskMutationResult | null> {
   const mode = String(payload.downloadMode || 'song-download-only').trim()
   const isPlaySong = mode === 'song-temp-queue-only'
   const isSongDownload = mode === 'song-download-only' || mode === 'song-download-and-queue'
@@ -477,20 +636,20 @@ async function reuseLocalSongForTask(
 // Task creation helpers
 // ---------------------------------------------------------------------------
 
-function createSkippedTask(payload: any): any {
+function createSkippedTask(payload: DownloadTaskPayload): DownloadTask {
   const id = createTaskId()
   const now = Date.now()
   return {
     id,
     source: payload.source || 'song-id',
-    songId: payload.songId || '',
+    songId: String(payload.songId || ''),
     title: payload.title || payload.fileName || `song-${payload.songId || now}`,
     songMetadata:
       payload.songMetadata && typeof payload.songMetadata === 'object'
         ? payload.songMetadata
         : null,
-    url: payload.url,
-    filePath: payload.filePath,
+    url: String(payload.url || ''),
+    filePath: String(payload.filePath || ''),
     status: 'skipped',
     progress: 1,
     totalBytes: 0,
@@ -517,7 +676,7 @@ function createSkippedTask(payload: any): any {
 // Download execution
 // ---------------------------------------------------------------------------
 
-function startDownloadWithProgress(task: any): Promise<string> {
+function startDownloadWithProgress(task: DownloadTask): Promise<string> {
   return new Promise((resolve, reject) => {
     let redirected = 0
 
@@ -554,7 +713,7 @@ function startDownloadWithProgress(task: any): Promise<string> {
           const stream = fs.createWriteStream(task.filePath)
           activeDownloadHandles.set(task.id, { request: req, stream })
 
-          res.on('data', (chunk) => {
+          res.on('data', (chunk: Buffer) => {
             receivedBytes += chunk.length
             task.receivedBytes = receivedBytes
             task.totalBytes = totalBytes
@@ -569,7 +728,7 @@ function startDownloadWithProgress(task: any): Promise<string> {
             stream.close(() => resolve(task.filePath))
           })
 
-          stream.on('error', (err) => {
+          stream.on('error', (err: Error) => {
             stream.close(() => reject(err))
           })
         }
@@ -613,11 +772,11 @@ async function runSingleTask(taskId: string): Promise<void> {
         taskStatus: task.status
       })
     }
-  } catch (err: any) {
-    const isCanceled = task.status === 'canceled'
+  } catch (err: unknown) {
+    const isCanceled = downloadTasks.get(taskId)?.status === 'canceled'
     if (!isCanceled) {
       task.status = 'failed'
-      task.error = err?.message || 'DOWNLOAD_FAILED'
+      task.error = err instanceof Error ? err.message : 'DOWNLOAD_FAILED'
       task.finishedAt = Date.now()
       task.updatedAt = Date.now()
       emitDownloadTaskUpdate(task)
@@ -651,13 +810,13 @@ async function consumeDownloadQueue() {
   }
 }
 
-async function createDownloadTask(payload: any): Promise<any> {
+async function createDownloadTask(payload: DownloadTaskPayload): Promise<TaskMutationResult> {
   ensureLocalSongCatalogReady()
   const dirs = await ensureDownloadBaseDirs()
   await ensureCatalogHydratedForDownloads(dirs)
 
   const fileNameInput = safeFileName(payload.fileName || `song-${payload.songId || Date.now()}`)
-  const finalFileName = maybeAddFileExt(fileNameInput, payload.url)
+  const finalFileName = maybeAddFileExt(fileNameInput, String(payload.url || ''))
   const dirResolved = resolveDownloadDir(payload.targetDirType, payload.playlistName)
   await fs.promises.mkdir(dirResolved.dirPath, { recursive: true })
   const filePath = path.join(dirResolved.dirPath, finalFileName)
@@ -691,16 +850,16 @@ async function createDownloadTask(payload: any): Promise<any> {
   const id = createTaskId()
   const now = Date.now()
 
-  const task = {
+  const task: DownloadTask = {
     id,
     source: payload.source || 'song-id',
-    songId: payload.songId || '',
+    songId: String(payload.songId || ''),
     title: payload.title || finalFileName,
     songMetadata:
       payload.songMetadata && typeof payload.songMetadata === 'object'
         ? payload.songMetadata
         : null,
-    url: payload.url,
+    url: String(payload.url || ''),
     filePath,
     status: 'pending',
     progress: 0,
@@ -730,7 +889,7 @@ async function createDownloadTask(payload: any): Promise<any> {
   return { ok: true, task }
 }
 
-async function createSongDownloadTaskFromId(payload: any): Promise<any> {
+async function createSongDownloadTaskFromId(payload: DownloadTaskPayload): Promise<TaskMutationResult> {
   await ensureAuthStateLoaded()
 
   const songId = sanitizeSongId(payload?.songId)
@@ -740,7 +899,7 @@ async function createSongDownloadTaskFromId(payload: any): Promise<any> {
 
   const level = String(payload?.level || 'exhigh').trim() || 'exhigh'
 
-  const resolveResult: any = await resolveSongUrlWithLevelFallback(songId, level)
+  const resolveResult = await resolveSongUrlWithLevelFallback(songId, level)
   if (!resolveResult.ok || !resolveResult.resolved?.url) {
     return {
       ok: false,
@@ -751,13 +910,22 @@ async function createSongDownloadTaskFromId(payload: any): Promise<any> {
   }
 
   const resolved = resolveResult.resolved
+  const resolvedUrl = String(resolved?.url || '').trim()
+  if (!resolvedUrl) {
+    return {
+      ok: false,
+      error: 'URL_NOT_FOUND',
+      message: resolveResult.message,
+      attempts: resolveResult.attempts || []
+    }
+  }
   const songMetadata = await fetchSongMetadataById(songId)
 
-  if (!isNeteaseAudioHost(resolved.url)) {
+  if (!isNeteaseAudioHost(resolvedUrl)) {
     return {
       ok: false,
       error: 'URL_NOT_ALLOWED',
-      message: `音源地址不在白名单域名内: ${resolved.url}`
+      message: `音源地址不在白名单域名内: ${resolvedUrl}`
     }
   }
 
@@ -769,7 +937,7 @@ async function createSongDownloadTaskFromId(payload: any): Promise<any> {
   const created = await createDownloadTask({
     source: payload?.source || 'song-id',
     songId,
-    url: resolved.url,
+    url: resolvedUrl,
     fileName,
     title: payload?.title || defaultTitle,
     songMetadata,
@@ -791,7 +959,7 @@ async function createSongDownloadTaskFromId(payload: any): Promise<any> {
   }
 }
 
-function cancelDownloadTask(id: string): any {
+function cancelDownloadTask(id: string): TaskMutationResult {
   const task = downloadTasks.get(id)
   if (!task) return { ok: false, error: 'TASK_NOT_FOUND' }
 
