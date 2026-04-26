@@ -23,6 +23,11 @@ type PlaybackControllerOptions = {
     emit: (eventName: string, payload?: unknown) => void
   }
   promptForPlaylistName?: (message: string, defaultValue: string) => Promise<string | null>
+  promptForPlaylistSelection?: (payload: {
+    title?: string
+    playlists: Array<{ id: string; name: string; trackCount?: number; coverUrl?: string }>
+    defaultNewPlaylistName?: string
+  }) => Promise<{ selectedPlaylistIds: string[]; newPlaylistName: string } | null>
 }
 
 export function createPlaybackController(options: PlaybackControllerOptions): any {
@@ -30,7 +35,8 @@ export function createPlaybackController(options: PlaybackControllerOptions): an
     electronAPI,
     dom,
     eventBus,
-    promptForPlaylistName
+    promptForPlaylistName,
+    promptForPlaylistSelection
   } = options
 
   function emit(eventName: string, payload?: unknown): void {
@@ -331,8 +337,43 @@ export function createPlaybackController(options: PlaybackControllerOptions): an
     const listResult = await electronAPI.playlistList()
     const existing = Array.isArray(listResult?.playlists) ? listResult.playlists : []
 
-    let playlistId = ''
-    if (existing.length) {
+    const targetPlaylistIds = new Set<string>()
+    if (typeof promptForPlaylistSelection === 'function') {
+      const selection = await promptForPlaylistSelection({
+        title: '选择要添加到的歌单',
+        playlists: existing.map((item: any) => {
+          const trackCount = Array.isArray(item?.trackIds)
+            ? item.trackIds.length
+            : Number(item?.trackCount) || 0
+          const coverUrl = String(item?.coverUrl || '').trim()
+          return {
+            id: String(item?.id || ''),
+            name: String(item?.name || '未命名歌单'),
+            trackCount,
+            coverUrl
+          }
+        }),
+        defaultNewPlaylistName: track.name || '收藏歌曲'
+      })
+      if (!selection) return
+
+      for (const playlistId of selection.selectedPlaylistIds) {
+        const id = String(playlistId || '').trim()
+        if (!id) continue
+        targetPlaylistIds.add(id)
+      }
+
+      const newPlaylistName = String(selection.newPlaylistName || '').trim()
+      if (newPlaylistName) {
+        const created = await electronAPI.playlistCreate(newPlaylistName)
+        const createdId = created?.ok ? String(created.playlist?.id || '') : ''
+        if (!createdId) {
+          alert('新建歌单失败')
+          return
+        }
+        targetPlaylistIds.add(createdId)
+      }
+    } else if (existing.length) {
       const tips = existing.map((item: any, idx: number) => `${idx + 1}. ${item.name}`).join('\n')
       const input = await requestPlaylistName(`选择歌单序号，或输入新歌单名称：\n${tips}`, '1')
       if (input === null) return
@@ -340,20 +381,23 @@ export function createPlaybackController(options: PlaybackControllerOptions): an
       const trimmed = String(input || '').trim()
       const choice = Number.parseInt(trimmed, 10)
       if (Number.isFinite(choice) && choice >= 1 && choice <= existing.length) {
-        playlistId = existing[choice - 1].id
+        const selectedId = String(existing[choice - 1]?.id || '').trim()
+        if (selectedId) targetPlaylistIds.add(selectedId)
       } else {
         const created = await electronAPI.playlistCreate(trimmed || (track.name || '收藏歌曲'))
-        playlistId = created?.ok ? created.playlist?.id || '' : ''
+        const createdId = created?.ok ? String(created.playlist?.id || '') : ''
+        if (createdId) targetPlaylistIds.add(createdId)
       }
     } else {
       const name = await requestPlaylistName('输入新歌单名称：', track.name || '收藏歌曲')
       if (name === null) return
       const created = await electronAPI.playlistCreate(String(name || '').trim() || '收藏歌曲')
-      playlistId = created?.ok ? created.playlist?.id || '' : ''
+      const createdId = created?.ok ? String(created.playlist?.id || '') : ''
+      if (createdId) targetPlaylistIds.add(createdId)
     }
 
-    if (!playlistId) {
-      alert('收藏失败，未能确定目标歌单')
+    if (!targetPlaylistIds.size) {
+      alert('请选择至少一个目标歌单')
       return
     }
 
@@ -364,15 +408,20 @@ export function createPlaybackController(options: PlaybackControllerOptions): an
       duration: track?.metadataCache?.duration || null
     }
 
-    const addResult = await electronAPI.playlistAddTracks(playlistId, [{ path: filePath, metadataCache }])
-    if (!addResult?.ok) {
+    let addedOkCount = 0
+    for (const playlistId of targetPlaylistIds) {
+      const addResult = await electronAPI.playlistAddTracks(playlistId, [{ path: filePath, metadataCache }])
+      if (!addResult?.ok) continue
+      addedOkCount += 1
+      emit('playlist:saved.changed', { playlistId })
+    }
+
+    if (!addedOkCount) {
       alert('收藏失败，添加歌曲时出错')
       return
     }
 
-    emit('playlist:saved.changed', { playlistId })
-
-    alert('已添加到歌单')
+    alert(addedOkCount > 1 ? `已添加到 ${addedOkCount} 个歌单` : '已添加到歌单')
   }
 
   async function saveCurrentQueueAsSavedPlaylist(): Promise<void> {

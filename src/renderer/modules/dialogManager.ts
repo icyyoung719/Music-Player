@@ -4,6 +4,18 @@ type DialogManagerOptions = {
 
 type DownloadStrategy = 'full-download' | 'lazy-play' | 'cancel'
 
+type PlaylistSelectionItem = {
+  id: string
+  name: string
+  trackCount?: number
+  coverUrl?: string
+}
+
+type PlaylistSelectionResult = {
+  selectedPlaylistIds: string[]
+  newPlaylistName: string
+}
+
 export function createDialogManager(options: DialogManagerOptions = {}) {
   const { doc = document } = options
 
@@ -183,8 +195,167 @@ export function createDialogManager(options: DialogManagerOptions = {}) {
     })
   }
 
+  function requestPlaylistSelection(payload: {
+    title?: string
+    playlists: PlaylistSelectionItem[]
+    defaultNewPlaylistName?: string
+  }): Promise<PlaylistSelectionResult | null> {
+    return new Promise((resolve) => {
+      const title = String(payload?.title || '选择要添加到的歌单')
+      const playlists = Array.isArray(payload?.playlists) ? payload.playlists : []
+      const defaultNewPlaylistName = String(payload?.defaultNewPlaylistName || '').trim()
+
+      const overlay = doc.createElement('div')
+      overlay.className = 'playlist-picker-overlay'
+
+      const panel = doc.createElement('div')
+      panel.className = 'playlist-picker-panel'
+      panel.setAttribute('role', 'dialog')
+      panel.setAttribute('aria-modal', 'true')
+      panel.setAttribute('aria-label', '选择歌单')
+
+      const head = doc.createElement('div')
+      head.className = 'playlist-picker-head'
+
+      const titleEl = doc.createElement('div')
+      titleEl.className = 'playlist-picker-title'
+      titleEl.textContent = title
+
+      const subtitleEl = doc.createElement('div')
+      subtitleEl.className = 'playlist-picker-subtitle'
+      subtitleEl.textContent = playlists.length
+        ? '可勾选多个歌单，也可以直接新建歌单。'
+        : '当前还没有歌单，请先输入新歌单名称。'
+
+      head.appendChild(titleEl)
+      head.appendChild(subtitleEl)
+
+      const list = doc.createElement('div')
+      list.className = 'playlist-picker-list'
+
+      const selectedIds = new Set<string>()
+      if (playlists.length) {
+        playlists.forEach((item) => {
+          const rowLabel = doc.createElement('label')
+          rowLabel.className = 'playlist-picker-item'
+
+          const checkbox = doc.createElement('input')
+          checkbox.type = 'checkbox'
+          checkbox.className = 'playlist-picker-checkbox'
+          checkbox.value = String(item.id || '')
+
+          const cover = doc.createElement('span')
+          cover.className = 'playlist-picker-cover'
+          const coverUrl = String(item.coverUrl || '').trim()
+          if (coverUrl) {
+            const img = doc.createElement('img')
+            img.src = coverUrl
+            img.alt = `${item.name || '歌单'}封面`
+            cover.appendChild(img)
+          } else {
+            cover.textContent = '♪'
+          }
+
+          const meta = doc.createElement('span')
+          meta.className = 'playlist-picker-meta'
+
+          const name = doc.createElement('span')
+          name.className = 'playlist-picker-name'
+          name.textContent = String(item.name || '未命名歌单')
+
+          const count = doc.createElement('span')
+          count.className = 'playlist-picker-count'
+          const trackCount = Number.isFinite(Number(item.trackCount)) ? Math.max(0, Number(item.trackCount)) : 0
+          count.textContent = `${trackCount} 首歌曲`
+
+          checkbox.addEventListener('change', () => {
+            if (!checkbox.value) return
+            if (checkbox.checked) selectedIds.add(checkbox.value)
+            else selectedIds.delete(checkbox.value)
+          })
+
+          meta.appendChild(name)
+          meta.appendChild(count)
+          rowLabel.appendChild(checkbox)
+          rowLabel.appendChild(cover)
+          rowLabel.appendChild(meta)
+          list.appendChild(rowLabel)
+        })
+      } else {
+        const empty = doc.createElement('div')
+        empty.className = 'playlist-picker-empty'
+        empty.textContent = '暂无可选歌单'
+        list.appendChild(empty)
+      }
+
+      const createBlock = doc.createElement('div')
+      createBlock.className = 'playlist-picker-create'
+
+      const createLabel = doc.createElement('label')
+      createLabel.className = 'playlist-picker-create-label'
+      createLabel.textContent = '新建歌单（可选）'
+
+      const createInput = doc.createElement('input')
+      createInput.type = 'text'
+      createInput.className = 'playlist-picker-create-input'
+      createInput.placeholder = playlists.length ? '输入新歌单名称（可留空）' : '输入新歌单名称'
+      createInput.value = defaultNewPlaylistName
+
+      createBlock.appendChild(createLabel)
+      createBlock.appendChild(createInput)
+
+      const actions = doc.createElement('div')
+      actions.className = 'playlist-picker-actions'
+
+      const cancelBtn = doc.createElement('button')
+      cancelBtn.textContent = '取消'
+      cancelBtn.className = 'playlist-picker-cancel'
+
+      const confirmBtn = doc.createElement('button')
+      confirmBtn.textContent = '确认添加'
+      confirmBtn.className = 'playlist-picker-confirm'
+
+      const close = (value: PlaylistSelectionResult | null): void => {
+        overlay.remove()
+        resolve(value)
+      }
+
+      const handleConfirm = (): void => {
+        const newPlaylistName = String(createInput.value || '').trim()
+        close({
+          selectedPlaylistIds: Array.from(selectedIds),
+          newPlaylistName
+        })
+      }
+
+      cancelBtn.addEventListener('click', () => close(null))
+      confirmBtn.addEventListener('click', handleConfirm)
+      overlay.addEventListener('click', (event: Event) => {
+        if (event.target === overlay) close(null)
+      })
+      createInput.addEventListener('keydown', (event: KeyboardEvent) => {
+        if (event.key === 'Enter') handleConfirm()
+        if (event.key === 'Escape') close(null)
+      })
+
+      actions.appendChild(cancelBtn)
+      actions.appendChild(confirmBtn)
+
+      panel.appendChild(head)
+      panel.appendChild(list)
+      panel.appendChild(createBlock)
+      panel.appendChild(actions)
+      overlay.appendChild(panel)
+      doc.body.appendChild(overlay)
+
+      createInput.focus()
+      createInput.select()
+    })
+  }
+
   return {
     requestPlaylistName,
-    requestCloudDownloadStrategy
+    requestCloudDownloadStrategy,
+    requestPlaylistSelection
   }
 }
