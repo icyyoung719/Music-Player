@@ -152,9 +152,77 @@ export type NeteaseSearchResult = ApiResult<{
     offset?: number
     total?: number
     hasMore?: boolean
-    items?: unknown[]
+    items?: NeteaseSearchItem[]
     [key: string]: unknown
   }
+}>
+
+export type NeteaseSearchSongItem = {
+  id: string
+  name: string
+  artist: string
+  album: string
+  durationMs: number
+  coverUrl: string
+}
+
+export type NeteaseSearchArtistItem = {
+  id: string
+  name: string
+  alias: string[]
+  albumSize: number
+  mvSize: number
+  picUrl: string
+}
+
+export type NeteaseSearchPlaylistItem = {
+  id: string
+  name: string
+  creator: string
+  trackCount: number
+  playCount: number
+  coverUrl: string
+}
+
+export type NeteaseSearchItem =
+  | NeteaseSearchSongItem
+  | NeteaseSearchArtistItem
+  | NeteaseSearchPlaylistItem
+
+export type NeteaseSearchSuggestData = {
+  keywords: string[]
+  songs: Array<{ id: string; name: string; artist: string }>
+  artists: Array<{ id: string; name: string }>
+  playlists: Array<{ id: string; name: string; trackCount: number }>
+}
+
+export type NeteaseSearchSuggestResult = ApiResult<{
+  data?: NeteaseSearchSuggestData
+}>
+
+export type NeteasePlaylistTrack = {
+  songId: string
+  title: string
+  artist: string
+  album: string
+  durationMs: number
+  coverUrl: string
+}
+
+export type NeteasePlaylistDetailData = {
+  id: string
+  name: string
+  creator: string
+  trackCount: number
+  playCount: number
+  coverUrl: string
+  description: string
+  tags: string[]
+  tracks: NeteasePlaylistTrack[]
+}
+
+export type NeteasePlaylistDetailResult = ApiResult<{
+  data?: NeteasePlaylistDetailData
 }>
 
 export type NeteaseCloudPlaylistResult = ApiResult<{
@@ -238,12 +306,12 @@ export interface ElectronAPI {
   neteaseAuthCloseWindow?: () => void
 
   neteaseSearch?: (payload: NeteaseSearchPayload) => Promise<NeteaseSearchResult>
-  neteaseSearchSuggest?: (payload: { keywords: string }) => Promise<NeteaseSearchResult>
+  neteaseSearchSuggest?: (payload: { keywords: string }) => Promise<NeteaseSearchSuggestResult>
   neteaseSearchDefault?: () => Promise<ApiResult<Record<string, unknown>>>
   neteaseSearchHot?: () => Promise<ApiResult<Record<string, unknown>>>
   neteaseSearchHotDetail?: () => Promise<ApiResult<Record<string, unknown>>>
   neteaseSearchMultimatch?: (payload: NeteaseSearchPayload) => Promise<ApiResult<Record<string, unknown>>>
-  neteasePlaylistDetail?: (payload: NeteasePlaylistPayload) => Promise<ApiResult<Record<string, unknown>>>
+  neteasePlaylistDetail?: (payload: NeteasePlaylistPayload) => Promise<NeteasePlaylistDetailResult>
   neteaseUserPlaylists?: () => Promise<NeteaseCloudPlaylistResult>
   neteaseCloudPlaylistList?: () => Promise<NeteaseCloudPlaylistResult>
   neteaseCloudPlaylistSaveRef?: (payload: Record<string, unknown>) => Promise<ApiResult<{ data?: unknown }>>

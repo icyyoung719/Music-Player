@@ -1,32 +1,9 @@
-type PlaylistTrack = {
-  songId?: string
-  title?: string
-  artist?: string
-  album?: string
-  durationMs?: number
-  coverUrl?: string
-}
-
-type PlaylistDetail = {
-  id?: string
-  name?: string
-  creator?: string
-  trackCount?: number
-  playCount?: number
-  coverUrl?: string
-  description?: string
-  tags?: string[]
-  tracks?: PlaylistTrack[]
-}
-
-type DetailResponse = {
-  ok?: boolean
-  data?: PlaylistDetail
-  message?: string
-  error?: string
-  createdCount?: number
-  task?: { id?: string }
-}
+import type {
+  DownloadTaskResult,
+  NeteasePlaylistDetailData,
+  NeteasePlaylistDetailResult,
+  NeteasePlaylistTrack
+} from '../core/electronApi.js'
 
 type PlaylistDetailDom = {
   overlay?: HTMLElement | null
@@ -45,16 +22,16 @@ type PlaylistDetailDom = {
 
 type PlaylistDetailOptions = {
   electronAPI?: {
-    neteaseDownloadSongTask?: (payload: Record<string, unknown>) => Promise<DetailResponse>
-    neteaseDownloadPlaylistById?: (payload: Record<string, unknown>) => Promise<DetailResponse>
-    neteasePlaylistDetail?: (payload: { playlistId: string }) => Promise<DetailResponse>
+    neteaseDownloadSongTask?: (payload: Record<string, unknown>) => Promise<DownloadTaskResult>
+    neteaseDownloadPlaylistById?: (payload: Record<string, unknown>) => Promise<DownloadTaskResult>
+    neteasePlaylistDetail?: (payload: { playlistId: string }) => Promise<NeteasePlaylistDetailResult>
   }
   neteaseDatabaseService?: {
-    getPlaylistDetail?: (playlistId: string) => Promise<DetailResponse>
+    getPlaylistDetail?: (playlistId: string) => Promise<NeteasePlaylistDetailResult>
   }
   downloadService?: {
-    createSongTask?: (payload: Record<string, unknown>) => Promise<DetailResponse>
-    createPlaylistTasks?: (payload: Record<string, unknown>) => Promise<DetailResponse>
+    createSongTask?: (payload: Record<string, unknown>) => Promise<DownloadTaskResult>
+    createPlaylistTasks?: (payload: Record<string, unknown>) => Promise<DownloadTaskResult>
   }
   eventBus?: {
     emit: (eventName: string, payload?: unknown) => void
@@ -116,6 +93,15 @@ function coverStyle(url: unknown): string {
   return `background-image:url('${clean.replace(/'/g, "\\'")}')`
 }
 
+function getFailureMessage(result: unknown): string {
+  if (!result || typeof result !== 'object') return 'REQUEST_FAILED'
+  const payload = result as { ok?: unknown; message?: unknown; error?: unknown }
+  if (payload.ok === false) {
+    return String(payload.message ?? payload.error ?? 'REQUEST_FAILED')
+  }
+  return 'REQUEST_FAILED'
+}
+
 export function createNeteasePlaylistDetailManager(options: PlaylistDetailOptions = {}) {
   const {
     electronAPI,
@@ -146,7 +132,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
     playlistName: string
     requestToken: number
     sourceKind: string
-    playlistData: PlaylistDetail | null
+    playlistData: NeteasePlaylistDetailData | null
     collected: boolean
   } = {
     playlistId: '',
@@ -193,7 +179,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
     dom.collectBtn.textContent = state.collected ? '取消收藏云端引用' : '收藏云端引用'
   }
 
-  function renderSummary(playlist: PlaylistDetail): void {
+  function renderSummary(playlist: NeteasePlaylistDetailData): void {
     if (dom.name) {
       dom.name.textContent = playlist.name || `歌单 ${playlist.id || ''}`
     }
@@ -207,7 +193,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
     setCover(playlist.coverUrl, firstLetter)
   }
 
-  function renderTracks(tracks: PlaylistTrack[] | undefined): void {
+  function renderTracks(tracks: NeteasePlaylistTrack[] | undefined): void {
     const list = Array.isArray(tracks) ? tracks : []
     if (!list.length) {
       dom.trackList.innerHTML = '<div class="netease-search-empty">该歌单暂无可展示歌曲</div>'
@@ -216,10 +202,10 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
 
     const html = list
       .map((item) => {
-        const itemId = escapeHtml(item.songId || '')
-        const title = escapeHtml(item.title || '未知歌曲')
-        const artist = escapeHtml(item.artist || '未知歌手')
-        const album = escapeHtml(item.album || '未知专辑')
+        const itemId = escapeHtml(item.songId)
+        const title = escapeHtml(item.title)
+        const artist = escapeHtml(item.artist)
+        const album = escapeHtml(item.album)
         const duration = formatDuration(item.durationMs)
         const style = coverStyle(item.coverUrl)
         const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
@@ -247,7 +233,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
     dom.trackList.innerHTML = html
   }
 
-  function createLazyQueueTrack(item: PlaylistTrack): Record<string, unknown> {
+  function createLazyQueueTrack(item: NeteasePlaylistTrack): Record<string, unknown> {
     const songId = String(item?.songId || '').trim()
     const title = String(item?.title || '').trim() || `歌曲 ${songId}`
     const artist = String(item?.artist || '').trim()
@@ -348,7 +334,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
       : await electronAPI?.neteaseDownloadSongTask?.(payload)
 
     if (!res?.ok || !res?.task?.id) {
-      setStatus(`创建下载任务失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
+      setStatus(`创建下载任务失败: ${getFailureMessage(res)}`, true)
       return
     }
 
@@ -395,7 +381,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
       : await electronAPI?.neteaseDownloadPlaylistById?.(payload)
 
     if (!res?.ok) {
-      setStatus(`创建歌单下载任务失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
+      setStatus(`创建歌单下载任务失败: ${getFailureMessage(res)}`, true)
       return
     }
 
@@ -423,7 +409,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
         collected: true
       })
       if (!res?.ok) {
-        setStatus(`收藏失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
+        setStatus(`收藏失败: ${getFailureMessage(res)}`, true)
         return
       }
       state.collected = true
@@ -436,7 +422,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
       platformPlaylistId: reference.platformPlaylistId
     })
     if (!removeRes?.ok) {
-      setStatus(`取消收藏失败: ${removeRes?.message || removeRes?.error || 'REQUEST_FAILED'}`, true)
+      setStatus(`取消收藏失败: ${getFailureMessage(removeRes)}`, true)
       return
     }
 
@@ -480,7 +466,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
       : await electronAPI?.neteaseDownloadPlaylistById?.(payload)
 
     if (!res?.ok) {
-      setStatus(`下载失败: ${res?.message || res?.error || 'REQUEST_FAILED'}`, true)
+      setStatus(`下载失败: ${getFailureMessage(res)}`, true)
       return
     }
 
@@ -524,7 +510,7 @@ export function createNeteasePlaylistDetailManager(options: PlaylistDetailOption
     if (token !== state.requestToken) return
 
     if (!response?.ok || !response?.data) {
-      setStatus(`加载失败: ${response?.message || response?.error || 'REQUEST_FAILED'}`, true)
+      setStatus(`加载失败: ${getFailureMessage(response)}`, true)
       return
     }
 

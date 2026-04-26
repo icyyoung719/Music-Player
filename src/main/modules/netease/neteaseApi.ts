@@ -209,6 +209,23 @@ interface PlaylistDetail {
   readonly tracks: SongMetadata[]
 }
 
+const PLAYLIST_UNKNOWN_TITLE = '未知歌曲'
+const PLAYLIST_UNKNOWN_ARTIST = '未知歌手'
+const PLAYLIST_UNKNOWN_ALBUM = '未知专辑'
+
+function normalizePlaylistTrackMetadata(metadata: SongMetadata): SongMetadata {
+  const title = String(metadata.title ?? '').trim()
+  const artist = String(metadata.artist ?? '').trim()
+  const album = String(metadata.album ?? '').trim()
+
+  return {
+    ...metadata,
+    title: title || PLAYLIST_UNKNOWN_TITLE,
+    artist: artist || PLAYLIST_UNKNOWN_ARTIST,
+    album: album || PLAYLIST_UNKNOWN_ALBUM
+  }
+}
+
 function extractSongMetadata(song: SongLike | unknown, fallbackSongId?: unknown): SongMetadata | null {
   if (!song || typeof song !== 'object') return null
 
@@ -319,7 +336,9 @@ async function fetchPlaylistTracksById(playlistId: string): Promise<PlaylistDeta
 
   const tracks = trackList
     .map((track: unknown) => extractSongMetadata(track, (track as SongLike)?.id))
-    .filter(Boolean) as SongMetadata[]
+    .filter((track): track is SongMetadata => Boolean(track))
+    .map((track: SongMetadata) => normalizePlaylistTrackMetadata(track))
+
 
   return {
     id: String(playlistId),
@@ -459,6 +478,8 @@ function isNeteaseAudioHost(rawUrl: string): boolean {
 const SEARCH_ALLOWED_TYPES = new Set<string>([
   '1', '10', '100', '1000', '1002', '1004', '1006', '1009', '1014', '1018', '2000'
 ])
+const SEARCH_UNKNOWN_ARTIST = '未知歌手'
+const SEARCH_UNKNOWN_ALBUM = '未知专辑'
 
 function sanitizeSearchKeyword(raw: unknown): string {
   const text = String(raw ?? '').trim()
@@ -514,11 +535,13 @@ interface SearchPlaylistItem {
 function normalizeSearchSongItem(song: unknown): SearchSongItem {
   const payload = song as SongLike
   const metadata = extractSongMetadata(song, payload?.id)
+  const artist = String(metadata?.artist ?? '').trim()
+  const album = String(metadata?.album ?? '').trim()
   return {
     id: String(metadata?.songId ?? payload?.id ?? ''),
     name: metadata?.title ?? String(payload?.name ?? '').trim(),
-    artist: metadata?.artist ?? '',
-    album: metadata?.album ?? '',
+    artist: artist || SEARCH_UNKNOWN_ARTIST,
+    album: album || SEARCH_UNKNOWN_ALBUM,
     durationMs: Number(metadata?.durationMs ?? 0),
     coverUrl: metadata?.coverUrl ?? ''
   }

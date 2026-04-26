@@ -1,3 +1,14 @@
+import type {
+  DownloadTask,
+  DownloadTaskResult,
+  NeteaseSearchArtistItem,
+  NeteaseSearchItem,
+  NeteaseSearchPlaylistItem,
+  NeteaseSearchResult,
+  NeteaseSearchSongItem,
+  NeteaseSearchSuggestResult
+} from '../core/electronApi.js'
+
 type SearchDom = {
   keywordInput: HTMLInputElement
   searchBtn: HTMLElement
@@ -22,29 +33,23 @@ type SearchResponse = {
   error?: string
 }
 
-type DownloadTask = {
-  id?: string
-  status?: string
-  filePath?: string
-  title?: string
-  songId?: string
-}
+type SearchType = '1' | '100' | '1000'
 
 type NeteaseSearchManagerOptions = {
   electronAPI?: {
-    neteaseSearch?: (payload: Record<string, unknown>) => Promise<SearchResponse>
-    neteaseSearchSuggest?: (payload: { keywords: string }) => Promise<SearchResponse>
-    neteaseDownloadSongTask?: (payload: Record<string, unknown>) => Promise<any>
-    neteaseDownloadPlaylistById?: (payload: Record<string, unknown>) => Promise<any>
+    neteaseSearch?: (payload: Record<string, unknown>) => Promise<NeteaseSearchResult>
+    neteaseSearchSuggest?: (payload: { keywords: string }) => Promise<NeteaseSearchSuggestResult>
+    neteaseDownloadSongTask?: (payload: Record<string, unknown>) => Promise<DownloadTaskResult>
+    neteaseDownloadPlaylistById?: (payload: Record<string, unknown>) => Promise<DownloadTaskResult>
     onNeteaseDownloadTaskUpdate?: (handler: (task: DownloadTask) => void) => void
   }
   neteaseDatabaseService?: {
-    search?: (payload: Record<string, unknown>) => Promise<SearchResponse>
-    suggest?: (payload: { keywords: string }) => Promise<SearchResponse>
+    search?: (payload: Record<string, unknown>) => Promise<NeteaseSearchResult>
+    suggest?: (payload: { keywords: string }) => Promise<NeteaseSearchSuggestResult>
   }
   downloadService?: {
-    createSongTask?: (payload: Record<string, unknown>) => Promise<any>
-    createPlaylistTasks?: (payload: Record<string, unknown>) => Promise<any>
+    createSongTask?: (payload: Record<string, unknown>) => Promise<DownloadTaskResult>
+    createPlaylistTasks?: (payload: Record<string, unknown>) => Promise<DownloadTaskResult>
     onTaskUpdate?: (handler: (task: DownloadTask) => void) => void
   }
   dom?: Partial<SearchDom>
@@ -55,10 +60,31 @@ type NeteaseSearchManagerOptions = {
   onOpenPlaylistDetail?: (playlistId: string, playlistName: string) => void
 }
 
-function mapSearchUiTypeToApi(uiType: unknown): string {
+function mapSearchUiTypeToApi(uiType: unknown): SearchType {
   if (uiType === 'artist') return '100'
   if (uiType === 'playlist') return '1000'
   return '1'
+}
+
+function isSearchSongItem(item: NeteaseSearchItem): item is NeteaseSearchSongItem {
+  return 'artist' in item
+}
+
+function isSearchArtistItem(item: NeteaseSearchItem): item is NeteaseSearchArtistItem {
+  return 'alias' in item
+}
+
+function isSearchPlaylistItem(item: NeteaseSearchItem): item is NeteaseSearchPlaylistItem {
+  return 'trackCount' in item
+}
+
+function getFailureMessage(result: unknown): string {
+  if (!result || typeof result !== 'object') return 'REQUEST_FAILED'
+  const payload = result as { ok?: unknown; message?: unknown; error?: unknown }
+  if (payload.ok === false) {
+    return String(payload.message ?? payload.error ?? 'REQUEST_FAILED')
+  }
+  return 'REQUEST_FAILED'
 }
 
 function createDebounce(fn: () => void, delayMs: number): () => void {
@@ -125,7 +151,7 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
 
   const state = {
     keywords: '',
-    type: '1',
+    type: '1' as SearchType,
     limit: 20,
     offset: 0,
     total: 0,
@@ -183,7 +209,7 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
     dom.suggestList.classList.remove('page-hidden')
   }
 
-  function renderResults(items: unknown[]): void {
+  function renderResults(items: NeteaseSearchItem[]): void {
     if (!Array.isArray(items) || !items.length) {
       dom.resultList.innerHTML = '<div class="netease-search-empty">没有找到匹配结果</div>'
       return
@@ -191,18 +217,17 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
 
     const html = items
       .map((item) => {
-        const row = item as Record<string, any>
-        if (state.type === '100') {
-          const style = coverStyle(row.picUrl)
-          const name = escapeHtml(row.name)
-          const alias = Array.isArray(row.alias) && row.alias.length ? ` · ${escapeHtml(row.alias.join(' / '))}` : ''
+        if (state.type === '100' && isSearchArtistItem(item)) {
+          const style = coverStyle(item.picUrl)
+          const name = escapeHtml(item.name)
+          const alias = item.alias.length ? ` · ${escapeHtml(item.alias.join(' / '))}` : ''
           const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
           return `
             <article class="netease-result-card netease-result-card-artist">
               <div class="${coverClass}" ${style ? `style="${style}"` : ''}>${style ? '' : '♪'}</div>
               <div class="netease-result-content">
                 <div class="netease-result-title">${name}${alias}</div>
-                <div class="netease-result-meta">专辑 ${row.albumSize || 0} · MV ${row.mvSize || 0}</div>
+                <div class="netease-result-meta">专辑 ${item.albumSize || 0} · MV ${item.mvSize || 0}</div>
                 <div class="netease-result-foot">
                   <span class="netease-result-duration">歌手</span>
                 </div>
@@ -211,18 +236,18 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
           `
         }
 
-        if (state.type === '1000') {
-          const style = coverStyle(row.coverUrl)
-          const name = escapeHtml(row.name)
-          const creator = escapeHtml(row.creator || '未知')
-          const itemId = escapeHtml(row.id)
+        if (state.type === '1000' && isSearchPlaylistItem(item)) {
+          const style = coverStyle(item.coverUrl)
+          const name = escapeHtml(item.name)
+          const creator = escapeHtml(item.creator || '未知')
+          const itemId = escapeHtml(item.id)
           const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
           return `
             <article class="netease-result-card netease-result-card-playlist">
               <div class="${coverClass}" ${style ? `style="${style}"` : ''}>${style ? '' : '♫'}</div>
               <div class="netease-result-content">
                 <div class="netease-result-title">${name}</div>
-                <div class="netease-result-meta">创建者 ${creator} · ${row.trackCount || 0} 首 · 播放 ${formatPlayCount(row.playCount)}</div>
+                <div class="netease-result-meta">创建者 ${creator} · ${item.trackCount || 0} 首 · 播放 ${formatPlayCount(item.playCount)}</div>
                 <div class="netease-result-foot">
                   <span class="netease-result-duration">歌单</span>
                   <div class="netease-result-actions">
@@ -235,11 +260,15 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
           `
         }
 
-        const style = coverStyle(row.coverUrl)
-        const itemId = escapeHtml(row.id)
-        const name = escapeHtml(row.name)
-        const artist = escapeHtml(row.artist || '未知歌手')
-        const album = escapeHtml(row.album || '未知专辑')
+        if (!isSearchSongItem(item)) {
+          return ''
+        }
+
+        const style = coverStyle(item.coverUrl)
+        const itemId = escapeHtml(item.id)
+        const name = escapeHtml(item.name)
+        const artist = escapeHtml(item.artist)
+        const album = escapeHtml(item.album)
         const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
 
         return `
@@ -249,7 +278,7 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
               <div class="netease-result-title">${name}</div>
               <div class="netease-result-meta">${artist} · ${album}</div>
               <div class="netease-result-foot">
-                <span class="netease-result-duration">${formatDuration(row.durationMs)}</span>
+                <span class="netease-result-duration">${formatDuration(item.durationMs)}</span>
                 <div class="netease-result-actions">
                   <button type="button" data-action="play-song" data-item-id="${itemId}">播放</button>
                 </div>
@@ -294,7 +323,7 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
     }
 
     if (!response?.ok || !response?.data) {
-      const message = response?.message || response?.error || 'REQUEST_FAILED'
+      const message = getFailureMessage(response)
       setSearchStatus(`搜索失败: ${message}`, true)
       dom.resultList.innerHTML = '<div class="netease-search-empty">搜索失败，请稍后重试</div>'
       return
@@ -375,7 +404,7 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
       : await api.neteaseDownloadSongTask?.(payload)
 
     if (!res?.ok || !res?.task?.id) {
-      const msg = res?.message || res?.error || 'REQUEST_FAILED'
+      const msg = getFailureMessage(res)
       setSearchStatus(`创建播放任务失败: ${msg}`, true)
       return
     }
@@ -404,7 +433,7 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
       : await api.neteaseDownloadPlaylistById?.(payload)
 
     if (!res?.ok) {
-      const msg = res?.message || res?.error || 'REQUEST_FAILED'
+      const msg = getFailureMessage(res)
       setSearchStatus(`创建歌单播放任务失败: ${msg}`, true)
       return
     }

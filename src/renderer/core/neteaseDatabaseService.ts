@@ -1,11 +1,13 @@
 import type {
   ApiFailure,
   NeteaseCloudPlaylistResult,
+  NeteasePlaylistDetailResult,
   NeteasePlaylistPayload,
   NeteaseRecommendedPlaylistResult,
   NeteaseResolveIdPayload,
   NeteaseSearchPayload,
-  NeteaseSearchResult
+  NeteaseSearchResult,
+  NeteaseSearchSuggestResult
 } from './electronApi.js'
 
 type NeteaseResolveIdResult =
@@ -14,13 +16,6 @@ type NeteaseResolveIdResult =
       ok: true
       type?: string
       item?: Record<string, unknown>
-    }
-
-type NeteasePlaylistDetailResult =
-  | ApiFailure
-  | {
-      ok: true
-      data?: Record<string, unknown>
     }
 
 type NeteaseDailyRecommendationResult =
@@ -41,7 +36,7 @@ type NeteaseCloudPlaylistMutationResult =
 type NeteaseApi = {
   neteaseResolveId?: (payload: NeteaseResolveIdPayload) => Promise<NeteaseResolveIdResult>
   neteaseSearch?: (payload: NeteaseSearchPayload) => Promise<NeteaseSearchResult>
-  neteaseSearchSuggest?: (payload: { keywords: string }) => Promise<NeteaseSearchResult>
+  neteaseSearchSuggest?: (payload: { keywords: string }) => Promise<NeteaseSearchSuggestResult>
   neteasePlaylistDetail?: (payload: NeteasePlaylistPayload) => Promise<NeteasePlaylistDetailResult>
   neteaseGetDailyRecommendation?: () => Promise<NeteaseDailyRecommendationResult>
   neteaseGetRecommendedPlaylists?: () => Promise<NeteaseRecommendedPlaylistResult>
@@ -77,7 +72,7 @@ export function createNeteaseDatabaseService(options: NeteaseDatabaseServiceOpti
     return electronAPI.neteaseSearch(payload)
   }
 
-  async function suggest(payload: { keywords: string }): Promise<NeteaseSearchResult | ServiceErrorResult> {
+  async function suggest(payload: { keywords: string }): Promise<NeteaseSearchSuggestResult | ServiceErrorResult> {
     if (!electronAPI?.neteaseSearchSuggest) return createApiUnavailable()
     return electronAPI.neteaseSearchSuggest(payload)
   }
