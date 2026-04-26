@@ -185,6 +185,10 @@ type NeteasePlaylistDetailPayload = {
   playlistId?: unknown
 }
 
+type NeteaseRecommendedPlaylistsPayload = {
+  limit?: unknown
+}
+
 type NeteaseSendPayload = {
   id?: unknown
   songId?: unknown
@@ -271,6 +275,59 @@ function getErrorMessage(error: unknown): string {
   return ''
 }
 
+function asRecord(value: unknown): AnyRecord {
+  if (!value || typeof value !== 'object') return {}
+  return value as AnyRecord
+}
+
+function asArray(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : []
+}
+
+function toTrimmedString(value: unknown): string {
+  return String(value ?? '').trim()
+}
+
+function normalizeAuthApiBaseUrl(value: unknown): string {
+  const nextBase = toTrimmedString(value) || toTrimmedString(authState.apiBaseUrl)
+  return nextBase || 'https://music.163.com'
+}
+
+function normalizeAuthRequestMethod(value: unknown): 'GET' | 'POST' {
+  return String(value || 'POST').trim().toUpperCase() === 'GET' ? 'GET' : 'POST'
+}
+
+function normalizeAuthRequestTimeout(value: unknown): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 12000
+  return Math.max(3000, Math.min(60000, Math.trunc(parsed)))
+}
+
+function normalizeRecommendLimit(value: unknown): number {
+  const requested = Number(value)
+  return Number.isFinite(requested)
+    ? Math.max(1, Math.min(60, Math.trunc(requested)))
+    : 30
+}
+
+function normalizeDuplicateStrategy(value: unknown, fallback = 'skip'): string {
+  const text = String(value || fallback).trim().toLowerCase()
+  return text || fallback
+}
+
+function normalizeQualityLevel(value: unknown, fallback = 'exhigh'): string {
+  const text = toTrimmedString(value)
+  return text || fallback
+}
+
+function normalizeSongDownloadMode(value: unknown): string {
+  return toTrimmedString(value) || 'song-download-only'
+}
+
+function normalizePlaylistDownloadMode(value: unknown): string {
+  return toTrimmedString(value) || 'playlist-download-only'
+}
+
 function logNeteaseIndexError(event: string, message: string, error: unknown, data?: AnyRecord): void {
   logProgramEvent({
     source: 'netease.index',
@@ -282,19 +339,15 @@ function logNeteaseIndexError(event: string, message: string, error: unknown, da
 }
 
 function normalizeDailyRecommendationTracks(data: unknown): DailyRecommendationTrack[] {
-  const payload = (data ?? {}) as {
-    recommend?: unknown[]
-    data?: { dailySongs?: unknown[] }
-  }
-  const songList = Array.isArray(payload.recommend)
-    ? payload.recommend
-    : Array.isArray(payload.data?.dailySongs)
-      ? payload.data.dailySongs
-      : []
+  const payload = asRecord(data)
+  const dataNode = asRecord(payload.data)
+  const songList = asArray(payload.recommend).length
+    ? asArray(payload.recommend)
+    : asArray(dataNode.dailySongs)
 
   return songList
     .map((song: unknown): DailyRecommendationTrack | undefined => {
-      const typedSong = (song ?? {}) as { id?: unknown; reason?: unknown }
+      const typedSong = asRecord(song)
       const normalized = extractSongMetadata(song, typedSong.id)
       if (!normalized?.songId) return undefined
       return {
@@ -305,43 +358,31 @@ function normalizeDailyRecommendationTracks(data: unknown): DailyRecommendationT
         durationMs: Number(normalized.durationMs || 0),
         year: normalized.year,
         coverUrl: normalized.coverUrl || '',
-        reason: String(typedSong.reason || '').trim()
+        reason: toTrimmedString(typedSong.reason)
       }
     })
     .filter((item): item is DailyRecommendationTrack => Boolean(item))
 }
 
 function normalizeRecommendedPlaylists(data: unknown): CloudPlaylistItem[] {
-  const payload = (data ?? {}) as {
-    recommend?: unknown[]
-    result?: unknown[]
-    data?: { recommend?: unknown[]; result?: unknown[] }
-  }
-  const rawList = Array.isArray(payload.recommend)
-    ? payload.recommend
-    : Array.isArray(payload.result)
-      ? payload.result
-    : Array.isArray(payload.data?.recommend)
-      ? payload.data.recommend
-      : Array.isArray(payload.data?.result)
-        ? payload.data.result
-      : []
+  const payload = asRecord(data)
+  const dataNode = asRecord(payload.data)
+  const recommend = asArray(payload.recommend)
+  const result = asArray(payload.result)
+  const dataRecommend = asArray(dataNode.recommend)
+  const dataResult = asArray(dataNode.result)
+  const rawList = recommend.length
+    ? recommend
+    : result.length
+      ? result
+      : dataRecommend.length
+        ? dataRecommend
+        : dataResult
 
   return rawList
     .map((item: unknown): CloudPlaylistItem | undefined => {
-      const typed = (item ?? {}) as {
-        id?: unknown
-        name?: unknown
-        picUrl?: unknown
-        coverImgUrl?: unknown
-        copywriter?: unknown
-        description?: unknown
-        trackCount?: unknown
-        playCount?: unknown
-        playcount?: unknown
-        tags?: unknown[]
-        creator?: { userId?: unknown; nickname?: unknown }
-      }
+      const typed = asRecord(item)
+      const creator = asRecord(typed.creator)
       const playlistId = sanitizeId(typed.id)
       if (!playlistId) return undefined
 
@@ -350,8 +391,8 @@ function normalizeRecommendedPlaylists(data: unknown): CloudPlaylistItem[] {
         platformPlaylistId: playlistId,
         name: typed.name,
         creator: {
-          userId: sanitizeId(typed.creator?.userId) || '',
-          nickname: String(typed.creator?.nickname || '').trim() || '网易云音乐'
+          userId: sanitizeId(creator.userId) || '',
+          nickname: toTrimmedString(creator.nickname) || '网易云音乐'
         },
         coverUrl: typed.picUrl || typed.coverImgUrl,
         description: typed.copywriter || typed.description,
@@ -775,7 +816,9 @@ function registerNeteaseHandlers(): void {
   ipcMain.handle('netease:auth:get-account-summary', async (_event: unknown, payload: NeteaseAuthSummaryPayload) => {
     await ensureAuthStateLoaded()
 
-    if (payload?.refresh && (authState.cookie || authState.userId)) {
+    const refresh = Boolean(payload?.refresh)
+
+    if (refresh && (authState.cookie || authState.userId)) {
       try {
         await refreshProfileFromAuth()
       } catch {
@@ -793,13 +836,12 @@ function registerNeteaseHandlers(): void {
   ipcMain.handle('netease:auth:update', async (_event: unknown, payload: NeteaseAuthUpdatePayload) => {
     await ensureAuthStateLoaded()
 
-    const nextBase = String(payload?.apiBaseUrl || authState.apiBaseUrl).trim()
-    authState.apiBaseUrl = nextBase || 'https://music.163.com'
-    authState.cookie = String(payload?.cookie ?? authState.cookie ?? '').trim()
-    authState.accessToken = String(payload?.accessToken ?? authState.accessToken ?? '').trim()
-    authState.refreshToken = String(payload?.refreshToken ?? authState.refreshToken ?? '').trim()
-    authState.userName = String(payload?.userName ?? authState.userName ?? '').trim()
-    authState.userId = String(payload?.userId ?? authState.userId ?? '').trim()
+    authState.apiBaseUrl = normalizeAuthApiBaseUrl(payload?.apiBaseUrl)
+    authState.cookie = toTrimmedString(payload?.cookie ?? authState.cookie)
+    authState.accessToken = toTrimmedString(payload?.accessToken ?? authState.accessToken)
+    authState.refreshToken = toTrimmedString(payload?.refreshToken ?? authState.refreshToken)
+    authState.userName = toTrimmedString(payload?.userName ?? authState.userName)
+    authState.userId = toTrimmedString(payload?.userId ?? authState.userId)
 
     await persistAuthState()
     emitAuthStateUpdate('manual-update')
@@ -811,13 +853,12 @@ function registerNeteaseHandlers(): void {
 
     const email = sanitizeEmail(payload?.email)
     const password = String(payload?.password || '')
-    const apiBaseUrl = String(payload?.apiBaseUrl || authState.apiBaseUrl || '').trim()
 
     if (!email || !password) {
       return { ok: false, error: 'INVALID_CREDENTIALS' }
     }
 
-    authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
+    authState.apiBaseUrl = normalizeAuthApiBaseUrl(payload?.apiBaseUrl)
 
     try {
       // Per Netease API: /login expects username, password (or md5_password), rememberLogin
@@ -891,13 +932,12 @@ function registerNeteaseHandlers(): void {
 
     const phone = sanitizePhone(payload?.phone)
     const countryCode = sanitizeCountryCode(payload?.countryCode)
-    const apiBaseUrl = String(payload?.apiBaseUrl || authState.apiBaseUrl || '').trim()
 
     if (!phone) {
       return { ok: false, error: 'INVALID_PHONE' }
     }
 
-    authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
+    authState.apiBaseUrl = normalizeAuthApiBaseUrl(payload?.apiBaseUrl)
 
     try {
       // Per Netease API: /captcha/sent expects phone, ctcode (optional, default '86')
@@ -961,13 +1001,12 @@ function registerNeteaseHandlers(): void {
     const phone = sanitizePhone(payload?.phone)
     const captcha = sanitizeCaptcha(payload?.captcha)
     const countryCode = sanitizeCountryCode(payload?.countryCode)
-    const apiBaseUrl = String(payload?.apiBaseUrl || authState.apiBaseUrl || '').trim()
 
     if (!phone || !captcha) {
       return { ok: false, error: 'INVALID_PHONE_OR_CAPTCHA' }
     }
 
-    authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
+    authState.apiBaseUrl = normalizeAuthApiBaseUrl(payload?.apiBaseUrl)
 
     try {
       // Per Netease API: /login/cellphone expects phone, captcha, countrycode, rememberLogin
@@ -1051,8 +1090,7 @@ function registerNeteaseHandlers(): void {
   ipcMain.handle('netease:auth:qr:create', async (_event: unknown, payload: NeteaseAuthQrPayload) => {
     await ensureAuthStateLoaded()
 
-    const apiBaseUrl = String(payload?.apiBaseUrl || authState.apiBaseUrl || '').trim()
-    authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
+    authState.apiBaseUrl = normalizeAuthApiBaseUrl(payload?.apiBaseUrl)
 
     try {
       const timestamp = Date.now()
@@ -1132,13 +1170,12 @@ function registerNeteaseHandlers(): void {
     await ensureAuthStateLoaded()
 
     const qrKey = sanitizeQrKey(payload?.qrKey)
-    const apiBaseUrl = String(payload?.apiBaseUrl || authState.apiBaseUrl || '').trim()
 
     if (!qrKey) {
       return { ok: false, error: 'INVALID_QR_KEY' }
     }
 
-    authState.apiBaseUrl = apiBaseUrl || 'https://music.163.com'
+    authState.apiBaseUrl = normalizeAuthApiBaseUrl(payload?.apiBaseUrl)
 
     try {
       const timestamp = Date.now()
@@ -1300,17 +1337,21 @@ function registerNeteaseHandlers(): void {
   ipcMain.handle('netease:auth:request', async (_event: unknown, payload: NeteaseAuthRequestPayload) => {
     await ensureAuthStateLoaded()
 
-    const pathValue = String(payload?.path || '').trim()
+    const pathValue = toTrimmedString(payload?.path)
+    const data = asRecord(payload?.data)
+    const method = normalizeAuthRequestMethod(payload?.method)
+    const timeout = normalizeAuthRequestTimeout(payload?.timeout)
+
     if (!pathValue) {
       return { ok: false, error: 'INVALID_PATH' }
     }
 
     try {
-      const data = await requestNeteaseApi(pathValue, payload?.data || {}, {
-        method: String(payload?.method || 'POST').toUpperCase(),
-        timeout: Number(payload?.timeout || 12000)
+      const apiData = await requestNeteaseApi(pathValue, data, {
+        method,
+        timeout
       })
-      return { ok: true, data }
+      return { ok: true, data: apiData }
     } catch (err: unknown) {
       logProgramEvent({
         source: 'netease.index',
@@ -1402,17 +1443,14 @@ function registerNeteaseHandlers(): void {
     }
   })
 
-  ipcMain.handle('netease:get-recommended-playlists', async (_event, payload: { limit?: unknown } = {}) => {
+  ipcMain.handle('netease:get-recommended-playlists', async (_event, payload: NeteaseRecommendedPlaylistsPayload = {}) => {
     await ensureAuthStateLoaded()
 
     if (!authState.cookie && !authState.userId) {
       return { ok: false, error: 'NOT_LOGGED_IN', message: '请先登录网易云账号' }
     }
 
-    const requestedLimit = Number(payload?.limit)
-    const limit = Number.isFinite(requestedLimit)
-      ? Math.max(1, Math.min(60, Math.trunc(requestedLimit)))
-      : 30
+    const limit = normalizeRecommendLimit(payload?.limit)
 
     try {
       const recommendResult = await postFormWithFallback(
@@ -1698,15 +1736,21 @@ function registerNeteaseHandlers(): void {
   })
 
   ipcMain.handle('netease:download-by-song-id', async (_event: unknown, payload: NeteaseDownloadBySongIdPayload) => {
+    const targetDirType = toTrimmedString(payload?.targetDirType) || 'songs'
+    const duplicateStrategy = normalizeDuplicateStrategy(payload?.duplicateStrategy)
+    const downloadMode = toTrimmedString(payload?.downloadMode) || 'song-download-only'
+    const addToQueue = Boolean(payload?.addToQueue)
+    const savePlaylistName = toTrimmedString(payload?.savePlaylistName)
+
     try {
       return await createSongDownloadTaskFromId({
         ...payload,
         source: 'song-id',
-        targetDirType: payload?.targetDirType || 'songs',
-        duplicateStrategy: payload?.duplicateStrategy || 'skip',
-        downloadMode: payload?.downloadMode || 'song-download-only',
-        addToQueue: Boolean(payload?.addToQueue),
-        savePlaylistName: payload?.savePlaylistName || ''
+        targetDirType,
+        duplicateStrategy,
+        downloadMode,
+        addToQueue,
+        savePlaylistName
       })
     } catch (err: unknown) {
       logProgramEvent({
@@ -1720,7 +1764,7 @@ function registerNeteaseHandlers(): void {
   })
 
   ipcMain.handle('netease:download-song-task', async (_event: unknown, payload: NeteaseDownloadSongTaskPayload) => {
-    const mode = String(payload?.mode || 'song-download-only').trim()
+    const mode = normalizeSongDownloadMode(payload?.mode)
     const modeMap: Record<string, { targetDirType: string; addToQueue: boolean }> = {
       'song-download-only': { targetDirType: 'songs', addToQueue: false },
       'song-temp-queue-only': { targetDirType: 'temp', addToQueue: true },
@@ -1738,7 +1782,7 @@ function registerNeteaseHandlers(): void {
         ...payload,
         targetDirType: resolvedMode.targetDirType,
         addToQueue,
-        duplicateStrategy: payload?.duplicateStrategy || 'skip',
+        duplicateStrategy: normalizeDuplicateStrategy(payload?.duplicateStrategy),
         downloadMode: mode,
         source: 'song-id'
       })
@@ -1753,9 +1797,9 @@ function registerNeteaseHandlers(): void {
     const playlistId = sanitizeId(payload?.playlistId)
     if (!playlistId) return { ok: false, error: 'INVALID_PLAYLIST_ID' }
 
-    const mode = String(payload?.mode || 'playlist-download-only').trim()
-    const level = String(payload?.level || 'exhigh').trim() || 'exhigh'
-    const duplicateStrategy = String(payload?.duplicateStrategy || 'skip').trim().toLowerCase() || 'skip'
+    const mode = normalizePlaylistDownloadMode(payload?.mode)
+    const level = normalizeQualityLevel(payload?.level)
+    const duplicateStrategy = normalizeDuplicateStrategy(payload?.duplicateStrategy)
 
     try {
       const playlist = await fetchPlaylistTracksById(playlistId)

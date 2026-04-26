@@ -1,3 +1,10 @@
+import type {
+  AuthStateUpdatePayload,
+  NeteaseAuthStateResult,
+  NeteaseCloudPlaylistItem,
+  NeteaseCloudPlaylistResult
+} from '../core/electronApi.js'
+
 type CloudPlaylist = {
   id: string
   platform: string
@@ -20,21 +27,21 @@ type CloudPlaylist = {
 
 type CloudPlaylistManagerOptions = {
   electronAPI?: {
-    neteaseAuthGetAccountSummary?: (payload: { refresh: boolean }) => Promise<any>
-    neteaseCloudPlaylistList?: () => Promise<{ ok?: boolean; data?: unknown[] }>
-    neteaseUserPlaylists?: () => Promise<{ ok?: boolean; data?: unknown[] }>
+    neteaseAuthGetAccountSummary?: (payload: { refresh: boolean }) => Promise<NeteaseAuthStateResult>
+    neteaseCloudPlaylistList?: () => Promise<NeteaseCloudPlaylistResult>
+    neteaseUserPlaylists?: () => Promise<NeteaseCloudPlaylistResult>
     neteaseCloudPlaylistSaveRef?: (payload: CloudPlaylist) => Promise<{ ok?: boolean; error?: string }>
     neteaseCloudPlaylistRemoveRef?: (payload: { platformPlaylistId: string }) => Promise<{ ok?: boolean; error?: string }>
-    onNeteaseAuthStateUpdate?: (handler: (payload?: any) => void) => void
+    onNeteaseAuthStateUpdate?: (handler: (payload?: AuthStateUpdatePayload) => void) => void
   }
   neteaseDatabaseService?: {
-    listCloudPlaylists?: () => Promise<{ ok?: boolean; data?: unknown[] }>
-    getUserPlaylists?: () => Promise<{ ok?: boolean; data?: unknown[] }>
+    listCloudPlaylists?: () => Promise<NeteaseCloudPlaylistResult>
+    getUserPlaylists?: () => Promise<NeteaseCloudPlaylistResult>
     saveCloudPlaylistRef?: (payload: CloudPlaylist) => Promise<{ ok?: boolean; error?: string }>
     removeCloudPlaylistRef?: (payload: { platformPlaylistId: string }) => Promise<{ ok?: boolean; error?: string }>
   }
   eventBus?: {
-    on: (eventName: string, handler: (payload?: any) => void) => void
+    on: (eventName: string, handler: (payload?: unknown) => void) => void
   }
   dom?: {
     listEl?: HTMLElement | null
@@ -44,13 +51,20 @@ type CloudPlaylistManagerOptions = {
   onStateChanged?: (state: { loading: boolean; playlists: CloudPlaylist[]; isLoggedIn: boolean; lastError: string }) => void
 }
 
+type AnyRecord = Record<string, unknown>
+
+function asRecord(value: unknown): AnyRecord {
+  if (!value || typeof value !== 'object') return {}
+  return value as AnyRecord
+}
+
 function safeText(value: unknown): string {
   return String(value || '').trim()
 }
 
 function normalizeCloudPlaylist(item: unknown): CloudPlaylist | null {
-  if (!item || typeof item !== 'object') return null
-  const source = item as Record<string, any>
+  const source = asRecord(item as NeteaseCloudPlaylistItem)
+  if (Object.keys(source).length === 0) return null
   const playlistId = safeText(source.platformPlaylistId || source.id)
   if (!/^\d{1,20}$/.test(playlistId)) return null
 
@@ -65,8 +79,8 @@ function normalizeCloudPlaylist(item: unknown): CloudPlaylist | null {
     platformPlaylistId: playlistId,
     name: safeText(source.name) || `歌单 ${playlistId}`,
     creator: {
-      userId: safeText(source.creator?.userId),
-      nickname: safeText(source.creator?.nickname)
+      userId: safeText(asRecord(source.creator).userId),
+      nickname: safeText(asRecord(source.creator).nickname)
     },
     coverUrl: safeText(source.coverUrl),
     description: safeText(source.description),
@@ -173,7 +187,7 @@ export function createCloudPlaylistManager(options: CloudPlaylistManagerOptions 
     state.isLoggedIn = Boolean(summary?.ok && (summary?.state?.isLoggedIn || summary?.account?.isLoggedIn))
   }
 
-  function mergePlaylists(input: unknown[]): CloudPlaylist[] {
+  function mergePlaylists(input: NeteaseCloudPlaylistItem[]): CloudPlaylist[] {
     const dedupMap = new Map<string, CloudPlaylist>()
     for (const raw of input) {
       const item = normalizeCloudPlaylist(raw)
@@ -197,7 +211,7 @@ export function createCloudPlaylistManager(options: CloudPlaylistManagerOptions 
     return Array.from(dedupMap.values())
   }
 
-  async function listLocalRefs(): Promise<{ ok?: boolean; data?: unknown[]; error?: string }> {
+  async function listLocalRefs(): Promise<NeteaseCloudPlaylistResult> {
     if (neteaseDatabaseService?.listCloudPlaylists) {
       return neteaseDatabaseService.listCloudPlaylists()
     }
@@ -209,7 +223,7 @@ export function createCloudPlaylistManager(options: CloudPlaylistManagerOptions 
     return { ok: false, error: 'API_UNAVAILABLE' }
   }
 
-  async function syncFromAccount(): Promise<{ ok?: boolean; data?: unknown[]; error?: string }> {
+  async function syncFromAccount(): Promise<NeteaseCloudPlaylistResult> {
     if (neteaseDatabaseService?.getUserPlaylists) {
       return neteaseDatabaseService.getUserPlaylists()
     }
@@ -314,12 +328,13 @@ export function createCloudPlaylistManager(options: CloudPlaylistManagerOptions 
 
     if (eventBus) {
       eventBus.on('cloud-playlist:encountered', async (payload) => {
-        const playlist = normalizeCloudPlaylist(payload?.playlist)
+        const sourcePayload = asRecord(payload)
+        const playlist = normalizeCloudPlaylist(sourcePayload.playlist)
         if (!playlist) return
         await saveCloudPlaylistReference({
           ...playlist,
           collected: true,
-          sourceKinds: Array.from(new Set([...(playlist.sourceKinds || []), safeText(payload?.sourceKind)]))
+          sourceKinds: Array.from(new Set([...(playlist.sourceKinds || []), safeText(sourcePayload.sourceKind)]))
         })
         refreshCloudPlaylists()
       })

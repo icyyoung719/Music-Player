@@ -1,3 +1,9 @@
+import type {
+  AuthStateUpdatePayload,
+  NeteaseAuthStateResult,
+  NeteaseRecommendedPlaylistResult
+} from '../core/electronApi.js'
+
 type RecommendedPlaylist = {
   id: string
   platform: string
@@ -20,12 +26,12 @@ type RecommendedPlaylist = {
 
 type RecommendedPlaylistManagerOptions = {
   electronAPI?: {
-    neteaseAuthGetAccountSummary?: (payload: { refresh: boolean }) => Promise<any>
-    neteaseGetRecommendedPlaylists?: () => Promise<{ ok?: boolean; data?: unknown[]; error?: string; message?: string }>
-    onNeteaseAuthStateUpdate?: (handler: (payload?: any) => void) => void
+    neteaseAuthGetAccountSummary?: (payload: { refresh: boolean }) => Promise<NeteaseAuthStateResult>
+    neteaseGetRecommendedPlaylists?: () => Promise<NeteaseRecommendedPlaylistResult>
+    onNeteaseAuthStateUpdate?: (handler: (payload?: AuthStateUpdatePayload) => void) => void
   }
   neteaseDatabaseService?: {
-    getRecommendedPlaylists?: () => Promise<{ ok?: boolean; data?: unknown[]; error?: string; message?: string }>
+    getRecommendedPlaylists?: () => Promise<NeteaseRecommendedPlaylistResult>
   }
   eventBus?: {
     emit?: (eventName: string, payload?: unknown) => void
@@ -49,6 +55,8 @@ type HeroSlot = {
   metaEl: HTMLElement
 }
 
+type AnyRecord = Record<string, unknown>
+
 function safeText(value: unknown): string {
   return String(value || '').trim()
 }
@@ -64,9 +72,14 @@ function normalizeCoverUrl(value: unknown): string {
   return text.replace(/^http:\/\//i, 'https://')
 }
 
+function asRecord(value: unknown): AnyRecord {
+  if (!value || typeof value !== 'object') return {}
+  return value as AnyRecord
+}
+
 function normalizeRecommendedPlaylist(raw: unknown): RecommendedPlaylist | null {
-  if (!raw || typeof raw !== 'object') return null
-  const payload = raw as Record<string, any>
+  const payload = asRecord(raw)
+  if (Object.keys(payload).length === 0) return null
   const playlistId = safeText(payload.platformPlaylistId || payload.id)
   if (!/^\d{1,20}$/.test(playlistId)) return null
 
@@ -81,8 +94,8 @@ function normalizeRecommendedPlaylist(raw: unknown): RecommendedPlaylist | null 
     platformPlaylistId: playlistId,
     name: safeText(payload.name) || `歌单 ${playlistId}`,
     creator: {
-      userId: safeText(payload.creator?.userId),
-      nickname: safeText(payload.creator?.nickname) || '网易云音乐'
+      userId: safeText(asRecord(payload.creator).userId),
+      nickname: safeText(asRecord(payload.creator).nickname) || '网易云音乐'
     },
     coverUrl: normalizeCoverUrl(payload.coverUrl),
     description: safeText(payload.description),
@@ -330,10 +343,12 @@ export function createRecommendedPlaylistManager(options: RecommendedPlaylistMan
     }
 
     const playlists = Array.isArray(result?.data)
-      ? result.data.map(normalizeRecommendedPlaylist).filter(Boolean)
+      ? result.data
+          .map((item) => normalizeRecommendedPlaylist(item))
+          .filter((item): item is RecommendedPlaylist => item !== null)
       : []
 
-    state.playlists = (playlists as RecommendedPlaylist[]).slice(0, 30)
+    state.playlists = playlists.slice(0, 30)
     state.lastError = ''
     renderCards()
   }

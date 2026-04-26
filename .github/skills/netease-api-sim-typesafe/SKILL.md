@@ -19,7 +19,6 @@ Primary data source:
 
 Use this skill when:
 - NetEase-related modules contain unknown/any-heavy mapping logic.
-- Renderer shows fallback text such as 未知歌手, 未知专辑, 未知用户, 未知歌曲.
 - API response fields are inconsistent and need stable normalization.
 - You need evidence-based interface updates instead of guessing response shape.
 

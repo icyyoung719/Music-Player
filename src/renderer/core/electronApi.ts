@@ -225,14 +225,43 @@ export type NeteasePlaylistDetailResult = ApiResult<{
   data?: NeteasePlaylistDetailData
 }>
 
+export type NeteaseCloudPlaylistItem = {
+  id: string
+  platform: string
+  source: string
+  platformPlaylistId: string
+  name: string
+  creator: {
+    userId: string
+    nickname: string
+  }
+  coverUrl: string
+  description: string
+  trackCount: number
+  playCount: number
+  tags: string[]
+  collected: boolean
+  sourceKinds: string[]
+  updatedAt: string
+}
+
+export type NeteaseCloudPlaylistState = {
+  schemaVersion: number
+  playlists: NeteaseCloudPlaylistItem[]
+}
+
 export type NeteaseCloudPlaylistResult = ApiResult<{
-  data?: unknown[]
-  state?: unknown
+  data?: NeteaseCloudPlaylistItem[]
+  state?: NeteaseCloudPlaylistState
 }>
 
 export type NeteaseRecommendedPlaylistResult = ApiResult<{
-  data?: unknown[]
-  meta?: unknown
+  data?: NeteaseCloudPlaylistItem[]
+  meta?: {
+    source?: string
+    fetchedAt?: string
+    [key: string]: unknown
+  }
 }>
 
 export type NeteaseToastPayload = {
@@ -252,6 +281,7 @@ export type AuthStatePayload = {
   apiBaseUrl?: string
   userName?: string
   userId?: string | number
+  isLoggedIn?: boolean
   hasCookie?: boolean
   hasAccessToken?: boolean
   [key: string]: unknown
