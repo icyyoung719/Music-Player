@@ -13,7 +13,8 @@
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "start": "npm run build && electron .",
     "build:win": "npm run build && electron-builder --win",
-    "logviz": "node tools/log-visualizer/server.js"
+    "logviz": "node tools/log-visualizer/server.js",
+    "api-sim": "node tools/netease-api-sim/index.js"
   },
   "keywords": [],
   "author": "",

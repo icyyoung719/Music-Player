@@ -35,6 +35,10 @@
 - 日志可视化工具
   - 查看 `program.log` 与 `network.log`
   - 支持关键词、方法、状态过滤与详情查看
+- API 模拟采样工具
+  - 复用本地 `netease-auth.json` 登录态进行接口采样
+  - 输出每个接口的精简 JSON 快照（裁剪大数组、长文本、data URL）
+  - 生成 unknown 字段审计报告，辅助减少界面兜底文案
 
 ## 快速开始
 
@@ -42,6 +46,7 @@
 2. 构建产物：`npm run build`
 3. 启动应用：`npm run start`
 4. 启动日志可视化：`npm run logviz`
+5. 运行 API 模拟采样：`npm run api-sim`
 
 ## 开发与构建
 
@@ -98,5 +103,6 @@
 ## 文档
 
 - 架构与实现细节：`DOCS.md`
+- API 模拟采样说明：`tools/netease-api-sim/README.md`
 - 网易云 API 参考：`ref/netease-cloud-music-api-binaryify/`
 - 其他参考：`ref/CloudMusic-Mod/`、`ref/NetMusic/`
