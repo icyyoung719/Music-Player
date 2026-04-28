@@ -227,6 +227,8 @@ async function requestSingle({ authState, baseUrl, pathName, method = 'POST', da
 
 async function requestWithFallback({ authState, baseUrl, paths, method = 'POST', data = {}, profile = 'pc', timeoutMs = 12000 }) {
   const attempts = []
+  let firstJsonResult = null
+  let firstJsonPath = ''
 
   for (const p of paths) {
     const result = await requestSingle({
@@ -242,6 +244,7 @@ async function requestWithFallback({ authState, baseUrl, paths, method = 'POST',
     attempts.push({
       path: p,
       statusCode: result.statusCode,
+      bodyCode: Number((result.body && result.body.code) || 0),
       elapsedMs: result.elapsedMs,
       transportError: result.transportError || '',
       parseError: result.parseError || ''
@@ -249,8 +252,21 @@ async function requestWithFallback({ authState, baseUrl, paths, method = 'POST',
 
     const hasJson = result.body && typeof result.body === 'object'
     if (hasJson) {
-      return { result, pathUsed: p, attempts }
+      const bodyCode = Number((result.body && result.body.code) || 0)
+      const success = Boolean(result.ok) && (!bodyCode || bodyCode === 200)
+      if (success) {
+        return { result, pathUsed: p, attempts }
+      }
+
+      if (!firstJsonResult) {
+        firstJsonResult = result
+        firstJsonPath = p
+      }
     }
+  }
+
+  if (firstJsonResult) {
+    return { result: firstJsonResult, pathUsed: firstJsonPath, attempts }
   }
 
   return { result: null, pathUsed: '', attempts }
@@ -589,26 +605,53 @@ function buildSpecs(context) {
     {
       id: 'search',
       category: 'search',
-      kind: 'single',
-      path: '/api/search/get/web',
+      kind: 'fallback',
+      paths: ['/weapi/search/get', '/api/search/get', '/api/cloudsearch/pc'],
       method: 'POST',
       profile: 'pc',
       data: () => ({ s: context.args.keyword, type: '1', limit: 20, offset: 0 })
     },
     {
+      id: 'search_artist',
+      category: 'search',
+      kind: 'fallback',
+      paths: ['/weapi/search/get', '/api/search/get', '/api/cloudsearch/pc'],
+      method: 'POST',
+      profile: 'pc',
+      data: () => ({ s: context.args.keyword, type: '100', limit: 20, offset: 0 })
+    },
+    {
       id: 'search_playlist',
       category: 'search',
-      kind: 'single',
-      path: '/api/search/get/web',
+      kind: 'fallback',
+      paths: ['/weapi/search/get', '/api/search/get', '/api/cloudsearch/pc'],
       method: 'POST',
       profile: 'pc',
       data: () => ({ s: context.args.keyword, type: '1000', limit: 20, offset: 0 })
     },
     {
-      id: 'search_suggest',
+      id: 'search_voice',
       category: 'search',
       kind: 'single',
-      path: '/api/search/suggest/web',
+      path: '/api/search/voice/get',
+      method: 'POST',
+      profile: 'pc',
+      data: () => ({ keyword: context.args.keyword, scene: 'normal', limit: 20, offset: 0 })
+    },
+    {
+      id: 'search_suggest_web',
+      category: 'search',
+      kind: 'fallback',
+      paths: ['/weapi/search/suggest/web', '/api/search/suggest/web', '/api/search/suggest'],
+      method: 'POST',
+      profile: 'pc',
+      data: () => ({ s: context.args.keyword })
+    },
+    {
+      id: 'search_suggest_mobile',
+      category: 'search',
+      kind: 'fallback',
+      paths: ['/weapi/search/suggest/keyword', '/api/search/suggest/keyword', '/api/search/suggest'],
       method: 'POST',
       profile: 'pc',
       data: () => ({ s: context.args.keyword })
@@ -616,35 +659,35 @@ function buildSpecs(context) {
     {
       id: 'search_default',
       category: 'search',
-      kind: 'single',
-      path: '/api/search/default',
-      method: 'GET',
+      kind: 'fallback',
+      paths: ['/eapi/search/defaultkeyword/get', '/api/search/defaultkeyword/get'],
+      method: 'POST',
       profile: 'pc',
       data: () => ({})
     },
     {
       id: 'search_hot',
       category: 'search',
-      kind: 'single',
-      path: '/api/search/hot',
-      method: 'GET',
+      kind: 'fallback',
+      paths: ['/weapi/search/hot', '/api/search/hot'],
+      method: 'POST',
       profile: 'pc',
-      data: () => ({})
+      data: () => ({ type: 1111 })
     },
     {
       id: 'search_hot_detail',
       category: 'search',
-      kind: 'single',
-      path: '/api/search/hot/detail',
-      method: 'GET',
+      kind: 'fallback',
+      paths: ['/weapi/hotsearchlist/get', '/weapi/search/hot/detail', '/api/search/hot/detail'],
+      method: 'POST',
       profile: 'pc',
       data: () => ({})
     },
     {
       id: 'search_multimatch',
       category: 'search',
-      kind: 'single',
-      path: '/api/search/multimatch',
+      kind: 'fallback',
+      paths: ['/weapi/search/suggest/multimatch', '/api/search/suggest/multimatch'],
       method: 'POST',
       profile: 'pc',
       data: () => ({ s: context.args.keyword, type: 1 })
@@ -668,6 +711,15 @@ function buildSpecs(context) {
       profile: 'pc',
       data: () => ({ id: context.dynamic.playlistId }),
       skip: () => (!context.dynamic.playlistId ? 'MISSING_PLAYLIST_ID' : '')
+    },
+    {
+      id: 'recommend_resource',
+      category: 'recommend',
+      kind: 'fallback',
+      paths: ['/weapi/v1/discovery/recommend/resource', '/api/v1/discovery/recommend/resource', '/recommend/resource'],
+      method: 'POST',
+      profile: 'ios',
+      data: () => ({})
     },
     {
       id: 'daily_recommendation',

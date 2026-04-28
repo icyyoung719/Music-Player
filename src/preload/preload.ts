@@ -101,6 +101,26 @@ type NeteaseAuthRequestPayload = {
   timeout?: number
 }
 
+type NeteaseSearchType =
+  | '1'
+  | '10'
+  | '100'
+  | '1000'
+  | '1002'
+  | '1004'
+  | '1006'
+  | '1009'
+  | '1014'
+  | '1018'
+  | '2000'
+
+type NeteaseSearchPayload = {
+  keywords: string
+  type?: NeteaseSearchType
+  limit?: number
+  offset?: number
+}
+
 type NeteaseDownloadTaskCancelPayload = {
   id: string
 }
@@ -173,6 +193,65 @@ function sanitizeDirType(value: unknown): 'songs' | 'temp' | 'lists' {
   if (text === 'temp') return 'temp'
   if (text === 'lists') return 'lists'
   return 'songs'
+}
+
+const SEARCH_ALLOWED_TYPES = new Set<NeteaseSearchType>([
+  '1', '10', '100', '1000', '1002', '1004', '1006', '1009', '1014', '1018', '2000'
+])
+
+function sanitizeSearchKeyword(value: unknown): string {
+  return String(value ?? '').trim().slice(0, 120)
+}
+
+function sanitizeSearchType(value: unknown, fallback: NeteaseSearchType = '1'): NeteaseSearchType {
+  const text = String(value ?? '').trim() as NeteaseSearchType
+  if (SEARCH_ALLOWED_TYPES.has(text)) return text
+  return fallback
+}
+
+function sanitizeSearchLimit(value: unknown): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 20
+  return Math.max(1, Math.min(50, Math.floor(parsed)))
+}
+
+function sanitizeSearchOffset(value: unknown): number {
+  const parsed = Number(value)
+  if (!Number.isFinite(parsed)) return 0
+  return Math.max(0, Math.floor(parsed))
+}
+
+function sanitizeSearchPayload(payload: unknown): NeteaseSearchPayload | null {
+  const source = asRecord(payload)
+  const keywords = sanitizeSearchKeyword(source?.keywords)
+  if (!keywords) return null
+
+  return {
+    keywords,
+    type: sanitizeSearchType(source?.type),
+    limit: sanitizeSearchLimit(source?.limit),
+    offset: sanitizeSearchOffset(source?.offset)
+  }
+}
+
+function sanitizeSuggestPayload(payload: unknown): { keywords: string; type?: 'mobile' } | null {
+  const source = asRecord(payload)
+  const keywords = sanitizeSearchKeyword(source?.keywords)
+  if (!keywords) return null
+
+  const isMobile = source?.type === 'mobile' || source?.mobile === true
+  return isMobile ? { keywords, type: 'mobile' } : { keywords }
+}
+
+function sanitizeMultimatchPayload(payload: unknown): { keywords: string; type: NeteaseSearchType } | null {
+  const source = asRecord(payload)
+  const keywords = sanitizeSearchKeyword(source?.keywords)
+  if (!keywords) return null
+
+  return {
+    keywords,
+    type: sanitizeSearchType(source?.type)
+  }
 }
 
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -267,12 +346,24 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   neteaseAuthRequest: (payload: NeteaseAuthRequestPayload | unknown) =>
     ipcRenderer.invoke('netease:auth:request', asRecord(payload) || {}),
-  neteaseSearch: (payload: unknown) => ipcRenderer.invoke('netease:search', payload),
-  neteaseSearchSuggest: (payload: unknown) => ipcRenderer.invoke('netease:search-suggest', payload),
+  neteaseSearch: (payload: unknown) => {
+    const safePayload = sanitizeSearchPayload(payload)
+    if (!safePayload) return Promise.resolve(fail('INVALID_PAYLOAD', 'Invalid NetEase search payload'))
+    return ipcRenderer.invoke('netease:search', safePayload)
+  },
+  neteaseSearchSuggest: (payload: unknown) => {
+    const safePayload = sanitizeSuggestPayload(payload)
+    if (!safePayload) return Promise.resolve(fail('INVALID_PAYLOAD', 'Invalid NetEase suggest payload'))
+    return ipcRenderer.invoke('netease:search-suggest', safePayload)
+  },
   neteaseSearchDefault: () => ipcRenderer.invoke('netease:search-default'),
   neteaseSearchHot: () => ipcRenderer.invoke('netease:search-hot'),
   neteaseSearchHotDetail: () => ipcRenderer.invoke('netease:search-hot-detail'),
-  neteaseSearchMultimatch: (payload: unknown) => ipcRenderer.invoke('netease:search-multimatch', payload),
+  neteaseSearchMultimatch: (payload: unknown) => {
+    const safePayload = sanitizeMultimatchPayload(payload)
+    if (!safePayload) return Promise.resolve(fail('INVALID_PAYLOAD', 'Invalid NetEase multimatch payload'))
+    return ipcRenderer.invoke('netease:search-multimatch', safePayload)
+  },
   neteasePlaylistDetail: (payload: NeteasePlaylistDetailPayload | unknown) => {
     const safePayload = asRecord(payload)
     const playlistId = sanitizeId(safePayload?.playlistId)

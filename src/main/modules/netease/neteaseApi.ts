@@ -25,6 +25,32 @@ type SongLike = {
   album?: unknown
   dt?: unknown
   duration?: unknown
+  albumId?: unknown
+  picId?: unknown
+  picId_str?: unknown
+  picUrl?: unknown
+  blurPicUrl?: unknown
+  publishTime?: unknown
+  size?: unknown
+  artist?: unknown
+  alias?: unknown
+  status?: unknown
+  coverUrl?: unknown
+}
+
+type SongAlbumLike = {
+  id?: unknown
+  name?: unknown
+  picId?: unknown
+  picId_str?: unknown
+  picUrl?: unknown
+  blurPicUrl?: unknown
+  publishTime?: unknown
+  size?: unknown
+  artist?: unknown
+  artists?: unknown
+  alias?: unknown
+  status?: unknown
 }
 
 type PlaylistTrackIdLike = {
@@ -34,9 +60,14 @@ type PlaylistTrackIdLike = {
 type SongDownloadItemLike = {
   id?: unknown
   url?: unknown
+  br?: unknown
+  md5?: unknown
   level?: unknown
   type?: unknown
   size?: unknown
+  encodeType?: unknown
+  canExtend?: unknown
+  fee?: unknown
 }
 
 function asRecord(value: unknown): AnyRecord {
@@ -160,6 +191,23 @@ function normalizeSongArtists(song: SongLike | unknown): string {
   return ''
 }
 
+function normalizeSongAlbum(song: SongLike | unknown): SongAlbumLike {
+  const payload = asRecord(song) as SongLike
+  return asRecord(payload.al ?? payload.album) as SongAlbumLike
+}
+
+function resolveSongCoverUrl(song: SongLike | unknown): string {
+  const payload = asRecord(song) as SongLike
+  const album = normalizeSongAlbum(song)
+  return String(
+    album.picUrl ??
+      album.blurPicUrl ??
+      payload.coverUrl ??
+      payload.picUrl ??
+      ''
+  ).trim()
+}
+
 function toSafeInteger(value: unknown): number {
   const parsed = Number(value)
   return Number.isFinite(parsed) ? parsed : 0
@@ -230,7 +278,7 @@ function extractSongMetadata(song: SongLike | unknown, fallbackSongId?: unknown)
   if (!song || typeof song !== 'object') return null
 
   const payload = song as SongLike
-  const album = asRecord(payload.al ?? payload.album)
+  const album = normalizeSongAlbum(song)
 
   const artist = normalizeSongArtists(song)
   const publishTime = Number(album.publishTime ?? 0)
@@ -243,7 +291,7 @@ function extractSongMetadata(song: SongLike | unknown, fallbackSongId?: unknown)
     album: String(album.name ?? '').trim(),
     durationMs: toSafeInteger(payload.dt ?? payload.duration),
     year: Number.isFinite(year as number) ? year : null,
-    coverUrl: String(album.picUrl ?? '').trim()
+    coverUrl: resolveSongCoverUrl(song)
   }
 }
 
@@ -480,6 +528,7 @@ const SEARCH_ALLOWED_TYPES = new Set<string>([
 ])
 const SEARCH_UNKNOWN_ARTIST = '未知歌手'
 const SEARCH_UNKNOWN_ALBUM = '未知专辑'
+const SEARCH_UNKNOWN_CREATOR = '网易云音乐'
 
 function sanitizeSearchKeyword(raw: unknown): string {
   const text = String(raw ?? '').trim()
@@ -506,6 +555,7 @@ function sanitizeSearchOffset(raw: unknown): number {
 }
 
 interface SearchSongItem {
+  readonly kind: 'song'
   readonly id: string
   readonly name: string
   readonly artist: string
@@ -515,6 +565,7 @@ interface SearchSongItem {
 }
 
 interface SearchArtistItem {
+  readonly kind: 'artist'
   readonly id: string
   readonly name: string
   readonly alias: string[]
@@ -524,6 +575,7 @@ interface SearchArtistItem {
 }
 
 interface SearchPlaylistItem {
+  readonly kind: 'playlist'
   readonly id: string
   readonly name: string
   readonly creator: string
@@ -532,12 +584,20 @@ interface SearchPlaylistItem {
   readonly coverUrl: string
 }
 
+type SearchItem = SearchSongItem | SearchArtistItem | SearchPlaylistItem
+
+function normalizeAliasList(value: unknown): string[] {
+  const source = Array.isArray(value) ? value : []
+  return source.map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
+}
+
 function normalizeSearchSongItem(song: unknown): SearchSongItem {
   const payload = song as SongLike
   const metadata = extractSongMetadata(song, payload?.id)
   const artist = String(metadata?.artist ?? '').trim()
   const album = String(metadata?.album ?? '').trim()
   return {
+    kind: 'song',
     id: String(metadata?.songId ?? payload?.id ?? ''),
     name: metadata?.title ?? String(payload?.name ?? '').trim(),
     artist: artist || SEARCH_UNKNOWN_ARTIST,
@@ -549,12 +609,12 @@ function normalizeSearchSongItem(song: unknown): SearchSongItem {
 
 function normalizeSearchArtistItem(artist: unknown): SearchArtistItem {
   const payload = asRecord(artist)
+  const alias = normalizeAliasList(Array.isArray(payload.alias) ? payload.alias : payload.alia)
   return {
+    kind: 'artist',
     id: String(payload.id ?? ''),
     name: String(payload.name ?? '').trim(),
-    alias: Array.isArray(payload.alias)
-      ? payload.alias.map((item: unknown) => String(item ?? '').trim()).filter(Boolean)
-      : [],
+    alias,
     albumSize: Number(payload.albumSize ?? 0),
     mvSize: Number(payload.mvSize ?? 0),
     picUrl: String(payload.picUrl ?? payload.img1v1Url ?? '').trim()
@@ -564,17 +624,19 @@ function normalizeSearchArtistItem(artist: unknown): SearchArtistItem {
 function normalizeSearchPlaylistItem(playlist: unknown): SearchPlaylistItem {
   const payload = asRecord(playlist)
   const creator = asRecord(payload.creator)
+  const creatorName = String(creator.nickname ?? payload.creatorName ?? '').trim()
   return {
+    kind: 'playlist',
     id: String(payload.id ?? ''),
     name: String(payload.name ?? '').trim(),
-    creator: String(creator.nickname ?? '').trim(),
+    creator: creatorName || SEARCH_UNKNOWN_CREATOR,
     trackCount: Number(payload.trackCount ?? 0),
     playCount: Number(payload.playCount ?? 0),
-    coverUrl: String(payload.coverImgUrl ?? '').trim()
+    coverUrl: String(payload.coverImgUrl ?? payload.picUrl ?? '').trim()
   }
 }
 
-function normalizeSearchItems(type: string, result: unknown): (SearchSongItem | SearchArtistItem | SearchPlaylistItem)[] {
+function normalizeSearchItems(type: string, result: unknown): SearchItem[] {
   const payload = asRecord(result)
   if (type === '100') {
     const artists = Array.isArray(payload.artists) ? payload.artists : []
@@ -594,7 +656,7 @@ function normalizeSearchItems(type: string, result: unknown): (SearchSongItem | 
   return songs.map((song: unknown) => normalizeSearchSongItem(song)).filter((item) => item.id && item.name)
 }
 
-function extractSearchTotal(type: string, result: unknown, items: unknown[]): number {
+function extractSearchTotal(type: string, result: unknown, items: SearchItem[]): number {
   const payload = asRecord(result)
   if (type === '100') {
     return Number(payload.artistCount ?? items.length ?? 0)
@@ -643,7 +705,7 @@ interface SearchResult {
     offset: number
     total: number
     hasMore: boolean
-    items: (SearchSongItem | SearchArtistItem | SearchPlaylistItem)[]
+    items: SearchItem[]
   }
 }
 

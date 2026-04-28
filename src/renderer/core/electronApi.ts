@@ -95,10 +95,23 @@ export type DownloadTaskResult = ApiResult<{
 
 export type NeteaseSearchPayload = {
   keywords: string
-  type?: string
+  type?: NeteaseSearchType
   limit?: number
   offset?: number
 }
+
+export type NeteaseSearchType =
+  | '1'
+  | '10'
+  | '100'
+  | '1000'
+  | '1002'
+  | '1004'
+  | '1006'
+  | '1009'
+  | '1014'
+  | '1018'
+  | '2000'
 
 export type NeteaseResolveIdPayload = {
   id: string | number
@@ -147,7 +160,7 @@ export type NeteaseAuthStateResult = ApiResult<{
 export type NeteaseSearchResult = ApiResult<{
   data?: {
     keywords?: string
-    type?: string
+    type?: NeteaseSearchType
     limit?: number
     offset?: number
     total?: number
@@ -158,6 +171,7 @@ export type NeteaseSearchResult = ApiResult<{
 }>
 
 export type NeteaseSearchSongItem = {
+  kind: 'song'
   id: string
   name: string
   artist: string
@@ -167,6 +181,7 @@ export type NeteaseSearchSongItem = {
 }
 
 export type NeteaseSearchArtistItem = {
+  kind: 'artist'
   id: string
   name: string
   alias: string[]
@@ -176,6 +191,7 @@ export type NeteaseSearchArtistItem = {
 }
 
 export type NeteaseSearchPlaylistItem = {
+  kind: 'playlist'
   id: string
   name: string
   creator: string

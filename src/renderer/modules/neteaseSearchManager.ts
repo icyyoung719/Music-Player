@@ -46,6 +46,7 @@ type NeteaseSearchManagerOptions = {
   neteaseDatabaseService?: {
     search?: (payload: Record<string, unknown>) => Promise<NeteaseSearchResult>
     suggest?: (payload: { keywords: string }) => Promise<NeteaseSearchSuggestResult>
+    resolveById?: (type: 'song' | 'playlist', id: string | number) => Promise<{ ok?: boolean; item?: Record<string, unknown> }>
   }
   downloadService?: {
     createSongTask?: (payload: Record<string, unknown>) => Promise<DownloadTaskResult>
@@ -67,15 +68,18 @@ function mapSearchUiTypeToApi(uiType: unknown): SearchType {
 }
 
 function isSearchSongItem(item: NeteaseSearchItem): item is NeteaseSearchSongItem {
-  return 'artist' in item
+  if (item.kind === 'song') return true
+  return 'artist' in item && 'album' in item
 }
 
 function isSearchArtistItem(item: NeteaseSearchItem): item is NeteaseSearchArtistItem {
-  return 'alias' in item
+  if (item.kind === 'artist') return true
+  return 'alias' in item && Array.isArray(item.alias)
 }
 
 function isSearchPlaylistItem(item: NeteaseSearchItem): item is NeteaseSearchPlaylistItem {
-  return 'trackCount' in item
+  if (item.kind === 'playlist') return true
+  return 'trackCount' in item && 'playCount' in item
 }
 
 function getFailureMessage(result: unknown): string {
@@ -124,8 +128,15 @@ function escapeHtml(raw: unknown): string {
     .replace(/'/g, '&#39;')
 }
 
-function coverStyle(url: unknown): string {
+function normalizeCoverUrl(url: unknown): string {
   const clean = String(url || '').trim()
+  if (!clean) return ''
+  if (/^\/\//.test(clean)) return `https:${clean}`
+  return clean.replace(/^http:\/\//i, 'https://')
+}
+
+function coverStyle(url: unknown): string {
+  const clean = normalizeCoverUrl(url)
   if (!clean) return ''
   return `background-image:url('${clean.replace(/'/g, "\\'")}')`
 }
@@ -159,7 +170,9 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
     requestToken: 0
   }
 
-  const autoQueueTaskIds = new Set()
+  const autoQueueTaskIds = new Set<string>()
+  const songCoverCache = new Map<string, string>()
+  const pendingSongCoverRequests = new Set<string>()
 
   function setSearchStatus(text: string, isError = false): void {
     if (!dom.searchStatus) return
@@ -200,13 +213,65 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
 
     const html = list
       .map(
-        (keyword) =>
-          `<button type="button" class="netease-suggest-item" data-suggest="${keyword.replace(/"/g, '&quot;')}">${keyword}</button>`
+        (keyword) => {
+          const text = escapeHtml(keyword)
+          return `<button type="button" class="netease-suggest-item" data-suggest="${text}">${text}</button>`
+        }
       )
       .join('')
 
     dom.suggestList.innerHTML = html
     dom.suggestList.classList.remove('page-hidden')
+  }
+
+  function setSongCover(songId: string, coverUrl: string): void {
+    const id = String(songId || '').trim()
+    const url = normalizeCoverUrl(coverUrl)
+    if (!id || !url) return
+
+    songCoverCache.set(id, url)
+    const selector = `[data-song-id="${CSS.escape(id)}"] .netease-result-cover`
+    const coverEl = dom.resultList.querySelector<HTMLElement>(selector)
+    if (!coverEl) return
+
+    coverEl.style.backgroundImage = `url('${url.replace(/'/g, "\\'")}')`
+    coverEl.textContent = ''
+    coverEl.classList.add('has-image')
+  }
+
+  async function hydrateSongCover(songId: string): Promise<void> {
+    const id = String(songId || '').trim()
+    if (!id || songCoverCache.has(id) || pendingSongCoverRequests.has(id)) return
+    pendingSongCoverRequests.add(id)
+
+    try {
+      const response = await searchService?.resolveById?.('song', id)
+      if (!response?.ok || !response.item) return
+
+      const item = response.item as { coverUrl?: unknown }
+      const coverUrl = String(item.coverUrl ?? '').trim()
+      if (coverUrl) {
+        setSongCover(id, coverUrl)
+      }
+    } finally {
+      pendingSongCoverRequests.delete(id)
+    }
+  }
+
+  function hydrateVisibleSongCovers(items: NeteaseSearchItem[]): void {
+    if (state.type !== '1') return
+
+    for (const item of items) {
+      if (!isSearchSongItem(item)) continue
+      const id = String(item.id || '').trim()
+      if (!id) continue
+
+      if (songCoverCache.has(id)) {
+        setSongCover(id, songCoverCache.get(id) || '')
+      } else {
+        void hydrateSongCover(id)
+      }
+    }
   }
 
   function renderResults(items: NeteaseSearchItem[]): void {
@@ -264,7 +329,8 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
           return ''
         }
 
-        const style = coverStyle(item.coverUrl)
+        const cachedCoverUrl = songCoverCache.get(String(item.id || '').trim()) || item.coverUrl
+        const style = coverStyle(cachedCoverUrl)
         const itemId = escapeHtml(item.id)
         const name = escapeHtml(item.name)
         const artist = escapeHtml(item.artist)
@@ -272,7 +338,7 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
         const coverClass = style ? 'netease-result-cover has-image' : 'netease-result-cover'
 
         return `
-          <article class="netease-result-card netease-result-card-song">
+          <article class="netease-result-card netease-result-card-song" data-song-id="${itemId}">
             <div class="${coverClass}" ${style ? `style="${style}"` : ''}>${style ? '' : '♪'}</div>
             <div class="netease-result-content">
               <div class="netease-result-title">${name}</div>
@@ -332,7 +398,9 @@ export function createNeteaseSearchManager(options: NeteaseSearchManagerOptions)
     const data = response.data
     state.total = Number(data.total || 0)
     state.hasMore = Boolean(data.hasMore)
-    renderResults(Array.isArray(data.items) ? data.items : [])
+    const items = Array.isArray(data.items) ? data.items : []
+    renderResults(items)
+    hydrateVisibleSongCovers(items)
     togglePager()
     setSearchStatus(`搜索完成，共 ${state.total || 0} 条结果。`)
   }
